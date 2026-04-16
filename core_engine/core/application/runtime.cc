@@ -12,6 +12,14 @@ namespace CoreEngine {
         return runtime.Run(*app);
     }
 
+    void Runtime::RequestShutdown() {
+        shutdown_requested_.store(true, std::memory_order_release);
+    }
+
+    bool Runtime::IsShutdownRequested() const {
+        return shutdown_requested_.load(std::memory_order_acquire);
+    }
+
     Runtime::Runtime(const EngineConfig &config) {
         config_ = config;
     }
@@ -23,8 +31,8 @@ namespace CoreEngine {
 
         running_ = true;
 
-        while (running_) {
-            app.Update(0.016);
+        while (!IsShutdownRequested()) {
+            app.Update(0.016f);
         }
 
         app.Shutdown();
@@ -34,12 +42,26 @@ namespace CoreEngine {
     }
 
     bool Runtime::Initialize() {
+        shutdown_requested_.store(false, std::memory_order_release);
+        Application::Bind(*this);
+        InitializeSink();
         return true;
+    }
+
+    void Runtime::InitializeSink() {
+        logger_ = std::make_unique<Logger>();
+        Log::Bind(*logger_);
+        console_sink_ = std::make_shared<ConsoleSink>();
+        logger_->AddSink(console_sink_);
     }
 
     void Runtime::Tick(IGameApp *app, float deltaTime) {
     }
 
     void Runtime::Shutdown(IGameApp &app) {
+        Log::Unbind();
+        Application::Unbind();
+        console_sink_.reset();
+        logger_.reset();
     }
 }
