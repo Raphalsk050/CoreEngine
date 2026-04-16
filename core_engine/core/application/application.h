@@ -1,4 +1,5 @@
 #pragma once
+#include "core/assert/assert.h"
 
 namespace CoreEngine {
     class IApplicationService {

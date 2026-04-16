@@ -6,10 +6,12 @@
 
 namespace CoreEngine {
     void ConsoleSink::Write(const LogMessage &message) {
-        std::ostream &stream =
-                (message.metadata.level == LogLevel::Error || message.metadata.level == LogLevel::Fatal)
-                    ? std::cerr
-                    : std::cout;
+        // std::ostream &stream =
+        //         (message.metadata.level == LogLevel::Error || message.metadata.level == LogLevel::Fatal)
+        //             ? std::cerr
+        //             : std::cout;
+
+        std::ostream &stream = std::cout;
 
         stream
                 << GetColorCode(message.metadata.level)
