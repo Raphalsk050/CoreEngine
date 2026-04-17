@@ -3,6 +3,7 @@
 #include "core/ecs/world_access.h"
 #include "core/log/logger.h"
 #include "core/log/sink/console_sink.h"
+#include "core/ecs/world.h"
 #include "engine.h"
 
 namespace CoreEngine {

@@ -60,7 +60,7 @@ void Runtime::InitializeSink() {
 
 void Runtime::InitializeWorld() {
   world_ = std::make_unique<World>();
-  WorldAccess::Bind(*world_);
+  WorldAccess::Bind(*this);
 }
 
 void Runtime::Tick(IGameApp *app, float deltaTime) {}
