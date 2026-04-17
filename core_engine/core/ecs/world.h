@@ -1,9 +1,12 @@
+#pragma once
 #include "core/ecs/node.h"
+#include "core/ecs/world_access.h"
 #include <third_party/entt/entt.hpp>
 
 namespace CoreEngine {
 class World {
 public:
+  World() = default;
   // --- Node Lifecycle ---
   Node CreateNode(const std::string &name = "Node");
   void DestroyNode(Node node);

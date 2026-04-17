@@ -1,7 +1,8 @@
-#include "core/ecs/world.h"
 #include <third_party/entt/entt.hpp>
 
 namespace CoreEngine {
+
+class World;
 
 class IWorldService {
 public:
