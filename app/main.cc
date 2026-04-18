@@ -10,44 +10,44 @@
 
 class MyGameApp final : public CoreEngine::IGameApp {
 public:
-  MyGameApp() = default;
+    MyGameApp() = default;
 
-  void Init() override {}
+    void Init() override {
+    }
 
-  void Update(float delta_time) override {
-    CoreEngine::Log::Debug("Game",
-                           "Update: DeltaTime: " + std::to_string(delta_time));
-    CoreEngine::Log::Info("Game",
-                          "Update: DeltaTime: " + std::to_string(delta_time));
-    CoreEngine::Log::Warn("Game",
-                          "Update: DeltaTime: " + std::to_string(delta_time));
-    CoreEngine::Log::Error("Game",
-                           "Update: DeltaTime: " + std::to_string(delta_time));
-    CoreEngine::Log::Fatal("Game",
-                           "Update: DeltaTime: " + std::to_string(delta_time));
+    void Update(float delta_time) override {
+        CoreEngine::Log::Debug("Game",
+                               "Update: DeltaTime: " + std::to_string(delta_time));
+        CoreEngine::Log::Info("Game",
+                              "Update: DeltaTime: " + std::to_string(delta_time));
+        CoreEngine::Log::Warn("Game",
+                              "Update: DeltaTime: " + std::to_string(delta_time));
+        CoreEngine::Log::Error("Game",
+                               "Update: DeltaTime: " + std::to_string(delta_time));
+        CoreEngine::Log::Fatal("Game",
+                               "Update: DeltaTime: " + std::to_string(delta_time));
 
-    CoreEngine::Node player_node = CoreEngine::WorldAccess::Get().CreateNode();
+        CoreEngine::Node player_node = CoreEngine::WorldAccess::Get().CreateNode();
 
-    CoreEngine::TransformComponent transform{.position = {0.0, 1.0, 0.0}};
-
-    CoreEngine::Log::Info(
-        "Game", "player position: " +
+        CoreEngine::Log::Info(
+            "Game", "player position: " +
                     player_node.GetComponent<CoreEngine::TransformComponent>()
-                        .ToString());
+                    .ToString());
 
-    CoreEngine::Application::RequestShutdown();
-  }
+        CoreEngine::Application::RequestShutdown();
+    }
 
-  void Shutdown() override {}
+    void Shutdown() override {
+    }
 };
 
 int main() {
-  std::unique_ptr<CoreEngine::IGameApp> gameApp = std::make_unique<MyGameApp>();
+    std::unique_ptr<CoreEngine::IGameApp> gameApp = std::make_unique<MyGameApp>();
 
-  CoreEngine::EngineConfig config;
-  config.windowWidth = 1024;
-  config.windowHeight = 768;
-  config.windowTitle = "My Awesome Game";
+    CoreEngine::EngineConfig config;
+    config.windowWidth = 1024;
+    config.windowHeight = 768;
+    config.windowTitle = "My Awesome Game";
 
-  return CoreEngine::RunEngine(std::move(gameApp), config);
+    return CoreEngine::RunEngine(std::move(gameApp), config);
 }
