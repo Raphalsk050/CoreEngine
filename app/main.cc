@@ -30,13 +30,10 @@ public:
 
     CoreEngine::TransformComponent transform{.position = {0.0, 1.0, 0.0}};
 
-    player_node.AddComponent<CoreEngine::TransformComponent>(transform);
-    // CoreEngine::Log::Info(
-    //     "Game",
-    //     "player position: " +
-    //         std::to_string(
-    //             player_node.GetComponent<CoreEngine::TransformComponent>()
-    //                 .position.));
+    CoreEngine::Log::Info(
+        "Game", "player position: " +
+                    player_node.GetComponent<CoreEngine::TransformComponent>()
+                        .ToString());
 
     CoreEngine::Application::RequestShutdown();
   }
