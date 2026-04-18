@@ -54,7 +54,7 @@ namespace CoreEngine {
         const T *TryGetComponent(entt::entity e) const;
 
         template<typename T>
-        bool HasComponent(entt::entity e) const;
+        [[nodiscard]] bool HasComponent(entt::entity e) const;
 
         template<typename T>
         void RemoveComponent(entt::entity e);
@@ -78,6 +78,7 @@ namespace CoreEngine {
     }
 
     inline entt::registry &World::Registry() { return registry_; }
+
     inline const entt::registry &World::Registry() const { return registry_; }
 
     inline std::size_t World::GetNodeCount() const {
@@ -146,5 +147,5 @@ namespace CoreEngine {
     bool Node::HasComponent() const { return world_->HasComponent<T>(handle_); }
 
     template<typename T>
-    void Node::RemoveComponent() { world_->RemoveComponent<T>(handle_); }
+    void Node::RemoveComponent() const { world_->RemoveComponent<T>(handle_); }
 } // namespace CoreEngine

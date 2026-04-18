@@ -30,7 +30,9 @@ namespace CoreEngine {
         bool HasComponent() const;
 
         template<typename T>
-        void RemoveComponent();
+        void RemoveComponent() const;
+
+        [[nodiscard]] std::string GetName() const;
 
         void Destroy();
 

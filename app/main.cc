@@ -27,12 +27,16 @@ public:
         CoreEngine::Log::Fatal("Game",
                                "Update: DeltaTime: " + std::to_string(delta_time));
 
-        CoreEngine::Node player_node = CoreEngine::WorldAccess::Get().CreateNode();
+        CoreEngine::Node player_node = CoreEngine::WorldAccess::Get().CreateNode("Player Node");
 
         CoreEngine::Log::Info(
-            "Game", "player position: " +
+            "Game", "Node position: " +
                     player_node.GetComponent<CoreEngine::TransformComponent>()
                     .ToString());
+
+        CoreEngine::Log::Info(
+            "Game", "Node name: " +
+                    player_node.GetName());
 
         CoreEngine::Application::RequestShutdown();
     }

@@ -1,8 +1,14 @@
 #include "core/ecs/node.h"
+
+#include "components/name_component.h"
 #include "core/ecs/world.h"
 
 namespace CoreEngine {
     Node::Node(entt::entity handle, World *world) : handle_(handle), world_(world) {
+    }
+
+    std::string Node::GetName() const {
+        return GetComponent<NameComponent>().name;
     }
 
     void Node::Destroy() {
