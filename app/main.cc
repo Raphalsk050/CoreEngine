@@ -4,9 +4,12 @@
 
 #include <core/application/application.h>
 #include <core/ecs/components/transform_component.h>
+#include <core/ecs/components/name_component.h>
 #include <core/ecs/world.h>
 #include <core/ecs/world_access.h>
 #include <core/log/log.h>
+
+#include "core/debug/debug.h"
 
 class MyGameApp final : public CoreEngine::IGameApp {
 public:
@@ -30,13 +33,12 @@ public:
         CoreEngine::Node player_node = CoreEngine::WorldAccess::Get().CreateNode("Player Node");
 
         CoreEngine::Log::Info(
-            "Game", "Node position: " +
-                    player_node.GetComponent<CoreEngine::TransformComponent>()
-                    .ToString());
+            "Game", "Node position: " + CoreEngine::Debug::ToString(
+                        player_node.GetComponent<CoreEngine::TransformComponent>()));
 
         CoreEngine::Log::Info(
             "Game", "Node name: " +
-                    player_node.GetName());
+                    CoreEngine::Debug::ToString(player_node.GetComponent<CoreEngine::NameComponent>()));
 
         CoreEngine::Application::RequestShutdown();
     }
