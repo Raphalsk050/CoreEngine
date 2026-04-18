@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include <third_party/entt/entt.hpp>
+#include <entt/entt.hpp>
 
 namespace CoreEngine {
 class World;

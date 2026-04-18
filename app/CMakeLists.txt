@@ -11,5 +11,5 @@ list(FILTER APP_SOURCES EXCLUDE REGEX ".*/(build|cmake-build|out|third_party)/.*
 
 add_executable(${PROJECT_NAME} ${APP_SOURCES})
 target_link_libraries(${PROJECT_NAME} PRIVATE CoreEngine)
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

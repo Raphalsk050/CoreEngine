@@ -48,6 +48,7 @@ bool Runtime::Initialize() {
   Application::Bind(*this);
 
   InitializeSink();
+  InitializeWorld();
   return true;
 }
 
