@@ -2,21 +2,26 @@
 #include <string>
 
 namespace CoreEngine {
-    struct NameComponent;
     struct TransformComponent;
+    struct NameComponent;
 
-    class Debug {
-    public:
+    namespace Debug {
+        void AppendDebugString(std::string &output, const TransformComponent &transform_component);
+
+        void AppendDebugString(std::string &output, const NameComponent &name_component);
+
+        // this is just to guarantee a good error log
         template<typename T>
-        [[nodiscard]] static std::string ToString(const T &value) {
+        concept DebugStringWritable = requires(std::string &output, const T &value)
+        {
+            AppendDebugString(output, value);
+        };
+
+        template<DebugStringWritable T>
+        [[nodiscard]] std::string ToString(const T &value) {
             std::string output;
             AppendDebugString(output, value);
             return output;
         }
-
-    private:
-        static void AppendDebugString(std::string &output, const TransformComponent &transform_component);
-
-        static void AppendDebugString(std::string &output, const NameComponent &name_component);
-    };
-} // CoreEngine
+    }
+}
