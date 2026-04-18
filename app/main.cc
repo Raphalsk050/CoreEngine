@@ -3,6 +3,8 @@
 #include <string>
 
 #include "core/application/application.h"
+#include "core/ecs/world.h"
+#include "core/ecs/world_access.h"
 #include "core/log/log.h"
 
 
@@ -19,6 +21,10 @@ public:
     CoreEngine::Log::Warn("Game", "Update: DeltaTime: " + std::to_string(delta_time));
     CoreEngine::Log::Error("Game", "Update: DeltaTime: " + std::to_string(delta_time));
     CoreEngine::Log::Fatal("Game", "Update: DeltaTime: " + std::to_string(delta_time));
+
+    CoreEngine::Node player_node = CoreEngine::WorldAccess::Get().CreateNode();
+
+    player_node.Add<>()
 
     CoreEngine::Application::RequestShutdown();
   }

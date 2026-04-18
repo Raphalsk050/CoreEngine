@@ -10,13 +10,13 @@ public:
   Node() = default;
   Node(entt::entity handle, World *world);
 
-  template <typename T, typename... Args> T &Add(Args &&...args);
-  template <typename T> T &Get();
-  template <typename T> const T &Get() const;
-  template <typename T> T *TryGet();
-  template <typename T> const T *TryGet() const;
-  template <typename T> bool Has() const;
-  template <typename T> void Remove();
+  template <typename T, typename... Args> T &AddComponent(Args &&...args);
+  template <typename T> T &GetComponent();
+  template <typename T> const T &GetComponent() const;
+  template <typename T> T *TryGetComponent();
+  template <typename T> const T *TryGetComponent() const;
+  template <typename T> bool HasComponent() const;
+  template <typename T> void RemoveComponent();
 
   void Destroy();
   [[nodiscard]] bool IsValid() const;
