@@ -1,21 +1,23 @@
-#include <third_party/entt/entt.hpp>
+#pragma once
 
 namespace CoreEngine {
+    class World;
 
-class World;
+    class IWorldService {
+    public:
+        virtual ~IWorldService() = default;
 
-class IWorldService {
-public:
-  virtual ~IWorldService() = default;
-  virtual World &GetWorld() = 0;
-  virtual const World &GetWorld() const = 0;
-};
+        virtual World &GetWorld() = 0;
 
-class WorldAccess {
-public:
-  static void Bind(IWorldService &service);
-  static void Unbind();
+        virtual const World &GetWorld() const = 0;
+    };
 
-  static World &Get();
-};
+    class WorldAccess {
+    public:
+        static void Bind(IWorldService &service);
+
+        static void Unbind();
+
+        static World &Get();
+    };
 } // namespace CoreEngine

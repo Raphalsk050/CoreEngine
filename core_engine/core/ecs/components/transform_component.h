@@ -1,3 +1,5 @@
+#pragma once
+
 #include "glm/ext/quaternion_float.hpp"
 #include "glm/ext/vector_float3.hpp"
 #include <glm/glm.hpp>
@@ -15,7 +17,7 @@ namespace CoreEngine {
             rotation(rotation), scale(scale) {
         }
 
-        std::string ToString() const {
+        [[nodiscard]] std::string ToString() const {
             std::string position_string = "Position: {" + std::to_string(position.x) +
                                           ", " + std::to_string(position.y) + ", " +
                                           std::to_string(position.z) + "} ";

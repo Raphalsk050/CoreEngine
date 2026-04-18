@@ -1,151 +1,150 @@
 #pragma once
 #include "core/ecs/node.h"
 #include <string>
-#include <third_party/entt/entt.hpp>
 #include <utility>
 
 namespace CoreEngine {
-  class World {
-  public:
-    World() = default;
+    class World {
+    public:
+        World() = default;
 
-    ~World() = default;
+        ~World() = default;
 
-    World(const World &) = delete;
+        World(const World &) = delete;
 
-    World &operator=(const World &) = delete;
+        World &operator=(const World &) = delete;
 
-    World(World &&) noexcept = default;
+        World(World &&) noexcept = default;
 
-    World &operator=(World &&) noexcept = default;
+        World &operator=(World &&) noexcept = default;
 
-    Node CreateNode(const std::string &name = "Node");
+        Node CreateNode(const std::string &name = "Node");
 
-    void DestroyNode(Node node);
+        void DestroyNode(Node node);
 
-    [[nodiscard]] bool IsValid(Node node) const;
+        [[nodiscard]] bool IsValid(Node node) const;
+
+        template<typename... Components>
+        [[nodiscard]] auto View();
+
+        template<typename... Components>
+        [[nodiscard]] auto View() const;
+
+        [[nodiscard]] entt::registry &Registry();
+
+        [[nodiscard]] const entt::registry &Registry() const;
+
+        [[nodiscard]] std::size_t GetNodeCount() const;
+
+        void Clear();
+
+        template<typename T, typename... Args>
+        T &Emplace(entt::entity e, Args &&... args);
+
+        template<typename T>
+        T &GetComponent(entt::entity e);
+
+        template<typename T>
+        const T &GetComponent(entt::entity e) const;
+
+        template<typename T>
+        T *TryGetComponent(entt::entity e);
+
+        template<typename T>
+        const T *TryGetComponent(entt::entity e) const;
+
+        template<typename T>
+        bool HasComponent(entt::entity e) const;
+
+        template<typename T>
+        void RemoveComponent(entt::entity e);
+
+    private:
+        entt::registry registry_;
+    };
+
+    inline bool World::IsValid(Node node) const {
+        return registry_.valid(node.Handle());
+    }
 
     template<typename... Components>
-    [[nodiscard]] auto View();
+    auto World::View() {
+        return registry_.view<Components...>();
+    }
 
     template<typename... Components>
-    [[nodiscard]] auto View() const;
+    auto World::View() const {
+        return registry_.view<Components...>();
+    }
 
-    [[nodiscard]] entt::registry &Registry();
+    inline entt::registry &World::Registry() { return registry_; }
+    inline const entt::registry &World::Registry() const { return registry_; }
 
-    [[nodiscard]] const entt::registry &Registry() const;
+    inline std::size_t World::GetNodeCount() const {
+        return registry_.storage<entt::entity>()->free_list();
+    }
 
-    [[nodiscard]] std::size_t GetNodeCount() const;
-
-    void Clear();
+    inline void World::Clear() { registry_.clear(); }
 
     template<typename T, typename... Args>
-    T &Emplace(entt::entity e, Args &&... args);
+    T &World::Emplace(entt::entity e, Args &&... args) {
+        return registry_.emplace<T>(e, std::forward<Args>(args)...);
+    }
 
     template<typename T>
-    T &GetComponent(entt::entity e);
+    T &World::GetComponent(entt::entity e) {
+        return registry_.get<T>(e);
+    }
 
     template<typename T>
-    const T &GetComponent(entt::entity e) const;
+    const T &World::GetComponent(entt::entity e) const {
+        return registry_.get<T>(e);
+    }
 
     template<typename T>
-    T *TryGetComponent(entt::entity e);
+    T *World::TryGetComponent(entt::entity e) {
+        return registry_.try_get<T>(e);
+    }
 
     template<typename T>
-    const T *TryGetComponent(entt::entity e) const;
+    const T *World::TryGetComponent(entt::entity e) const {
+        return registry_.try_get<T>(e);
+    }
 
     template<typename T>
-    bool HasComponent(entt::entity e) const;
+    bool World::HasComponent(entt::entity e) const {
+        return registry_.all_of<T>(e);
+    }
 
     template<typename T>
-    void RemoveComponent(entt::entity e);
+    void World::RemoveComponent(entt::entity e) {
+        registry_.remove<T>(e);
+    }
 
-  private:
-    entt::registry registry_;
-  };
+    template<typename T, typename... Args>
+    T &Node::AddComponent(Args &&... args) {
+        return world_->Emplace<T>(handle_, std::forward<Args>(args)...);
+    }
 
-  inline bool World::IsValid(Node node) const {
-    return registry_.valid(node.Handle());
-  }
+    template<typename T>
+    T &Node::GetComponent() { return world_->GetComponent<T>(handle_); }
 
-  template<typename... Components>
-  auto World::View() {
-    return registry_.view<Components...>();
-  }
+    template<typename T>
+    const T &Node::GetComponent() const {
+        return world_->GetComponent<T>(handle_);
+    }
 
-  template<typename... Components>
-  auto World::View() const {
-    return registry_.view<Components...>();
-  }
+    template<typename T>
+    T *Node::TryGetComponent() { return world_->TryGetComponent<T>(handle_); }
 
-  inline entt::registry &World::Registry() { return registry_; }
-  inline const entt::registry &World::Registry() const { return registry_; }
+    template<typename T>
+    const T *Node::TryGetComponent() const {
+        return world_->TryGetComponent<T>(handle_);
+    }
 
-  inline std::size_t World::GetNodeCount() const {
-    return registry_.storage<entt::entity>()->free_list();
-  }
+    template<typename T>
+    bool Node::HasComponent() const { return world_->HasComponent<T>(handle_); }
 
-  inline void World::Clear() { registry_.clear(); }
-
-  template<typename T, typename... Args>
-  T &World::Emplace(entt::entity e, Args &&... args) {
-    return registry_.emplace<T>(e, std::forward<Args>(args)...);
-  }
-
-  template<typename T>
-  T &World::GetComponent(entt::entity e) {
-    return registry_.get<T>(e);
-  }
-
-  template<typename T>
-  const T &World::GetComponent(entt::entity e) const {
-    return registry_.get<T>(e);
-  }
-
-  template<typename T>
-  T *World::TryGetComponent(entt::entity e) {
-    return registry_.try_get<T>(e);
-  }
-
-  template<typename T>
-  const T *World::TryGetComponent(entt::entity e) const {
-    return registry_.try_get<T>(e);
-  }
-
-  template<typename T>
-  bool World::HasComponent(entt::entity e) const {
-    return registry_.all_of<T>(e);
-  }
-
-  template<typename T>
-  void World::RemoveComponent(entt::entity e) {
-    registry_.remove<T>(e);
-  }
-
-  template<typename T, typename... Args>
-  T &Node::AddComponent(Args &&... args) {
-    return world_->Emplace<T>(handle_, std::forward<Args>(args)...);
-  }
-
-  template<typename T>
-  T &Node::GetComponent() { return world_->GetComponent<T>(handle_); }
-
-  template<typename T>
-  const T &Node::GetComponent() const {
-    return world_->GetComponent<T>(handle_);
-  }
-
-  template<typename T>
-  T *Node::TryGetComponent() { return world_->TryGetComponent<T>(handle_); }
-
-  template<typename T>
-  const T *Node::TryGetComponent() const {
-    return world_->TryGetComponent<T>(handle_);
-  }
-
-  template<typename T>
-  bool Node::HasComponent() const { return world_->HasComponent<T>(handle_); }
-
-  template<typename T>
-  void Node::RemoveComponent() { world_->RemoveComponent<T>(handle_); }
+    template<typename T>
+    void Node::RemoveComponent() { world_->RemoveComponent<T>(handle_); }
 } // namespace CoreEngine

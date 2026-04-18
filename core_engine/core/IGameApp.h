@@ -1,7 +1,6 @@
 #pragma once
 
 #include "engine.h"
-#include <iostream>
 
 namespace CoreEngine {
     class IGameApp {
@@ -15,4 +14,3 @@ namespace CoreEngine {
         virtual void Shutdown() = 0;
     };
 }
-
