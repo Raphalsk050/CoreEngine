@@ -5,6 +5,9 @@ build/
 .idea/
 .cache/
 
+#mac
+.DS_Store
+
 # cmake
 cmake-build-debug/
 
