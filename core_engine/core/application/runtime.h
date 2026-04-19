@@ -9,44 +9,44 @@
 #include "platform/sdl/sdl_context.h"
 
 namespace CoreEngine {
-  class IGameApp;
+    class IGameApp;
 
-  class Runtime : public IApplicationService, public IWorldService {
-  public:
-    void RequestShutdown() override;
+    class Runtime : public IApplicationService, public IWorldService {
+    public:
+        void RequestShutdown() override;
 
-    bool IsShutdownRequested() const override;
+        bool IsShutdownRequested() const override;
 
-    explicit Runtime(const EngineConfig &config);
+        explicit Runtime(const EngineConfig &config);
 
-    int Run(IGameApp &app);
+        int Run(IGameApp &app);
 
-    World &GetWorld() override;
+        World &GetWorld() override;
 
-    const World &GetWorld() const override;
+        const World &GetWorld() const override;
 
-  private:
-    bool Initialize();
+    private:
+        bool Initialize();
 
-    void InitializeSink();
+        void InitializeSink();
 
-    void InitializeWorld();
+        void InitializeWorld();
 
-    void InitializeWindowBackend();
+        void InitializeWindowBackend();
 
-    void Tick(IGameApp *app, float deltaTime);
+        void Tick(IGameApp *app, float deltaTime);
 
-    void Shutdown(IGameApp &app);
+        void Shutdown(IGameApp &app);
 
-    [[nodiscard]] Logger &GetLogger() const { return *logger_; }
+        [[nodiscard]] Logger &GetLogger() const { return *logger_; }
 
-    bool running_ = false;
-    EngineConfig config_;
-    std::unique_ptr<Logger> logger_;
-    std::unique_ptr<World> world_;
-    std::shared_ptr<ConsoleSink> console_sink_;
-    std::unique_ptr<WindowSystem> window_system_;
-    SdlContext sdl_context_;
-    std::atomic_bool shutdown_requested_{false};
-  };
+        bool running_ = false;
+        EngineConfig config_;
+        std::unique_ptr<Logger> logger_;
+        std::unique_ptr<World> world_;
+        std::shared_ptr<ConsoleSink> console_sink_;
+        std::unique_ptr<WindowSystem> window_system_;
+        SdlContext sdl_context_;
+        std::atomic_bool shutdown_requested_{false};
+    };
 } // namespace CoreEngine
