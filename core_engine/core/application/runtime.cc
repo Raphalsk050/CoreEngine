@@ -2,6 +2,7 @@
 #include "core/i_game_app.h"
 #include <memory>
 
+#include "platform/sdl/sdl_audio_backend.h"
 #include "platform/sdl/sdl_window_backend.h"
 
 namespace CoreEngine {
@@ -27,20 +28,32 @@ namespace CoreEngine {
     int Runtime::Run(IGameApp &app) {
         Initialize();
 
-        app.Init();
+        EngineContext engineContext{
+            .world = *world_,
+            .audio_system = *audio_system_,
+            .window_system = *window_system_,
+        };
+
+        app.Init(engineContext);
 
         running_ = true;
 
         while (!IsShutdownRequested()) {
             const float deltaTime = frame_clock_.TickSeconds();
+            FrameContext frameContext{
+                .delta_time = deltaTime,
+                .world = *world_,
+                .audio_system = *audio_system_,
+                .window_system = *window_system_,
+            };
 
-            Tick(&app, deltaTime);
-            app.Update(deltaTime);
+            Tick(frameContext);
+            app.Update(frameContext);
         }
 
-        app.Shutdown();
+        app.Shutdown(engineContext);
 
-        Shutdown(app);
+        Shutdown();
         return 0;
     }
 
@@ -81,6 +94,11 @@ namespace CoreEngine {
         desc.width = config_.windowWidth;
         desc.height = config_.windowHeight;
         desc.title = config_.windowTitle;
+        desc.resizable = config_.resizable;
+        desc.highDpi = config_.highDPI;
+        desc.decorated = config_.decorated;
+        desc.fullscreen = config_.fullscreen;
+
 
         if (!window_system_->Initialize(desc)) {
             Log::Error("Window", window_system_->LastError());
@@ -95,15 +113,12 @@ namespace CoreEngine {
 
         if (!audio_system_->Initialize(desc)) {
             Log::Error("Audio", audio_system_->LastError());
-        }
-
-        if (!audio_system_->Initialize(desc)) {
-            Log::Error("Audio", audio_system_->LastError());
             return;
         }
     }
 
-    void Runtime::Tick(IGameApp *app, float deltaTime) {
+    void Runtime::Tick(const FrameContext &frame) {
+        (void) frame;
         window_system_->PollEvents();
 
         if (window_system_->ShouldClose()) {
@@ -111,7 +126,7 @@ namespace CoreEngine {
         }
     }
 
-    void Runtime::Shutdown(IGameApp &app) {
+    void Runtime::Shutdown() {
         Application::Unbind();
 
         if (audio_system_ != nullptr) {

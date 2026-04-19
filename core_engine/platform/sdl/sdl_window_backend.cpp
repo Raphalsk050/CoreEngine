@@ -20,6 +20,14 @@ namespace CoreEngine {
             flags |= SDL_WINDOW_RESIZABLE;
         }
 
+        if (!desc.decorated) {
+            flags |= SDL_WINDOW_BORDERLESS;
+        }
+
+        if (desc.fullscreen) {
+            flags |= SDL_WINDOW_FULLSCREEN;
+        }
+
         if (desc.highDpi) {
             flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
         }

@@ -1,12 +1,12 @@
 #pragma once
 #include "application.h"
+#include "core/application/frame_context.h"
 #include "core/ecs/world_access.h"
 #include "core/log/logger.h"
 #include "core/log/sink/console_sink.h"
 #include "core/ecs/world.h"
 #include "engine.h"
 #include "core/audio/audio_system.h"
-#include "platform/sdl/sdl_audio_backend.h"
 #include "core/time/frame_clock.h"
 #include "core/window/window_system.h"
 #include "platform/sdl/sdl_context.h"
@@ -39,9 +39,9 @@ namespace CoreEngine {
 
         void InitializeAudioBackend();
 
-        void Tick(IGameApp *app, float deltaTime);
+        void Tick(const FrameContext &frame);
 
-        void Shutdown(IGameApp &app);
+        void Shutdown();
 
         [[nodiscard]] Logger &GetLogger() const { return *logger_; }
 

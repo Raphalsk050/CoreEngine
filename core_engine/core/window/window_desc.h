@@ -9,5 +9,7 @@ namespace CoreEngine {
         std::string title{"CoreEngine"};
         bool resizable = true;
         bool highDpi = true;
+        bool decorated = true;
+        bool fullscreen = false;
     };
 } // namespace CoreEngine
