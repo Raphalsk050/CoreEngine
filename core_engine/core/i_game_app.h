@@ -1,16 +1,18 @@
 #pragma once
 
 #include "engine.h"
+#include "application/engine_context.h"
+#include "application/frame_context.h"
 
 namespace CoreEngine {
     class IGameApp {
     public:
         virtual ~IGameApp() = default;
 
-        virtual void Init() = 0;
+        virtual void Init(const EngineContext &context) = 0;
 
-        virtual void Update(float deltaTime) = 0;
+        virtual void Update(const FrameContext &frame) = 0;
 
-        virtual void Shutdown() = 0;
+        virtual void Shutdown(const EngineContext &context) = 0;
     };
 }

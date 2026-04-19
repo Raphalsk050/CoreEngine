@@ -32,8 +32,10 @@ namespace CoreEngine {
         running_ = true;
 
         while (!IsShutdownRequested()) {
-            Tick(&app, 0.016f);
-            app.Update(0.016f);
+            const float deltaTime = frame_clock_.TickSeconds();
+
+            Tick(&app, deltaTime);
+            app.Update(deltaTime);
         }
 
         app.Shutdown();
@@ -49,9 +51,11 @@ namespace CoreEngine {
     bool Runtime::Initialize() {
         shutdown_requested_.store(false, std::memory_order_release);
         Application::Bind(*this);
+        frame_clock_ = FrameClock();
 
         InitializeSink();
         InitializeWorld();
+        InitializeAudioBackend();
         InitializeWindowBackend();
         return true;
     }
@@ -83,6 +87,22 @@ namespace CoreEngine {
         }
     }
 
+    void Runtime::InitializeAudioBackend() {
+        auto backend = std::make_unique<SdlAudioBackend>(sdl_context_);
+        audio_system_ = std::make_unique<AudioSystem>(std::move(backend));
+
+        AudioDesc desc;
+
+        if (!audio_system_->Initialize(desc)) {
+            Log::Error("Audio", audio_system_->LastError());
+        }
+
+        if (!audio_system_->Initialize(desc)) {
+            Log::Error("Audio", audio_system_->LastError());
+            return;
+        }
+    }
+
     void Runtime::Tick(IGameApp *app, float deltaTime) {
         window_system_->PollEvents();
 
@@ -92,8 +112,19 @@ namespace CoreEngine {
     }
 
     void Runtime::Shutdown(IGameApp &app) {
-        Log::Unbind();
         Application::Unbind();
+
+        if (audio_system_ != nullptr) {
+            audio_system_->Shutdown();
+            audio_system_.reset();
+        }
+
+        if (window_system_ != nullptr) {
+            window_system_->Shutdown();
+            window_system_.reset();
+        }
+
+        Log::Unbind();
         console_sink_.reset();
         logger_.reset();
     }

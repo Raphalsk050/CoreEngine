@@ -5,6 +5,9 @@
 #include "core/log/sink/console_sink.h"
 #include "core/ecs/world.h"
 #include "engine.h"
+#include "core/audio/audio_system.h"
+#include "platform/sdl/sdl_audio_backend.h"
+#include "core/time/frame_clock.h"
 #include "core/window/window_system.h"
 #include "platform/sdl/sdl_context.h"
 
@@ -34,6 +37,8 @@ namespace CoreEngine {
 
         void InitializeWindowBackend();
 
+        void InitializeAudioBackend();
+
         void Tick(IGameApp *app, float deltaTime);
 
         void Shutdown(IGameApp &app);
@@ -42,10 +47,12 @@ namespace CoreEngine {
 
         bool running_ = false;
         EngineConfig config_;
+        FrameClock frame_clock_;
         std::unique_ptr<Logger> logger_;
         std::unique_ptr<World> world_;
         std::shared_ptr<ConsoleSink> console_sink_;
         std::unique_ptr<WindowSystem> window_system_;
+        std::unique_ptr<AudioSystem> audio_system_;
         SdlContext sdl_context_;
         std::atomic_bool shutdown_requested_{false};
     };
