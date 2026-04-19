@@ -30,8 +30,8 @@ struct PSInput
 
 void main(in VSInput i, out PSInput o)
 {
-    float4 world = mul(float4(i.pos, 1.0), g_Model);
-    o.pos        = mul(world, g_ViewProj);
+    float4 world = mul(g_Model, float4(i.pos, 1.0));
+    o.pos        = mul(g_ViewProj, world);
     o.color      = i.color;
     o.uv         = i.uv;
 }

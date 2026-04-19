@@ -13,6 +13,7 @@
 #include "core/render/camera.h"
 #include "core/render/render_system.h"
 #include "core/log/log.h"
+#include "core/window/window_system.h"
 
 class MyGameApp final : public CoreEngine::IGameApp {
 public:
@@ -27,13 +28,13 @@ public:
         cube_node_.AddComponent<CoreEngine::MeshRendererComponent>(
             CoreEngine::MeshRendererComponent{
                 .mesh = cube_mesh,
-                .material = CoreEngine::Material::Unlit({.color = {0.2f, 0.6f, 1.0f, 1.0f}}),
+                .material = CoreEngine::Material::Unlit({.color = {1.2f, 0.6f, 1.0f, 1.0f}}),
             });
 
         context.render_system.SetCamera(
             CoreEngine::Camera()
             .LookAt({0.f, 1.5f, -4.f}, {0.f, 0.f, 0.f})
-            .Perspective(60.f, 1024, 768, 0.0001f, 10000.f));
+            .Perspective(60.f, 1280, 720, 0.0001f, 10000.f));
     }
 
     void Update(const CoreEngine::FrameContext &frame) override {
@@ -55,8 +56,8 @@ int main() {
     std::unique_ptr<CoreEngine::IGameApp> app = std::make_unique<MyGameApp>();
 
     CoreEngine::EngineConfig config;
-    config.windowWidth = 1024;
-    config.windowHeight = 768;
+    config.windowWidth = 1280;
+    config.windowHeight = 720;
     config.fullscreen = false;
     config.decorated = true;
     config.resizable = true;
