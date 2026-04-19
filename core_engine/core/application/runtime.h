@@ -5,41 +5,48 @@
 #include "core/log/sink/console_sink.h"
 #include "core/ecs/world.h"
 #include "engine.h"
+#include "core/window/window_system.h"
+#include "platform/sdl/sdl_context.h"
 
 namespace CoreEngine {
-class IGameApp;
+  class IGameApp;
 
-class Runtime : public IApplicationService, public IWorldService {
-public:
-  void RequestShutdown() override;
+  class Runtime : public IApplicationService, public IWorldService {
+  public:
+    void RequestShutdown() override;
 
-  bool IsShutdownRequested() const override;
+    bool IsShutdownRequested() const override;
 
-  explicit Runtime(const EngineConfig &config);
+    explicit Runtime(const EngineConfig &config);
 
-  int Run(IGameApp &app);
+    int Run(IGameApp &app);
 
-  World &GetWorld() override;
-  const World &GetWorld() const override;
+    World &GetWorld() override;
 
-private:
-  bool Initialize();
+    const World &GetWorld() const override;
 
-  void InitializeSink();
+  private:
+    bool Initialize();
 
-  void InitializeWorld();
+    void InitializeSink();
 
-  void Tick(IGameApp *app, float deltaTime);
+    void InitializeWorld();
 
-  void Shutdown(IGameApp &app);
+    void InitializeWindowBackend();
 
-  [[nodiscard]] Logger &GetLogger() const { return *logger_; }
+    void Tick(IGameApp *app, float deltaTime);
 
-  bool running_ = false;
-  EngineConfig config_;
-  std::unique_ptr<Logger> logger_;
-  std::unique_ptr<World> world_;
-  std::shared_ptr<ConsoleSink> console_sink_;
-  std::atomic_bool shutdown_requested_{false};
-};
+    void Shutdown(IGameApp &app);
+
+    [[nodiscard]] Logger &GetLogger() const { return *logger_; }
+
+    bool running_ = false;
+    EngineConfig config_;
+    std::unique_ptr<Logger> logger_;
+    std::unique_ptr<World> world_;
+    std::shared_ptr<ConsoleSink> console_sink_;
+    SdlContext sdl_context_;
+    std::unique_ptr<WindowSystem> window_system_;
+    std::atomic_bool shutdown_requested_{false};
+  };
 } // namespace CoreEngine

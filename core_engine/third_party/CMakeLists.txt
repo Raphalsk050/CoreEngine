@@ -11,9 +11,9 @@ set_property(DIRECTORY sdl3 PROPERTY FOLDER "ThirdParty")
 add_library(ThirdParty INTERFACE)
 
 target_include_directories(ThirdParty INTERFACE
-    "${CMAKE_CURRENT_SOURCE_DIR}"                # Entt
-    "${CMAKE_CURRENT_SOURCE_DIR}/glm"            # GLM with strip prefix of glm/
-    "${CMAKE_CURRENT_SOURCE_DIR}/sdl3/include"   # sdl with strip prefix of sdl3/include/
+        "${CMAKE_CURRENT_SOURCE_DIR}"                # Entt
+        "${CMAKE_CURRENT_SOURCE_DIR}/glm"            # GLM with strip prefix of glm/
+        "${CMAKE_CURRENT_SOURCE_DIR}/sdl3/include"   # sdl with strip prefix of sdl3/include/
 )
 
-target_link_libraries(ThirdParty INTERFACE glm Entt SDL3)
+target_link_libraries(ThirdParty INTERFACE glm Entt SDL3::SDL3)

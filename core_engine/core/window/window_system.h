@@ -7,21 +7,24 @@
 #include "core/window/window_event_queue.h"
 
 namespace CoreEngine {
+    class WindowSystem final {
+    public:
+        explicit WindowSystem(std::unique_ptr<IWindowBackend> backend);
 
-class WindowSystem final {
-public:
-  explicit WindowSystem(std::unique_ptr<IWindowBackend> backend);
+        [[nodiscard]] bool Initialize(const WindowDesc &desc) const;
 
-  [[nodiscard]] bool Initialize(const WindowDesc &desc);
-  void PollEvents();
-  void Shutdown();
+        void PollEvents();
 
-  [[nodiscard]] const WindowEventQueue &Events() const;
-  [[nodiscard]] bool ShouldClose() const;
+        void Shutdown() const;
 
-private:
-  std::unique_ptr<IWindowBackend> backend_;
-  WindowEventQueue events_;
-};
+        [[nodiscard]] std::span<const WindowEvent> Events() const;
 
+        [[nodiscard]] bool ShouldClose() const;
+
+        [[nodiscard]] std::string_view LastError() const;
+
+    private:
+        std::unique_ptr<IWindowBackend> backend_;
+        WindowEventQueue events_;
+    };
 } // namespace CoreEngine

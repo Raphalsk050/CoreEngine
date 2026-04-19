@@ -19,28 +19,28 @@ public:
     }
 
     void Update(float delta_time) override {
-        CoreEngine::Log::Debug("Game",
-                               "Update: DeltaTime: " + std::to_string(delta_time));
-        CoreEngine::Log::Info("Game",
-                              "Update: DeltaTime: " + std::to_string(delta_time));
-        CoreEngine::Log::Warn("Game",
-                              "Update: DeltaTime: " + std::to_string(delta_time));
-        CoreEngine::Log::Error("Game",
-                               "Update: DeltaTime: " + std::to_string(delta_time));
-        CoreEngine::Log::Fatal("Game",
-                               "Update: DeltaTime: " + std::to_string(delta_time));
+        // CoreEngine::Log::Debug("Game",
+        //                        "Update: DeltaTime: " + std::to_string(delta_time));
+        // CoreEngine::Log::Info("Game",
+        //                       "Update: DeltaTime: " + std::to_string(delta_time));
+        // CoreEngine::Log::Warn("Game",
+        //                       "Update: DeltaTime: " + std::to_string(delta_time));
+        // CoreEngine::Log::Error("Game",
+        //                        "Update: DeltaTime: " + std::to_string(delta_time));
+        // CoreEngine::Log::Fatal("Game",
+        //                        "Update: DeltaTime: " + std::to_string(delta_time));
+        //
+        // CoreEngine::Node player_node = CoreEngine::WorldAccess::Get().CreateNode("Player Node");
+        //
+        // CoreEngine::Log::Info(
+        //     "Game", "Node position: " + CoreEngine::Debug::ToString(
+        //                 player_node.GetComponent<CoreEngine::TransformComponent>()));
+        //
+        // CoreEngine::Log::Info(
+        //     "Game", "Node name: " +
+        //             CoreEngine::Debug::ToString(player_node.GetComponent<CoreEngine::NameComponent>()));
 
-        CoreEngine::Node player_node = CoreEngine::WorldAccess::Get().CreateNode("Player Node");
-
-        CoreEngine::Log::Info(
-            "Game", "Node position: " + CoreEngine::Debug::ToString(
-                        player_node.GetComponent<CoreEngine::TransformComponent>()));
-
-        CoreEngine::Log::Info(
-            "Game", "Node name: " +
-                    CoreEngine::Debug::ToString(player_node.GetComponent<CoreEngine::NameComponent>()));
-
-        CoreEngine::Application::RequestShutdown();
+        // CoreEngine::Application::RequestShutdown();
     }
 
     void Shutdown() override {
