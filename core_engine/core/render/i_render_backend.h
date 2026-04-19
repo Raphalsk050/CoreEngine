@@ -2,15 +2,17 @@
 
 #include <string_view>
 
+#include "core/render/i_render_context.h"
 #include "core/render/render_desc.h"
 #include "core/window/native_window_handle.h"
 
 namespace CoreEngine {
-    class IRenderBackend {
+    class IRenderBackend : public IRenderContext {
     public:
-        virtual ~IRenderBackend() = default;
+        ~IRenderBackend() override = default;
 
-        [[nodiscard]] virtual bool Initialize(const RenderDesc &desc, NativeWindowHandle native_window) = 0;
+        [[nodiscard]] virtual bool Initialize(const RenderDesc &desc,
+                                              NativeWindowHandle native_window) = 0;
 
         virtual void BeginFrame() = 0;
 

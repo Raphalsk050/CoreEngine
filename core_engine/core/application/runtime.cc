@@ -54,7 +54,7 @@ namespace CoreEngine {
 
             Tick(frameContext);
             app.Update(frameContext);
-            render_system_->RenderFrame();
+            render_system_->RenderFrame(*world_);
         }
 
         app.Shutdown(engineContext);
@@ -135,7 +135,7 @@ namespace CoreEngine {
         RenderDesc desc;
         desc.backend = config_.renderBackend;
         desc.vsync   = config_.vsync;
-        desc.width   = config_.windowWidth;   // Explicit swapchain size — avoids DXGI HWND inference failure
+        desc.width   = config_.windowWidth;
         desc.height  = config_.windowHeight;
 
         if (!render_system_->Initialize(desc, window_system_->GetNativeHandle())) {
