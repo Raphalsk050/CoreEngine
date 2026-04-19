@@ -3,7 +3,6 @@
 #include "glm/ext/quaternion_float.hpp"
 #include "glm/ext/vector_float3.hpp"
 #include <glm/glm.hpp>
-#include <string>
 
 namespace CoreEngine {
     struct TransformComponent {

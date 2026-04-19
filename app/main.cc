@@ -1,4 +1,4 @@
-#include <core/IGameApp.h>
+#include <core/i_game_app.h>
 #include <iostream>
 #include <string>
 
@@ -15,35 +15,33 @@ class MyGameApp final : public CoreEngine::IGameApp {
 public:
     MyGameApp() = default;
 
-    void Init() override {
+    void Init(const CoreEngine::EngineContext &context) override {
+        (void) context;
     }
 
-    void Update(float delta_time) override {
+    void Update(const CoreEngine::FrameContext &frame) override {
+        const float delta_time = frame.delta_time;
+
         CoreEngine::Log::Debug("Game",
                                "Update: DeltaTime: " + std::to_string(delta_time));
-        CoreEngine::Log::Info("Game",
-                              "Update: DeltaTime: " + std::to_string(delta_time));
-        CoreEngine::Log::Warn("Game",
-                              "Update: DeltaTime: " + std::to_string(delta_time));
-        CoreEngine::Log::Error("Game",
-                               "Update: DeltaTime: " + std::to_string(delta_time));
-        CoreEngine::Log::Fatal("Game",
-                               "Update: DeltaTime: " + std::to_string(delta_time));
 
-        CoreEngine::Node player_node = CoreEngine::WorldAccess::Get().CreateNode("Player Node");
+        CoreEngine::Log::Debug("Game",
+                               "Update: FPS: " + std::to_string(1.0 / delta_time));
 
-        CoreEngine::Log::Info(
-            "Game", "Node position: " + CoreEngine::Debug::ToString(
-                        player_node.GetComponent<CoreEngine::TransformComponent>()));
+        // CoreEngine::Node player_node = frame.world.CreateNode("Player Node");
+        // CoreEngine::Log::Info(
+        //     "Game", "Node position: " + CoreEngine::Debug::ToString(
+        //                 player_node.GetComponent<CoreEngine::TransformComponent>()));
+        //
+        // CoreEngine::Log::Info(
+        //     "Game", "Node name: " +
+        //             CoreEngine::Debug::ToString(player_node.GetComponent<CoreEngine::NameComponent>()));
 
-        CoreEngine::Log::Info(
-            "Game", "Node name: " +
-                    CoreEngine::Debug::ToString(player_node.GetComponent<CoreEngine::NameComponent>()));
-
-        CoreEngine::Application::RequestShutdown();
+        // CoreEngine::Application::RequestShutdown();
     }
 
-    void Shutdown() override {
+    void Shutdown(const CoreEngine::EngineContext &context) override {
+        (void) context;
     }
 };
 
@@ -53,6 +51,9 @@ int main() {
     CoreEngine::EngineConfig config;
     config.windowWidth = 1024;
     config.windowHeight = 768;
+    config.fullscreen = false;
+    config.decorated = true;
+    config.resizable = false;
     config.windowTitle = "My Awesome Game";
 
     return CoreEngine::RunEngine(std::move(gameApp), config);
