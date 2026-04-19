@@ -45,8 +45,8 @@ namespace CoreEngine {
     std::unique_ptr<Logger> logger_;
     std::unique_ptr<World> world_;
     std::shared_ptr<ConsoleSink> console_sink_;
-    SdlContext sdl_context_;
     std::unique_ptr<WindowSystem> window_system_;
+    SdlContext sdl_context_;
     std::atomic_bool shutdown_requested_{false};
   };
 } // namespace CoreEngine

@@ -69,6 +69,7 @@ namespace CoreEngine {
   }
 
   void Runtime::InitializeWindowBackend() {
+    // TODO(rafael): improve this in the future to take off the SDL specification from here
     auto backend = std::make_unique<SdlWindowBackend>(sdl_context_);
     window_system_ = std::make_unique<WindowSystem>(std::move(backend));
 
