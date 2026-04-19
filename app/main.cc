@@ -1,4 +1,4 @@
-#include <core/IGameApp.h>
+#include <core/i_game_app.h>
 #include <iostream>
 #include <string>
 

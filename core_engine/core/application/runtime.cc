@@ -1,5 +1,5 @@
 #include "core/application/runtime.h"
-#include "core/IGameApp.h"
+#include "core/i_game_app.h"
 #include <memory>
 
 #include "platform/sdl/sdl_window_backend.h"
