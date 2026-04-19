@@ -1,0 +1,21 @@
+#pragma once
+
+namespace CoreEngine {
+
+enum class WindowEventType {
+  CloseRequested,
+  Resized,
+  PixelSizeChanged,
+  FocusGained,
+  FocusLost,
+  Minimized,
+  Restored
+};
+
+struct WindowEvent {
+  WindowEventType type;
+  int width = 0;
+  int height = 0;
+};
+
+} // namespace CoreEngine
