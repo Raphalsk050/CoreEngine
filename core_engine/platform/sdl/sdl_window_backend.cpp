@@ -3,6 +3,7 @@
 #include "core/window/window_event.h"
 #include "core/window/window_event_queue.h"
 #include "SDL3/SDL_events.h"
+#include "SDL3/SDL_properties.h"
 
 namespace CoreEngine {
     SdlWindowBackend::SdlWindowBackend(SdlContext &context) : context_(context) {
@@ -102,6 +103,22 @@ namespace CoreEngine {
 
     bool SdlWindowBackend::ShouldClose() const {
         return should_close_;
+    }
+
+    NativeWindowHandle SdlWindowBackend::GetNativeHandle() const {
+        NativeWindowHandle native_handle;
+
+        if (window_ == nullptr) {
+            return native_handle;
+        }
+
+#ifdef _WIN32
+        const SDL_PropertiesID properties = SDL_GetWindowProperties(window_);
+        native_handle.platform = NativeWindowPlatform::Win32;
+        native_handle.window = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+#endif
+
+        return native_handle;
     }
 
     std::string_view SdlWindowBackend::LastError() const {

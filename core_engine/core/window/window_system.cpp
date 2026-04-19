@@ -27,6 +27,10 @@ namespace CoreEngine {
         return backend_ == nullptr || backend_->ShouldClose();
     }
 
+    NativeWindowHandle WindowSystem::GetNativeHandle() const {
+        return backend_ != nullptr ? backend_->GetNativeHandle() : NativeWindowHandle{};
+    }
+
     std::span<const WindowEvent> WindowSystem::Events() const {
         return events_.Events();
     }

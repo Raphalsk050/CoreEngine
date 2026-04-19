@@ -1,8 +1,10 @@
 #pragma once
+
+#include <string>
+
 #include "core/window/i_window_backend.h"
 #include "platform/sdl/sdl_context.h"
 #include "SDL3/SDL_video.h"
-
 
 namespace CoreEngine {
     class SdlWindowBackend final : public IWindowBackend {
@@ -16,6 +18,8 @@ namespace CoreEngine {
         void Shutdown() override;
 
         [[nodiscard]] bool ShouldClose() const override;
+
+        [[nodiscard]] NativeWindowHandle GetNativeHandle() const override;
 
         [[nodiscard]] std::string_view LastError() const override;
 

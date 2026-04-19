@@ -1,0 +1,3 @@
+[submodule "core_engine/third_party/DiligentCore"]
+	path = core_engine/third_party/DiligentCore
+	url = https://github.com/DiligentGraphics/DiligentCore.git

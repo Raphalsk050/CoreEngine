@@ -10,6 +10,7 @@
 #include <core/log/log.h>
 
 #include "core/debug/debug.h"
+#include "core/render/render_system.h"
 
 class MyGameApp final : public CoreEngine::IGameApp {
 public:
@@ -27,17 +28,6 @@ public:
 
         CoreEngine::Log::Debug("Game",
                                "Update: FPS: " + std::to_string(1.0 / delta_time));
-
-        // CoreEngine::Node player_node = frame.world.CreateNode("Player Node");
-        // CoreEngine::Log::Info(
-        //     "Game", "Node position: " + CoreEngine::Debug::ToString(
-        //                 player_node.GetComponent<CoreEngine::TransformComponent>()));
-        //
-        // CoreEngine::Log::Info(
-        //     "Game", "Node name: " +
-        //             CoreEngine::Debug::ToString(player_node.GetComponent<CoreEngine::NameComponent>()));
-
-        // CoreEngine::Application::RequestShutdown();
     }
 
     void Shutdown(const CoreEngine::EngineContext &context) override {
@@ -55,6 +45,8 @@ int main() {
     config.decorated = true;
     config.resizable = false;
     config.windowTitle = "My Awesome Game";
+    config.renderBackend = CoreEngine::RenderBackendType::DiligentD3D12;
+    config.vsync = false;
 
     return CoreEngine::RunEngine(std::move(gameApp), config);
 }
