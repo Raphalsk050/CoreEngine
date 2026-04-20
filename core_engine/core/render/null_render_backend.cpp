@@ -7,10 +7,10 @@ namespace CoreEngine {
     void NullRenderBackend::EndFrame() {}
     void NullRenderBackend::Resize(int, int) {}
     void NullRenderBackend::Shutdown() {}
-    std::string_view NullRenderBackend::LastError() const { return {}; }
-    MeshHandle NullRenderBackend::GetOrCreatePrimitive(PrimitiveType) { return {}; }
-    MeshHandle NullRenderBackend::CreateMesh(std::span<const Vertex>, std::span<const uint16_t>) { return {}; }
+    MeshHandle NullRenderBackend::UploadMesh(const MeshDesc &) { return {}; }
+    void NullRenderBackend::DestroyMesh(MeshHandle) {}
     MaterialHandle NullRenderBackend::ResolveMaterial(const MaterialDesc &) { return {}; }
     void NullRenderBackend::SetCamera(const CameraData &) {}
     void NullRenderBackend::SubmitBatch(const RenderBatch &) {}
+    std::string_view NullRenderBackend::LastError() const { return {}; }
 } // namespace CoreEngine

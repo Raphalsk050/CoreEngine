@@ -20,16 +20,33 @@ public:
     MyGameApp() = default;
 
     void Init(const CoreEngine::EngineContext &context) override {
-        auto &rc = context.render_system.Context();
-
-        const CoreEngine::MeshHandle cube_mesh = rc.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Cube);
+        const CoreEngine::MeshHandle cube_mesh =
+                context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Cube);
+        const CoreEngine::MeshHandle plane_mesh =
+                context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Plane);
+        const CoreEngine::MaterialHandle material =
+                CoreEngine::Material::Unlit({.color = {1.2f, 0.6f, 1.0f, 1.0f}}).Resolve(context.render_system);
 
         cube_node_ = context.world.CreateNode("Cube");
+
+        cube_node_.SetPosition(glm::vec3(2.0f, 0.0f, 0.0f));
+
         cube_node_.AddComponent<CoreEngine::MeshRendererComponent>(
             CoreEngine::MeshRendererComponent{
                 .mesh = cube_mesh,
-                .material = CoreEngine::Material::Unlit({.color = {1.2f, 0.6f, 1.0f, 1.0f}}),
+                .material = material,
             });
+
+        plane_node_ = context.world.CreateNode("Plane");
+        plane_node_.AddComponent<CoreEngine::MeshRendererComponent>(
+            CoreEngine::MeshRendererComponent{
+                .mesh = plane_mesh,
+                .material = material,
+            });
+
+        plane_node_.SetPosition({0.f, -0.75f, 0.f});
+        plane_node_.SetScale({3.f, 1.f, 3.f});
+        plane_node_.SetRotation(glm::angleAxis(glm::radians(180.0f), glm::vec3(0.0f, 0.f, 1.f)));
 
         context.render_system.SetCamera(
             CoreEngine::Camera()
@@ -40,8 +57,10 @@ public:
     void Update(const CoreEngine::FrameContext &frame) override {
         angle_ += frame.delta_time * 60.f;
 
-        auto &transform = cube_node_.GetComponent<CoreEngine::TransformComponent>();
-        transform.rotation = glm::angleAxis(glm::radians(angle_), glm::vec3(0.3f, 1.f, 0.f));
+        cube_node_.SetRotation(glm::angleAxis(glm::radians(angle_), glm::vec3(0.0f, 1.f, 0.f)));
+        // plane_node_.SetRotation(
+        //     glm::angleAxis(glm::radians(angle_), glm::vec3(0.0f, 1.f, 0.f)) + glm::angleAxis(
+        //         glm::radians(180.0f), glm::vec3(0.0f, 0.f, 1.f)));
     }
 
     void Shutdown(const CoreEngine::EngineContext &) override {
@@ -49,6 +68,7 @@ public:
 
 private:
     CoreEngine::Node cube_node_;
+    CoreEngine::Node plane_node_;
     float angle_ = 0.f;
 };
 
@@ -61,8 +81,8 @@ int main() {
     config.fullscreen = false;
     config.decorated = true;
     config.resizable = true;
-    config.windowTitle = "CoreEngine — Cube Demo";
-    config.renderBackend = CoreEngine::RenderBackendType::DiligentD3D11;
+    config.windowTitle = "CoreEngine - Mesh Demo";
+    config.renderBackend = CoreEngine::RenderBackendType::DiligentD3D12;
     config.vsync = false;
 
     return CoreEngine::RunEngine(std::move(app), config);

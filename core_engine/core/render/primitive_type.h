@@ -6,5 +6,6 @@ namespace CoreEngine {
         Plane,
         Quad,
         Sphere,
+        Count
     };
 }

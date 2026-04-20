@@ -18,17 +18,16 @@ namespace CoreEngine {
 
         void Shutdown() override;
 
-        [[nodiscard]] std::string_view LastError() const override;
+        [[nodiscard]] MeshHandle UploadMesh(const MeshDesc &desc) override;
 
-        [[nodiscard]] MeshHandle GetOrCreatePrimitive(PrimitiveType type) override;
-
-        [[nodiscard]] MeshHandle CreateMesh(std::span<const Vertex> vertices,
-                                            std::span<const uint16_t> indices) override;
+        void DestroyMesh(MeshHandle handle) override;
 
         [[nodiscard]] MaterialHandle ResolveMaterial(const MaterialDesc &desc) override;
 
         void SetCamera(const CameraData &camera) override;
 
         void SubmitBatch(const RenderBatch &batch) override;
+
+        [[nodiscard]] std::string_view LastError() const override;
     };
 } // namespace CoreEngine

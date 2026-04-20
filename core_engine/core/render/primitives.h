@@ -1,19 +1,18 @@
 #pragma once
 
-#include <vector>
 #include <cstdint>
+#include <span>
 
-#include "core/render/vertex.h"
+#include "core/render/mesh_desc.h"
 #include "core/render/primitive_type.h"
 
 namespace CoreEngine::Primitives {
-    [[nodiscard]] std::vector<Vertex>   CubeVertices();
-    [[nodiscard]] std::vector<uint16_t> CubeIndices();
-    [[nodiscard]] std::vector<Vertex>   PlaneVertices();
-    [[nodiscard]] std::vector<uint16_t> PlaneIndices();
-    [[nodiscard]] std::vector<Vertex>   QuadVertices();
-    [[nodiscard]] std::vector<uint16_t> QuadIndices();
+    [[nodiscard]] std::span<const StaticMeshVertex> CubeVertices();
+    [[nodiscard]] std::span<const uint32_t> CubeIndices();
+    [[nodiscard]] std::span<const StaticMeshVertex> PlaneVertices();
+    [[nodiscard]] std::span<const uint32_t> PlaneIndices();
+    [[nodiscard]] std::span<const StaticMeshVertex> QuadVertices();
+    [[nodiscard]] std::span<const uint32_t> QuadIndices();
 
-    [[nodiscard]] std::vector<Vertex>   VerticesFor(PrimitiveType type);
-    [[nodiscard]] std::vector<uint16_t> IndicesFor(PrimitiveType type);
+    [[nodiscard]] MeshDesc MeshFor(PrimitiveType type);
 }

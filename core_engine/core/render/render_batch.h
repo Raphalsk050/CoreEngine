@@ -11,8 +11,8 @@ namespace CoreEngine {
     };
 
     struct RenderBatch {
-        MaterialHandle              material;
-        MeshHandle                  mesh;
+        MaterialHandle material;
+        MeshHandle mesh;
         std::vector<RenderInstance> instances;
     };
 
@@ -25,11 +25,14 @@ namespace CoreEngine {
         void Clear();
 
     private:
-        [[nodiscard]] static uint64_t MakeKey(MaterialHandle mat, MeshHandle mesh) {
-            return (static_cast<uint64_t>(mat.id) << 32u) | mesh.id;
-        }
+        struct BatchKey {
+            MaterialHandle material;
+            MeshHandle mesh;
 
-        std::vector<RenderBatch>         batches_;
-        std::vector<uint64_t>            keys_;
+            bool operator==(const BatchKey &other) const = default;
+        };
+
+        std::vector<RenderBatch> batches_;
+        std::vector<BatchKey> keys_;
     };
 }

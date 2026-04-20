@@ -5,16 +5,16 @@
 #include <cstring>
 #include <functional>
 #include <memory>
+#include <span>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "EngineFactoryD3D11.h"
 #include "EngineFactoryD3D12.h"
 #include "DiligentCore/Common/interface/RefCntAutoPtr.hpp"
-#include "core/render/primitives.h"
 #include "core/render/render_batch.h"
-#include "platform/diligent/builtin_shaders.h"
 
 #include <glm/glm.hpp>
 
@@ -32,6 +32,8 @@ namespace CoreEngine {
             Diligent::RefCntAutoPtr<Diligent::IBuffer> vertex_buffer;
             Diligent::RefCntAutoPtr<Diligent::IBuffer> index_buffer;
             uint32_t index_count = 0;
+            uint32_t generation = 0;
+            IndexFormat index_format = IndexFormat::UInt32;
         };
 
         struct DiligentMaterialData {
@@ -60,12 +62,10 @@ namespace CoreEngine {
         std::unordered_map<uint32_t, DiligentMeshData> mesh_registry;
         std::unordered_map<uint32_t, DiligentMaterialData> material_registry;
         std::unordered_map<uint64_t, MaterialHandle> material_hash_cache;
-        std::unordered_map<int, MeshHandle> primitive_cache;
 
         uint32_t next_mesh_id = 1;
         uint32_t next_material_id = 1;
-
-        glm::mat4 view_proj{1.f};
+        uint32_t mesh_generation = 1;
     };
 
     namespace {
@@ -103,8 +103,10 @@ namespace CoreEngine {
 
         Diligent::RefCntAutoPtr<Diligent::IBuffer> CreateGpuBuffer(
             Diligent::IRenderDevice *device,
-            const void *data, uint32_t byte_size,
-            Diligent::BIND_FLAGS flags, const char *name) {
+            const void *data,
+            uint32_t byte_size,
+            Diligent::BIND_FLAGS flags,
+            const char *name) {
             Diligent::BufferDesc desc;
             desc.Name = name;
             desc.Size = byte_size;
@@ -120,27 +122,57 @@ namespace CoreEngine {
             return buf;
         }
 
-        DiligentMeshData UploadMesh(Diligent::IRenderDevice *device,
-                                    std::span<const Vertex> vertices,
-                                    std::span<const uint16_t> indices) {
-            DiligentMeshData m;
-            m.index_count = static_cast<uint32_t>(indices.size());
+        uint32_t AlignConstantBufferSize(uint32_t byte_size) {
+            constexpr uint32_t kAlignment = 256;
+            return (byte_size + kAlignment - 1u) & ~(kAlignment - 1u);
+        }
 
-            m.vertex_buffer = CreateGpuBuffer(
+        Diligent::RefCntAutoPtr<Diligent::IBuffer> CreateImmutableConstantBuffer(
+            Diligent::IRenderDevice *device,
+            std::span<const uint8_t> data,
+            const char *name) {
+            if (data.empty()) {
+                return {};
+            }
+
+            std::vector<uint8_t> padded_data(data.begin(), data.end());
+            padded_data.resize(AlignConstantBufferSize(static_cast<uint32_t>(padded_data.size())), 0u);
+
+            Diligent::BufferDesc desc;
+            desc.Name = name;
+            desc.Size = static_cast<Diligent::Uint64>(padded_data.size());
+            desc.Usage = Diligent::USAGE_IMMUTABLE;
+            desc.BindFlags = Diligent::BIND_UNIFORM_BUFFER;
+
+            Diligent::BufferData buffer_data;
+            buffer_data.pData = padded_data.data();
+            buffer_data.DataSize = static_cast<Diligent::Uint64>(padded_data.size());
+
+            Diligent::RefCntAutoPtr<Diligent::IBuffer> buffer;
+            device->CreateBuffer(desc, &buffer_data, &buffer);
+            return buffer;
+        }
+
+        DiligentMeshData UploadMeshData(Diligent::IRenderDevice *device, const MeshDesc &desc) {
+            DiligentMeshData mesh;
+            mesh.index_count = static_cast<uint32_t>(desc.indices.size());
+            mesh.index_format = desc.index_format;
+
+            mesh.vertex_buffer = CreateGpuBuffer(
                 device,
-                vertices.data(),
-                static_cast<uint32_t>(vertices.size_bytes()),
+                desc.vertices.data(),
+                static_cast<uint32_t>(desc.vertices.size_bytes()),
                 Diligent::BIND_VERTEX_BUFFER,
-                "VB");
+                "StaticMeshVB");
 
-            m.index_buffer = CreateGpuBuffer(
+            mesh.index_buffer = CreateGpuBuffer(
                 device,
-                indices.data(),
-                static_cast<uint32_t>(indices.size_bytes()),
+                desc.indices.data(),
+                static_cast<uint32_t>(desc.indices.size_bytes()),
                 Diligent::BIND_INDEX_BUFFER,
-                "IB");
+                "StaticMeshIB");
 
-            return m;
+            return mesh;
         }
 
         Diligent::RefCntAutoPtr<Diligent::IShader> CompileShader(
@@ -210,9 +242,9 @@ namespace CoreEngine {
                     ->Set(impl.per_object_cb);
 
             if (!desc.properties_data.empty()) {
-                mat.material_cbuffer = CreateConstantBuffer(
+                mat.material_cbuffer = CreateImmutableConstantBuffer(
                     impl.device,
-                    static_cast<uint32_t>(desc.properties_data.size()),
+                    desc.properties_data,
                     "PerMaterial");
 
                 mat.pso->GetStaticVariableByName(Diligent::SHADER_TYPE_PIXEL, "PerMaterial")
@@ -361,45 +393,46 @@ namespace CoreEngine {
         impl_->immediate_context.Release();
         impl_->mesh_registry.clear();
         impl_->material_registry.clear();
+        impl_->material_hash_cache.clear();
         impl_->per_frame_cb.Release();
         impl_->per_object_cb.Release();
         impl_->swap_chain.Release();
         impl_->device.Release();
     }
 
-    std::string_view DiligentRenderBackend::LastError() const {
-        return impl_ ? impl_->last_error : "backend unavailable";
-    }
-
-    MeshHandle DiligentRenderBackend::GetOrCreatePrimitive(PrimitiveType type) {
-        const auto key = static_cast<int>(type);
-        const auto it = impl_->primitive_cache.find(key);
-        if (it != impl_->primitive_cache.end()) {
-            return it->second;
-        }
-
-        const auto verts = Primitives::VerticesFor(type);
-        const auto indices = Primitives::IndicesFor(type);
-        MeshHandle handle = CreateMesh(verts, indices);
-        impl_->primitive_cache[key] = handle;
-        return handle;
-    }
-
-    MeshHandle DiligentRenderBackend::CreateMesh(std::span<const Vertex> vertices,
-                                                 std::span<const uint16_t> indices) {
-        if (!impl_->device || vertices.empty() || indices.empty()) {
+    MeshHandle DiligentRenderBackend::UploadMesh(const MeshDesc &desc) {
+        if (!impl_->device || !desc.IsValid()) {
             return {};
         }
 
-        DiligentMeshData data = UploadMesh(impl_->device, vertices, indices);
+        if (desc.index_format != IndexFormat::UInt32) {
+            impl_->last_error = "Unsupported mesh index format";
+            return {};
+        }
+
+        DiligentMeshData data = UploadMeshData(impl_->device, desc);
         if (!data.vertex_buffer || !data.index_buffer) {
             impl_->last_error = "Failed to upload mesh buffers";
             return {};
         }
 
         const uint32_t id = impl_->next_mesh_id++;
+        data.generation = impl_->mesh_generation++;
         impl_->mesh_registry[id] = std::move(data);
-        return MeshHandle{id};
+        return MeshHandle{.id = id, .generation = impl_->mesh_registry[id].generation};
+    }
+
+    void DiligentRenderBackend::DestroyMesh(MeshHandle handle) {
+        if (!handle.IsValid()) {
+            return;
+        }
+
+        const auto it = impl_->mesh_registry.find(handle.id);
+        if (it == impl_->mesh_registry.end() || it->second.generation != handle.generation) {
+            return;
+        }
+
+        impl_->mesh_registry.erase(it);
     }
 
     MaterialHandle DiligentRenderBackend::ResolveMaterial(const MaterialDesc &desc) {
@@ -412,13 +445,6 @@ namespace CoreEngine {
         if (!data.pso) {
             impl_->last_error = "Failed to create PSO for material";
             return {};
-        }
-
-        if (data.material_cbuffer && !data.properties_data.empty()) {
-            UpdateBuffer(impl_->immediate_context,
-                         data.material_cbuffer,
-                         data.properties_data.data(),
-                         static_cast<uint32_t>(data.properties_data.size()));
         }
 
         const uint32_t id = impl_->next_material_id++;
@@ -444,7 +470,8 @@ namespace CoreEngine {
         const auto msh_it = impl_->mesh_registry.find(batch.mesh.id);
 
         if (mat_it == impl_->material_registry.end() ||
-            msh_it == impl_->mesh_registry.end()) {
+            msh_it == impl_->mesh_registry.end() ||
+            msh_it->second.generation != batch.mesh.generation) {
             return;
         }
 
@@ -478,10 +505,14 @@ namespace CoreEngine {
                          &object_cb, sizeof(object_cb));
 
             Diligent::DrawIndexedAttribs draw;
-            draw.IndexType = Diligent::VT_UINT16;
+            draw.IndexType = Diligent::VT_UINT32;
             draw.NumIndices = msh.index_count;
             draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
             impl_->immediate_context->DrawIndexed(draw);
         }
+    }
+
+    std::string_view DiligentRenderBackend::LastError() const {
+        return impl_ ? impl_->last_error : "backend unavailable";
     }
 } // namespace CoreEngine
