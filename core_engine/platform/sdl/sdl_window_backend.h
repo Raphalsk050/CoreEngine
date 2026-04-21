@@ -26,6 +26,7 @@ namespace CoreEngine {
     private:
         SdlContext &context_;
         SDL_Window *window_ = nullptr;
+        void *metal_view_ = nullptr;
         bool should_close_ = false;
         std::string last_error_;
     };

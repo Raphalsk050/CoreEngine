@@ -11,8 +11,12 @@
 #include <utility>
 #include <vector>
 
+#include "EngineFactoryVk.h"
+
+#if PLATFORM_WIN32
 #include "EngineFactoryD3D11.h"
 #include "EngineFactoryD3D12.h"
+#endif
 #include "DiligentCore/Common/interface/RefCntAutoPtr.hpp"
 #include "core/render/render_batch.h"
 
@@ -69,8 +73,65 @@ namespace CoreEngine {
     };
 
     namespace {
-        bool IsSupportedWindow(NativeWindowHandle h) {
-            return h.platform == NativeWindowPlatform::Win32 && h.IsValid();
+        bool IsSupportedWindow(NativeWindowHandle h, DiligentRenderBackendApi api) {
+            if (!h.IsValid()) {
+                return false;
+            }
+
+            switch (api) {
+                case DiligentRenderBackendApi::D3D11:
+                case DiligentRenderBackendApi::D3D12:
+#if PLATFORM_WIN32
+                    return h.platform == NativeWindowPlatform::Win32;
+#else
+                    return false;
+#endif
+
+                case DiligentRenderBackendApi::Vulkan:
+#if PLATFORM_WIN32
+                    return h.platform == NativeWindowPlatform::Win32;
+#elif PLATFORM_MACOS
+                    return h.platform == NativeWindowPlatform::MacOS;
+#else
+                    return false;
+#endif
+
+                case DiligentRenderBackendApi::Metal:
+#if PLATFORM_MACOS
+                    return h.platform == NativeWindowPlatform::MacOS;
+#else
+                    return false;
+#endif
+            }
+
+            return false;
+        }
+
+        const char *UnsupportedWindowMessage(DiligentRenderBackendApi api) {
+            switch (api) {
+                case DiligentRenderBackendApi::D3D11:
+                case DiligentRenderBackendApi::D3D12:
+                    return "Diligent D3D backend requires a valid Win32 HWND";
+                case DiligentRenderBackendApi::Vulkan:
+#if PLATFORM_MACOS
+                    return "Diligent Vulkan backend requires a valid macOS NSView";
+#else
+                    return "Diligent Vulkan backend requires a valid native window";
+#endif
+                case DiligentRenderBackendApi::Metal:
+                    return "Diligent Metal backend is not implemented";
+            }
+
+            return "Unsupported render backend window";
+        }
+
+        Diligent::NativeWindow MakeNativeWindow(NativeWindowHandle h) {
+#if PLATFORM_WIN32 || PLATFORM_MACOS
+            return Diligent::NativeWindow{h.window};
+#else
+            (void) h;
+            return Diligent::NativeWindow{};
+#endif
         }
 
         Diligent::SwapChainDesc MakeSwapChainDesc(const RenderDesc &d) {
@@ -281,48 +342,98 @@ namespace CoreEngine {
     bool DiligentRenderBackend::Initialize(const RenderDesc &desc, NativeWindowHandle native_window) {
         impl_->desc = desc;
 
-        if (!IsSupportedWindow(native_window)) {
-            impl_->last_error = "Diligent backend requires a valid Win32 HWND";
+        if (!IsSupportedWindow(native_window, impl_->api)) {
+            impl_->last_error = UnsupportedWindowMessage(impl_->api);
             return false;
         }
 
         const Diligent::SwapChainDesc swap_desc = MakeSwapChainDesc(desc);
-        const Diligent::FullScreenModeDesc fs_desc = {};
-        Diligent::Win32NativeWindow win(native_window.window);
+        const Diligent::NativeWindow window = MakeNativeWindow(native_window);
 
         switch (impl_->api) {
             case DiligentRenderBackendApi::D3D11: {
+#if PLATFORM_WIN32
                 auto *factory = Diligent::LoadAndGetEngineFactoryD3D11();
                 if (!factory) {
                     impl_->last_error = "Failed to load D3D11 factory";
                     return false;
                 }
+
                 Diligent::EngineD3D11CreateInfo ci;
                 factory->CreateDeviceAndContextsD3D11(ci, &impl_->device, &impl_->immediate_context);
                 if (!impl_->device || !impl_->immediate_context) {
                     impl_->last_error = "Failed to create D3D11 device/context";
                     return false;
                 }
+
+                const Diligent::FullScreenModeDesc fs_desc = {};
                 factory->CreateSwapChainD3D11(impl_->device, impl_->immediate_context,
-                                              swap_desc, fs_desc, win, &impl_->swap_chain);
+                                              swap_desc, fs_desc, window, &impl_->swap_chain);
                 break;
+#else
+                impl_->last_error = "D3D11 backend is only available on Windows";
+                return false;
+#endif
             }
+
             case DiligentRenderBackendApi::D3D12: {
+#if PLATFORM_WIN32
                 auto *factory = Diligent::LoadAndGetEngineFactoryD3D12();
                 if (!factory) {
                     impl_->last_error = "Failed to load D3D12 factory";
                     return false;
                 }
+
                 Diligent::EngineD3D12CreateInfo ci;
                 factory->CreateDeviceAndContextsD3D12(ci, &impl_->device, &impl_->immediate_context);
                 if (!impl_->device || !impl_->immediate_context) {
                     impl_->last_error = "Failed to create D3D12 device/context";
                     return false;
                 }
+
+                const Diligent::FullScreenModeDesc fs_desc = {};
                 factory->CreateSwapChainD3D12(impl_->device, impl_->immediate_context,
-                                              swap_desc, fs_desc, win, &impl_->swap_chain);
+                                              swap_desc, fs_desc, window, &impl_->swap_chain);
                 break;
+#else
+                impl_->last_error = "D3D12 backend is only available on Windows";
+                return false;
+#endif
             }
+
+            case DiligentRenderBackendApi::Vulkan: {
+#if PLATFORM_WIN32 || PLATFORM_MACOS
+                auto *factory = Diligent::LoadAndGetEngineFactoryVk();
+                if (!factory) {
+                    impl_->last_error = "Failed to load Vulkan factory";
+                    return false;
+                }
+
+                const Diligent::Version vulkan_version = factory->GetVulkanVersion();
+                if (vulkan_version.Major == 0) {
+                    impl_->last_error = "Vulkan is not supported by the current platform/runtime";
+                    return false;
+                }
+
+                Diligent::EngineVkCreateInfo ci;
+                factory->CreateDeviceAndContextsVk(ci, &impl_->device, &impl_->immediate_context);
+                if (!impl_->device || !impl_->immediate_context) {
+                    impl_->last_error = "Failed to create Vulkan device/context";
+                    return false;
+                }
+
+                factory->CreateSwapChainVk(impl_->device, impl_->immediate_context,
+                                           swap_desc, window, &impl_->swap_chain);
+                break;
+#else
+                impl_->last_error = "Vulkan backend is not available on this platform";
+                return false;
+#endif
+            }
+
+            case DiligentRenderBackendApi::Metal:
+                impl_->last_error = "Metal backend is not implemented";
+                return false;
         }
 
         if (!impl_->swap_chain) {

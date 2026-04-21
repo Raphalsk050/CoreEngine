@@ -58,9 +58,6 @@ public:
         angle_ += frame.delta_time * 60.f;
 
         cube_node_.SetRotation(glm::angleAxis(glm::radians(angle_), glm::vec3(0.0f, 1.f, 0.f)));
-        // plane_node_.SetRotation(
-        //     glm::angleAxis(glm::radians(angle_), glm::vec3(0.0f, 1.f, 0.f)) + glm::angleAxis(
-        //         glm::radians(180.0f), glm::vec3(0.0f, 0.f, 1.f)));
     }
 
     void Shutdown(const CoreEngine::EngineContext &) override {
@@ -82,7 +79,7 @@ int main() {
     config.decorated = true;
     config.resizable = true;
     config.windowTitle = "CoreEngine - Mesh Demo";
-    config.renderBackend = CoreEngine::RenderBackendType::DiligentD3D12;
+    config.renderBackend = CoreEngine::RenderBackendType::DiligentVulkan;
     config.vsync = false;
 
     return CoreEngine::RunEngine(std::move(app), config);

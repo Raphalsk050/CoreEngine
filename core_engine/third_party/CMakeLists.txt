@@ -23,7 +23,7 @@ if(CORE_ENGINE_ENABLE_DILIGENT)
     set(DILIGENT_INSTALL_FX OFF CACHE BOOL "" FORCE)
     set(DILIGENT_INSTALL_SAMPLES OFF CACHE BOOL "" FORCE)
     set(DILIGENT_NO_OPENGL ON CACHE BOOL "" FORCE)
-    set(DILIGENT_NO_VULKAN ON CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_VULKAN OFF CACHE BOOL "" FORCE)
     set(DILIGENT_NO_WEBGPU ON CACHE BOOL "" FORCE)
 
     add_subdirectory("${CORE_ENGINE_DILIGENT_CORE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/DiligentCore" EXCLUDE_FROM_ALL)
@@ -40,9 +40,18 @@ target_include_directories(ThirdParty INTERFACE
 target_link_libraries(ThirdParty INTERFACE glm Entt SDL3::SDL3)
 
 if(CORE_ENGINE_ENABLE_DILIGENT)
-    target_link_libraries(ThirdParty INTERFACE
-            Diligent-BuildSettings
-            Diligent-GraphicsEngineD3D11-shared
-            Diligent-GraphicsEngineD3D12-shared
-    )
+    target_link_libraries(ThirdParty INTERFACE Diligent-BuildSettings)
+
+    if(WIN32)
+        target_link_libraries(ThirdParty INTERFACE
+                Diligent-GraphicsEngineD3D11-shared
+                Diligent-GraphicsEngineD3D12-shared
+        )
+    endif()
+
+    if(TARGET Diligent-GraphicsEngineVk-shared)
+        target_link_libraries(ThirdParty INTERFACE Diligent-GraphicsEngineVk-shared)
+    else()
+        message(FATAL_ERROR "Diligent Vulkan backend is required but Diligent-GraphicsEngineVk-shared was not generated.")
+    endif()
 endif()

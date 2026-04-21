@@ -7,7 +7,9 @@
 namespace CoreEngine {
     enum class DiligentRenderBackendApi {
         D3D11,
-        D3D12
+        D3D12,
+        Vulkan,
+        Metal,
     };
 
     class DiligentRenderBackend final : public IRenderBackend {

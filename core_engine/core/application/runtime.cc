@@ -8,6 +8,17 @@
 #include "platform/sdl/sdl_audio_backend.h"
 #include "platform/sdl/sdl_window_backend.h"
 
+namespace {
+    CoreEngine::WindowSurfaceType SelectWindowSurfaceType(CoreEngine::RenderBackendType backend) {
+#if defined(__APPLE__)
+        if (backend == CoreEngine::RenderBackendType::DiligentVulkan) {
+            return CoreEngine::WindowSurfaceType::Metal;
+        }
+#endif
+
+        return CoreEngine::WindowSurfaceType::Default;
+    }
+}
 namespace CoreEngine {
     int RunEngine(std::unique_ptr<IGameApp> app, const EngineConfig &config) {
         if (!app)
@@ -105,6 +116,7 @@ namespace CoreEngine {
         desc.highDpi = config_.highDPI;
         desc.decorated = config_.decorated;
         desc.fullscreen = config_.fullscreen;
+        desc.surface_type = SelectWindowSurfaceType(config_.renderBackend);
 
         if (!window_system_->Initialize(desc)) {
             Log::Error("Window", window_system_->LastError());

@@ -3,7 +3,8 @@
 namespace CoreEngine {
     enum class NativeWindowPlatform {
         Unknown,
-        Win32
+        Win32,
+        MacOS
     };
 
     struct NativeWindowHandle {

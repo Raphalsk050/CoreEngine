@@ -29,6 +29,13 @@ namespace CoreEngine {
 #else
                 return nullptr;
 #endif
+
+            case RenderBackendType::DiligentVulkan:
+#if CORE_ENGINE_ENABLE_DILIGENT
+                return std::make_unique<DiligentRenderBackend>(DiligentRenderBackendApi::Vulkan);
+#else
+                return nullptr;
+#endif
         }
 
         return nullptr;

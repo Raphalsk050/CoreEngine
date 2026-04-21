@@ -5,6 +5,10 @@
 #include "SDL3/SDL_events.h"
 #include "SDL3/SDL_properties.h"
 
+#if defined(__APPLE__)
+#include "SDL3/SDL_metal.h"
+#endif
+
 namespace CoreEngine {
     SdlWindowBackend::SdlWindowBackend(SdlContext &context) : context_(context) {
     }
@@ -33,11 +37,34 @@ namespace CoreEngine {
             flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
         }
 
+        if (desc.surface_type == WindowSurfaceType::Metal) {
+            flags |= SDL_WINDOW_METAL;
+        }
+
         window_ = SDL_CreateWindow(desc.title.c_str(), desc.width, desc.height, flags);
         if (window_ == nullptr) {
             last_error_ = SDL_GetError();
             return false;
         }
+
+#if defined(__APPLE__)
+        if (desc.surface_type == WindowSurfaceType::Metal) {
+            metal_view_ = SDL_Metal_CreateView(window_);
+            if (metal_view_ == nullptr) {
+                last_error_ = SDL_GetError();
+                SDL_DestroyWindow(window_);
+                window_ = nullptr;
+                return false;
+            }
+        }
+#else
+        if (desc.surface_type == WindowSurfaceType::Metal) {
+            last_error_ = "Metal window surfaces are only supported on Apple platforms";
+            SDL_DestroyWindow(window_);
+            window_ = nullptr;
+            return false;
+        }
+#endif
 
         should_close_ = false;
         return true;
@@ -93,6 +120,15 @@ namespace CoreEngine {
     }
 
     void SdlWindowBackend::Shutdown() {
+#if defined(__APPLE__)
+        if (metal_view_ != nullptr) {
+            SDL_Metal_DestroyView(static_cast<SDL_MetalView>(metal_view_));
+            metal_view_ = nullptr;
+        }
+#else
+        metal_view_ = nullptr;
+#endif
+
         if (window_ != nullptr) {
             SDL_DestroyWindow(window_);
             window_ = nullptr;
@@ -116,6 +152,11 @@ namespace CoreEngine {
         const SDL_PropertiesID properties = SDL_GetWindowProperties(window_);
         native_handle.platform = NativeWindowPlatform::Win32;
         native_handle.window = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+#elif defined(__APPLE__)
+        if (metal_view_ != nullptr) {
+            native_handle.platform = NativeWindowPlatform::MacOS;
+            native_handle.window = metal_view_;
+        }
 #endif
 
         return native_handle;
