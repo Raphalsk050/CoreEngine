@@ -3,11 +3,14 @@
 
 #include <glm/gtc/quaternion.hpp>
 
+#include "player_controller.h"
 #include "core/i_game_app.h"
 #include "core/application/application.h"
 #include "core/ecs/world.h"
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/components/mesh_renderer_component.h"
+#include "core/input/input_codes.h"
+#include "core/input/input_system.h"
 #include "core/render/material.h"
 #include "core/render/primitive_type.h"
 #include "core/render/camera.h"
@@ -20,6 +23,8 @@ public:
     MyGameApp() = default;
 
     void Init(const CoreEngine::EngineContext &context) override {
+        player_controller_ = new Game::PlayerController();
+
         const CoreEngine::MeshHandle cube_mesh =
                 context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Cube);
         const CoreEngine::MeshHandle plane_mesh =
@@ -55,6 +60,12 @@ public:
     }
 
     void Update(const CoreEngine::FrameContext &frame) override {
+        const auto &input = frame.input_system;
+
+        if (input.WasKeyPressed(CoreEngine::Key::Escape)) {
+            CoreEngine::Application::RequestShutdown();
+        }
+
         angle_ += frame.delta_time * 60.f;
 
         cube_node_.SetRotation(glm::angleAxis(glm::radians(angle_), glm::vec3(0.0f, 1.f, 0.f)));
@@ -66,6 +77,7 @@ public:
 private:
     CoreEngine::Node cube_node_;
     CoreEngine::Node plane_node_;
+    Game::PlayerController *player_controller_;
     float angle_ = 0.f;
 };
 
