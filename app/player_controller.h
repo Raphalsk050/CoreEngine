@@ -1,31 +1,30 @@
 #pragma once
-#include "i_controller.h"
-#include "movement_type.h"
 
+#include "i_controller.h"
+#include "player_command.h"
 
 namespace CoreEngine {
-    struct FrameContext;
     struct EngineContext;
 }
 
 namespace Game {
     class PlayerController final : public IController {
     public:
-        explicit PlayerController(IPossessable &possessable, MovementType movement_type = MovementType::WALK)
-            : movement_type_(movement_type),
-              possessable_(possessable) {
-        }
+        PlayerController() = default;
 
-        void Init(const CoreEngine::EngineContext &context);
+        [[nodiscard]] bool Init(const CoreEngine::EngineContext &context);
 
-        void ProcessEvents(const CoreEngine::FrameContext &frame);
+        void Update(const CoreEngine::FrameContext &frame) override;
 
         void Possess(IPossessable &possessable) override;
 
         void Unpossess() override;
 
+        [[nodiscard]] bool HasPossessable() const noexcept;
+
     private:
-        MovementType movement_type_{MovementType::WALK};
-        IPossessable &possessable_;
+        [[nodiscard]] static PlayerCommand BuildCommand(const CoreEngine::FrameContext &frame) noexcept;
+
+        IPossessable *possessable_ = nullptr;
     };
-}
+} // namespace Game

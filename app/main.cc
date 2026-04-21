@@ -1,29 +1,29 @@
 #include <memory>
-#include <cmath>
 
 #include <glm/gtc/quaternion.hpp>
 
 #include "player_controller.h"
+#include "player_pawn.h"
 #include "core/i_game_app.h"
 #include "core/application/application.h"
 #include "core/ecs/world.h"
-#include "core/ecs/components/transform_component.h"
 #include "core/ecs/components/mesh_renderer_component.h"
 #include "core/input/input_codes.h"
 #include "core/input/input_system.h"
+#include "core/log/log.h"
+#include "core/render/camera.h"
 #include "core/render/material.h"
 #include "core/render/primitive_type.h"
-#include "core/render/camera.h"
 #include "core/render/render_system.h"
-#include "core/log/log.h"
-#include "core/window/window_system.h"
 
 class MyGameApp final : public CoreEngine::IGameApp {
 public:
     MyGameApp() = default;
 
     void Init(const CoreEngine::EngineContext &context) override {
-        player_controller_ = new Game::PlayerController();
+        if (!player_controller_.Init(context)) {
+            CoreEngine::Log::Warn("Game", "Failed to bind one or more player input actions");
+        }
 
         const CoreEngine::MeshHandle cube_mesh =
                 context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Cube);
@@ -32,11 +32,17 @@ public:
         const CoreEngine::MaterialHandle material =
                 CoreEngine::Material::Unlit({.color = {1.2f, 0.6f, 1.0f, 1.0f}}).Resolve(context.render_system);
 
-        cube_node_ = context.world.CreateNode("Cube");
+        player_pawn_ = Game::PlayerPawn(
+            context.world.CreateNode("Player"),
+            Game::MovementComponent{
+                .crouch_speed = 1.5f,
+                .walk_speed = 3.0f,
+                .run_speed = 6.0f,
+                .default_movement_type = Game::MovementType::Walk,
+            });
 
-        cube_node_.SetPosition(glm::vec3(2.0f, 0.0f, 0.0f));
-
-        cube_node_.AddComponent<CoreEngine::MeshRendererComponent>(
+        player_pawn_.Node().SetPosition(glm::vec3(2.0f, 0.0f, 0.0f));
+        player_pawn_.Node().AddComponent<CoreEngine::MeshRendererComponent>(
             CoreEngine::MeshRendererComponent{
                 .mesh = cube_mesh,
                 .material = material,
@@ -53,6 +59,8 @@ public:
         plane_node_.SetScale({3.f, 1.f, 3.f});
         plane_node_.SetRotation(glm::angleAxis(glm::radians(180.0f), glm::vec3(0.0f, 0.f, 1.f)));
 
+        player_controller_.Possess(player_pawn_);
+
         context.render_system.SetCamera(
             CoreEngine::Camera()
             .LookAt({0.f, 1.5f, -4.f}, {0.f, 0.f, 0.f})
@@ -60,25 +68,21 @@ public:
     }
 
     void Update(const CoreEngine::FrameContext &frame) override {
-        const auto &input = frame.input_system;
-
-        if (input.WasKeyPressed(CoreEngine::Key::Escape)) {
+        if (frame.input_system.WasKeyPressed(CoreEngine::Key::Escape)) {
             CoreEngine::Application::RequestShutdown();
         }
 
-        angle_ += frame.delta_time * 60.f;
-
-        cube_node_.SetRotation(glm::angleAxis(glm::radians(angle_), glm::vec3(0.0f, 1.f, 0.f)));
+        player_controller_.Update(frame);
     }
 
     void Shutdown(const CoreEngine::EngineContext &) override {
+        player_controller_.Unpossess();
     }
 
 private:
-    CoreEngine::Node cube_node_;
     CoreEngine::Node plane_node_;
-    Game::PlayerController *player_controller_;
-    float angle_ = 0.f;
+    Game::PlayerPawn player_pawn_;
+    Game::PlayerController player_controller_;
 };
 
 int main() {
@@ -90,7 +94,7 @@ int main() {
     config.fullscreen = false;
     config.decorated = true;
     config.resizable = true;
-    config.windowTitle = "CoreEngine - Mesh Demo";
+    config.windowTitle = "CoreEngine - Player Input Demo";
     config.renderBackend = CoreEngine::RenderBackendType::DiligentVulkan;
     config.vsync = false;
 
