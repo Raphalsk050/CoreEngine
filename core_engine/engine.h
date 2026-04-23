@@ -1,5 +1,8 @@
 #pragma once
 #include <memory>
+
+#include "core/render/render_backend_type.h"
+
 #define CENGINE_DEBUG_BUILD 1
 
 namespace CoreEngine {
@@ -12,6 +15,8 @@ namespace CoreEngine {
         bool resizable = false;
         bool decorated = true;
         bool highDPI = true;
+        bool vsync = true;
+        RenderBackendType renderBackend = RenderBackendType::None;
         const char *windowTitle = "Sample game";
     };
 

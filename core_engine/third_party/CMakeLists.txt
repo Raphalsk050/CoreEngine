@@ -8,6 +8,27 @@ set_property(DIRECTORY entt PROPERTY FOLDER "ThirdParty")
 set_property(DIRECTORY glm PROPERTY FOLDER "ThirdParty")
 set_property(DIRECTORY sdl3 PROPERTY FOLDER "ThirdParty")
 
+if (CORE_ENGINE_ENABLE_DILIGENT)
+    if (CORE_ENGINE_DILIGENT_CORE_DIR STREQUAL "")
+        set(CORE_ENGINE_DILIGENT_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/DiligentCore" CACHE PATH "Path to a DiligentCore checkout" FORCE)
+    endif ()
+
+    if (NOT EXISTS "${CORE_ENGINE_DILIGENT_CORE_DIR}/CMakeLists.txt")
+        message(FATAL_ERROR "CORE_ENGINE_ENABLE_DILIGENT is ON, but DiligentCore was not found. Set CORE_ENGINE_DILIGENT_CORE_DIR or place DiligentCore in core_engine/third_party/DiligentCore.")
+    endif ()
+
+    set(DILIGENT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(DILIGENT_INSTALL_CORE OFF CACHE BOOL "" FORCE)
+    set(DILIGENT_INSTALL_TOOLS OFF CACHE BOOL "" FORCE)
+    set(DILIGENT_INSTALL_FX OFF CACHE BOOL "" FORCE)
+    set(DILIGENT_INSTALL_SAMPLES OFF CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_OPENGL ON CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_VULKAN OFF CACHE BOOL "" FORCE)
+    set(DILIGENT_NO_WEBGPU ON CACHE BOOL "" FORCE)
+
+    add_subdirectory("${CORE_ENGINE_DILIGENT_CORE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/DiligentCore" EXCLUDE_FROM_ALL)
+endif ()
+
 add_library(ThirdParty INTERFACE)
 
 target_include_directories(ThirdParty INTERFACE
@@ -17,3 +38,29 @@ target_include_directories(ThirdParty INTERFACE
 )
 
 target_link_libraries(ThirdParty INTERFACE glm Entt SDL3::SDL3)
+
+if (CORE_ENGINE_ENABLE_DILIGENT)
+    target_link_libraries(ThirdParty INTERFACE Diligent-BuildSettings)
+
+    if (WIN32)
+        target_link_libraries(ThirdParty INTERFACE
+                Diligent-GraphicsEngineD3D11-shared
+                Diligent-GraphicsEngineD3D12-shared
+        )
+    endif ()
+
+    if (TARGET Diligent-GraphicsEngineVk-shared)
+        target_link_libraries(ThirdParty INTERFACE Diligent-GraphicsEngineVk-shared)
+    else ()
+        message(FATAL_ERROR "Diligent Vulkan backend is required but Diligent-GraphicsEngineVk-shared was not generated.")
+    endif ()
+endif ()
+
+target_compile_definitions(ThirdParty INTERFACE
+        GLM_FORCE_INLINE
+        GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+        GLM_FORCE_INTRINSICS
+        GLM_FORCE_DEPTH_ZERO_TO_ONE
+        GLM_FORCE_LEFT_HANDED
+        GLM_FORCE_SILENT_WARNINGS
+)
