@@ -2,13 +2,16 @@
 
 #include "core/application/engine_context.h"
 #include "core/application/frame_context.h"
+#include "core/debug/debug.h"
 #include "core/input/input_system.h"
+#include "core/log/log.h"
 
 namespace Game {
     namespace Actions {
         constexpr CoreEngine::InputActionId Move = CoreEngine::MakeInputActionId(1);
         constexpr CoreEngine::InputActionId Jump = CoreEngine::MakeInputActionId(2);
         constexpr CoreEngine::InputActionId Run = CoreEngine::MakeInputActionId(3);
+        constexpr CoreEngine::InputActionId Crouch = CoreEngine::MakeInputActionId(4);
     }
 
     bool PlayerController::Init(const CoreEngine::EngineContext &context) {
@@ -58,10 +61,16 @@ namespace Game {
     }
 
     PlayerCommand PlayerController::BuildCommand(const CoreEngine::FrameContext &frame) noexcept {
-        const CoreEngine::InputVector2 movement = frame.input_system.GetAxis2D(Actions::Move);
+        const auto [input_x, input_y] = frame.input_system.GetAxis2D(Actions::Move);
+        const auto [mouse_x, mouse_y] = frame.input_system.MouseDelta();
+        const auto mouse_input = frame.input_system.MouseDelta();
+
+        // CoreEngine::Log::Info(
+        //     "Game", "Mouse input is: {" + std::to_string(mouse_x) + "," + std::to_string(mouse_y) + "}");
 
         return PlayerCommand{
-            .movement = CoreEngine::Math::Vec2{movement.x, movement.y},
+            .movement = CoreEngine::Math::Vec2{input_x, input_y},
+            .look = CoreEngine::Math::Vec2{mouse_x, mouse_y},
             .jump_pressed = frame.input_system.WasActionPressed(Actions::Jump),
             .run_held = frame.input_system.IsActionDown(Actions::Run),
         };
