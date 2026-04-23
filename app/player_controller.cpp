@@ -2,13 +2,16 @@
 
 #include "core/application/engine_context.h"
 #include "core/application/frame_context.h"
+#include "core/debug/debug.h"
 #include "core/input/input_system.h"
+#include "core/log/log.h"
 
 namespace Game {
     namespace Actions {
         constexpr CoreEngine::InputActionId Move = CoreEngine::MakeInputActionId(1);
         constexpr CoreEngine::InputActionId Jump = CoreEngine::MakeInputActionId(2);
         constexpr CoreEngine::InputActionId Run = CoreEngine::MakeInputActionId(3);
+        constexpr CoreEngine::InputActionId Crouch = CoreEngine::MakeInputActionId(4);
     }
 
     bool PlayerController::Init(const CoreEngine::EngineContext &context) {
@@ -27,11 +30,18 @@ namespace Game {
     }
 
     void PlayerController::Update(const CoreEngine::FrameContext &frame) {
-        if (possessable_ == nullptr) {
-            return;
+        if (camera_controller_ != nullptr) {
+            camera_controller_->ApplyLookDelta(BuildLookDelta(frame));
+            BuildCameraDistance(frame);
         }
 
-        possessable_->ApplyPlayerCommand(BuildCommand(frame), frame.delta_time);
+        if (possessable_ != nullptr) {
+            possessable_->ApplyPlayerCommand(BuildCommand(frame), frame.delta_time);
+        }
+
+        if (camera_controller_ != nullptr) {
+            camera_controller_->Update(frame.delta_time);
+        }
     }
 
     void PlayerController::Possess(IPossessable &possessable) {
@@ -53,17 +63,57 @@ namespace Game {
         possessable_ = nullptr;
     }
 
+    void PlayerController::AttachCameraController(ThirdPersonCameraController &camera_controller) noexcept {
+        camera_controller_ = &camera_controller;
+    }
+
+    void PlayerController::DetachCameraController() noexcept {
+        camera_controller_ = nullptr;
+    }
+
     bool PlayerController::HasPossessable() const noexcept {
         return possessable_ != nullptr;
     }
 
-    PlayerCommand PlayerController::BuildCommand(const CoreEngine::FrameContext &frame) noexcept {
-        const CoreEngine::InputVector2 movement = frame.input_system.GetAxis2D(Actions::Move);
+    PlayerCommand PlayerController::BuildCommand(const CoreEngine::FrameContext &frame) const noexcept {
+        const auto [input_x, input_y] = frame.input_system.GetAxis2D(Actions::Move);
+        const CoreEngine::Math::Vec2 movement_input{input_x, input_y};
+
+        CoreEngine::Math::Vec3 world_move{movement_input.x, 0.0f, movement_input.y};
+
+        if (camera_controller_ != nullptr) {
+            const CoreEngine::Math::Vec3 forward = camera_controller_->PlanarForward();
+            const CoreEngine::Math::Vec3 right = camera_controller_->PlanarRight();
+            world_move = right * movement_input.x + forward * movement_input.y;
+        }
+
+        const float length_squared = CoreEngine::Math::Dot(world_move, world_move);
+        if (length_squared > 1.0f) {
+            world_move = CoreEngine::Math::Normalize(world_move);
+        }
 
         return PlayerCommand{
-            .movement = CoreEngine::Math::Vec2{movement.x, movement.y},
+            .movement_input = movement_input,
+            .world_move = world_move,
             .jump_pressed = frame.input_system.WasActionPressed(Actions::Jump),
             .run_held = frame.input_system.IsActionDown(Actions::Run),
         };
+    }
+
+    CoreEngine::Math::Vec2 PlayerController::BuildLookDelta(const CoreEngine::FrameContext &frame) const noexcept {
+        const auto [mouse_x, mouse_y] = frame.input_system.MouseDelta();
+        const float y_sign = invert_y_ ? -1.0f : 1.0f;
+
+        return CoreEngine::Math::Vec2{
+            mouse_x * mouse_sensitivity_x_,
+            mouse_y * mouse_sensitivity_y_ * y_sign,
+        };
+    }
+
+    void PlayerController::BuildCameraDistance(const CoreEngine::FrameContext &frame) const noexcept {
+        float new_distance = CoreEngine::Math::Clamp(
+            camera_controller_->GetDistance() - frame.input_system.MouseWheel().y, min_camera_distance_,
+            max_camera_distance_);
+        camera_controller_->SetDistance(new_distance);
     }
 } // namespace Game

@@ -5,8 +5,9 @@
 #include "core/ecs/world.h"
 
 namespace Game {
-    PlayerPawn::PlayerPawn(CoreEngine::Node node, MovementComponent movement)
-        : node_(node), movement_(movement) {
+    PlayerPawn::PlayerPawn(CoreEngine::Node node, MovementComponent movement,
+                           CameraArmComponent camera_arm_component)
+        : node_(node), movement_(movement), camera_arm_(camera_arm_component) {
     }
 
     void PlayerPawn::OnPossessed() {
@@ -22,14 +23,14 @@ namespace Game {
             return;
         }
 
-        CoreEngine::Math::Vec2 movement = command.movement;
-        const float length_squared = CoreEngine::Math::Dot(movement, movement);
+        CoreEngine::Math::Vec3 move = command.world_move;
+        const float length_squared = CoreEngine::Math::Dot(move, move);
         if (length_squared <= 0.0f) {
             return;
         }
 
         if (length_squared > 1.0f) {
-            movement = CoreEngine::Math::Normalize(movement);
+            move = CoreEngine::Math::Normalize(move);
         }
 
         auto *transform = node_.TryGetComponent<CoreEngine::TransformComponent>();
@@ -38,7 +39,7 @@ namespace Game {
         }
 
         const float speed = ResolveSpeed(command);
-        transform->position += CoreEngine::Math::Vec3(movement.x, 0.0f, movement.y) * speed * delta_time;
+        transform->position += move * speed * delta_time;
     }
 
     CoreEngine::Node &PlayerPawn::Node() noexcept {

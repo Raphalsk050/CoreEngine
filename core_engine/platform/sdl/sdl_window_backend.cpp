@@ -89,6 +89,10 @@ namespace CoreEngine {
                 return true;
 
             case SDL_EVENT_WINDOW_RESIZED:
+                state_.logical_size = WindowExtent{
+                    .width = event.window.data1,
+                    .height = event.window.data2,
+                };
                 out_event = WindowEvent{
                     .type = WindowEventType::Resized,
                     .width = event.window.data1,
@@ -97,6 +101,10 @@ namespace CoreEngine {
                 return true;
 
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                state_.pixel_size = WindowExtent{
+                    .width = event.window.data1,
+                    .height = event.window.data2,
+                };
                 out_event = WindowEvent{
                     .type = WindowEventType::PixelSizeChanged,
                     .width = event.window.data1,
@@ -105,18 +113,22 @@ namespace CoreEngine {
                 return true;
 
             case SDL_EVENT_WINDOW_FOCUS_GAINED:
+                state_.focused = true;
                 out_event = WindowEvent{.type = WindowEventType::FocusGained};
                 return true;
 
             case SDL_EVENT_WINDOW_FOCUS_LOST:
+                state_.focused = false;
                 out_event = WindowEvent{.type = WindowEventType::FocusLost};
                 return true;
 
             case SDL_EVENT_WINDOW_MINIMIZED:
+                state_.minimized = true;
                 out_event = WindowEvent{.type = WindowEventType::Minimized};
                 return true;
 
             case SDL_EVENT_WINDOW_RESTORED:
+                state_.minimized = false;
                 out_event = WindowEvent{.type = WindowEventType::Restored};
                 return true;
 
@@ -166,6 +178,10 @@ namespace CoreEngine {
 #endif
 
         return native_handle;
+    }
+
+    const WindowState &SdlWindowBackend::GetState() const {
+        return state_;
     }
 
     std::string_view SdlWindowBackend::LastError() const {

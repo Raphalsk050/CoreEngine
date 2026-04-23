@@ -27,6 +27,12 @@ namespace CoreEngine {
 
         [[nodiscard]] NativeWindowHandle GetNativeHandle() const;
 
+        [[nodiscard]] const WindowState &State() const;
+
+        [[nodiscard]] WindowExtent LogicalSize() const;
+
+        [[nodiscard]] WindowExtent PixelSize() const;
+
         [[nodiscard]] std::string_view LastError() const;
 
     private:

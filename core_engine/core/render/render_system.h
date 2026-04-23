@@ -15,6 +15,8 @@
 
 namespace CoreEngine {
     class World;
+    struct CameraComponent;
+    struct TransformComponent;
 
     class RenderSystem final : public IRenderContext {
     public:
@@ -36,6 +38,8 @@ namespace CoreEngine {
 
         void SetCamera(const CameraData &camera_data);
 
+        void ClearCameraOverride();
+
         void Resize(int width, int height);
 
         void Shutdown();
@@ -47,11 +51,22 @@ namespace CoreEngine {
         [[nodiscard]] IRenderContext &Context();
 
     private:
+        [[nodiscard]] CameraData ResolveWorldCamera(World &world) const;
+
+        [[nodiscard]] CameraData BuildCameraData(const TransformComponent &transform,
+                                                 const CameraComponent &camera) const;
+
         static constexpr std::size_t kPrimitiveCount = static_cast<std::size_t>(PrimitiveType::Count);
 
         std::unique_ptr<IRenderBackend> backend_;
         RenderDesc desc_{};
-        CameraData camera_{};
+        CameraData manual_camera_override_{};
+        CameraData default_camera_{};
+        bool has_manual_camera_override_ = false;
+
+        int surface_width_ = 1;
+        int surface_height_ = 1;
+
         BatchAccumulator accumulator_;
         std::array<MeshHandle, kPrimitiveCount> primitive_cache_{};
         bool initialized_ = false;
