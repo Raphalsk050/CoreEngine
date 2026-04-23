@@ -45,4 +45,16 @@ namespace CoreEngine {
     void Node::SetScale(const Math::Vec3 &scale) {
         GetComponent<TransformComponent>().scale = scale;
     }
+
+    Math::Vec3 Node::GetPosition() {
+        return GetComponent<TransformComponent>().position;
+    }
+
+    Math::Quat Node::GetRotation() {
+        return GetComponent<TransformComponent>().rotation;
+    }
+
+    Math::Vec3 Node::GetScale() {
+        return GetComponent<TransformComponent>().scale;
+    }
 } // namespace CoreEngine

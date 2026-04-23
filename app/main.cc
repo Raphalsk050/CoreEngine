@@ -4,10 +4,12 @@
 
 #include "player_controller.h"
 #include "player_pawn.h"
+#include "third_person_camera_controller.h"
 #include "core/i_game_app.h"
 #include "core/application/application.h"
 #include "core/ecs/world.h"
 #include "core/ecs/components/mesh_renderer_component.h"
+#include "core/ecs/components/camera_component.h"
 #include "core/input/input_codes.h"
 #include "core/input/input_system.h"
 #include "core/log/log.h"
@@ -16,6 +18,7 @@
 #include "core/render/material.h"
 #include "core/render/primitive_type.h"
 #include "core/render/render_system.h"
+#include "core/window/window_system.h"
 
 class MyGameApp final : public CoreEngine::IGameApp {
 public:
@@ -52,6 +55,18 @@ public:
                 .material = cube_material,
             });
 
+        camera_node_ = context.world.CreateNode("MainCamera");
+        camera_node_.AddComponent<CoreEngine::CameraComponent>();
+
+        camera_node_.SetPosition({0.0f, 1.5f, -4.0f});
+
+        third_person_camera_controller_.Attach(camera_node_, player_pawn_.Node());
+        third_person_camera_controller_.SetFocusOffset({0.0f, 1.25f, 0.0f});
+        third_person_camera_controller_.SetDistance(4.0f);
+
+        player_controller_.AttachCameraController(third_person_camera_controller_);
+        player_controller_.Possess(player_pawn_);
+
         plane_node_ = context.world.CreateNode("Plane");
         plane_node_.AddComponent<CoreEngine::MeshRendererComponent>(
             CoreEngine::MeshRendererComponent{
@@ -61,14 +76,8 @@ public:
 
         plane_node_.SetPosition({0.f, -0.75f, 0.f});
         plane_node_.SetScale({3.f, 1.f, 3.f});
-        plane_node_.SetRotation(CoreEngine::Math::AngleAxis(CoreEngine::Math::Deg2Rad(180.0f), CoreEngine::Math::Vec3(0.0f, 0.f, 1.f)));
-
-        player_controller_.Possess(player_pawn_);
-
-        context.render_system.SetCamera(
-            CoreEngine::Camera()
-            .LookAt({0.f, 1.5f, -4.f}, {0.f, 0.f, 0.f})
-            .Perspective(60.f, 1280, 720, 0.0001f, 10000.f));
+        plane_node_.SetRotation(
+            CoreEngine::Math::AngleAxis(CoreEngine::Math::Deg2Rad(180.0f), CoreEngine::Math::Vec3(0.0f, 0.f, 1.f)));
     }
 
     void Update(const CoreEngine::FrameContext &frame) override {
@@ -80,13 +89,18 @@ public:
     }
 
     void Shutdown(const CoreEngine::EngineContext &) override {
+        player_controller_.DetachCameraController();
         player_controller_.Unpossess();
     }
 
 private:
     CoreEngine::Node plane_node_;
+    CoreEngine::Node camera_node_;
+    Game::ThirdPersonCameraController third_person_camera_controller_;
     Game::PlayerPawn player_pawn_;
     Game::PlayerController player_controller_;
+    float mouse_x_ = 0.0f;
+    float mouse_y_ = 0.0f;
 };
 
 int main() {

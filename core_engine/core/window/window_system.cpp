@@ -39,6 +39,19 @@ namespace CoreEngine {
         return backend_ != nullptr ? backend_->GetNativeHandle() : NativeWindowHandle{};
     }
 
+    const WindowState &WindowSystem::State() const {
+        static constexpr WindowState empty_state{};
+        return backend_ != nullptr ? backend_->GetState() : empty_state;
+    }
+
+    WindowExtent WindowSystem::LogicalSize() const {
+        return State().logical_size;
+    }
+
+    WindowExtent WindowSystem::PixelSize() const {
+        return State().pixel_size;
+    }
+
     std::span<const WindowEvent> WindowSystem::Events() const {
         return events_.Events();
     }

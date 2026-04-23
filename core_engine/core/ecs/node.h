@@ -56,6 +56,12 @@ namespace CoreEngine {
 
         void SetScale(const Math::Vec3 &scale);
 
+        Math::Vec3 GetPosition();
+
+        Math::Quat GetRotation();
+
+        Math::Vec3 GetScale();
+
     private:
         entt::entity handle_{entt::null};
         World *world_{nullptr};

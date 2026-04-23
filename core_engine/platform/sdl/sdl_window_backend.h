@@ -25,6 +25,8 @@ namespace CoreEngine {
 
         [[nodiscard]] NativeWindowHandle GetNativeHandle() const override;
 
+        [[nodiscard]] const WindowState &GetState() const override;
+
         [[nodiscard]] std::string_view LastError() const override;
 
     private:
@@ -32,6 +34,7 @@ namespace CoreEngine {
         SDL_Window *window_ = nullptr;
         void *metal_view_ = nullptr;
         bool should_close_ = false;
+        WindowState state_{};
         std::string last_error_;
     };
 } // namespace CoreEngine
