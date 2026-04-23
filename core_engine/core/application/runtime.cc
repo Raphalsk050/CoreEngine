@@ -2,9 +2,23 @@
 #include "core/i_game_app.h"
 #include <memory>
 
+#include "core/render/render_desc.h"
+#include "core/window/window_event.h"
+#include "platform/render_backend_factory.h"
 #include "platform/sdl/sdl_audio_backend.h"
 #include "platform/sdl/sdl_window_backend.h"
 
+namespace {
+    CoreEngine::WindowSurfaceType SelectWindowSurfaceType(CoreEngine::RenderBackendType backend) {
+#if defined(__APPLE__)
+        if (backend == CoreEngine::RenderBackendType::DiligentVulkan) {
+            return CoreEngine::WindowSurfaceType::Metal;
+        }
+#endif
+
+        return CoreEngine::WindowSurfaceType::Default;
+    }
+}
 namespace CoreEngine {
     int RunEngine(std::unique_ptr<IGameApp> app, const EngineConfig &config) {
         if (!app)
@@ -32,6 +46,7 @@ namespace CoreEngine {
             .world = *world_,
             .audio_system = *audio_system_,
             .window_system = *window_system_,
+            .render_system = *render_system_,
         };
 
         app.Init(engineContext);
@@ -45,10 +60,12 @@ namespace CoreEngine {
                 .world = *world_,
                 .audio_system = *audio_system_,
                 .window_system = *window_system_,
+                .render_system = *render_system_,
             };
 
             Tick(frameContext);
             app.Update(frameContext);
+            render_system_->RenderFrame(*world_);
         }
 
         app.Shutdown(engineContext);
@@ -68,8 +85,9 @@ namespace CoreEngine {
 
         InitializeSink();
         InitializeWorld();
-        InitializeAudioBackend();
         InitializeWindowBackend();
+        InitializeAudioBackend();
+        InitializeRenderBackend();
         return true;
     }
 
@@ -98,7 +116,7 @@ namespace CoreEngine {
         desc.highDpi = config_.highDPI;
         desc.decorated = config_.decorated;
         desc.fullscreen = config_.fullscreen;
-
+        desc.surface_type = SelectWindowSurfaceType(config_.renderBackend);
 
         if (!window_system_->Initialize(desc)) {
             Log::Error("Window", window_system_->LastError());
@@ -117,9 +135,35 @@ namespace CoreEngine {
         }
     }
 
+    void Runtime::InitializeRenderBackend() {
+        std::unique_ptr<IRenderBackend> backend = CreateRenderBackend(config_.renderBackend);
+        if (backend == nullptr) {
+            Log::Error("Render", "Requested render backend is not available. Enable CORE_ENGINE_ENABLE_DILIGENT or choose RenderBackendType::None.");
+            backend = CreateRenderBackend(RenderBackendType::None);
+        }
+
+        render_system_ = std::make_unique<RenderSystem>(std::move(backend));
+
+        RenderDesc desc;
+        desc.backend = config_.renderBackend;
+        desc.vsync   = config_.vsync;
+        desc.width   = config_.windowWidth;
+        desc.height  = config_.windowHeight;
+
+        if (!render_system_->Initialize(desc, window_system_->GetNativeHandle())) {
+            Log::Error("Render", render_system_->LastError());
+        }
+    }
+
     void Runtime::Tick(const FrameContext &frame) {
         (void) frame;
         window_system_->PollEvents();
+
+        for (const WindowEvent &event: window_system_->Events()) {
+            if (event.type == WindowEventType::Resized || event.type == WindowEventType::PixelSizeChanged) {
+                render_system_->Resize(event.width, event.height);
+            }
+        }
 
         if (window_system_->ShouldClose()) {
             RequestShutdown();
@@ -128,6 +172,11 @@ namespace CoreEngine {
 
     void Runtime::Shutdown() {
         Application::Unbind();
+
+        if (render_system_ != nullptr) {
+            render_system_->Shutdown();
+            render_system_.reset();
+        }
 
         if (audio_system_ != nullptr) {
             audio_system_->Shutdown();

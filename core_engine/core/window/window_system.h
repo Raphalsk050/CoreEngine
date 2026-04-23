@@ -21,6 +21,8 @@ namespace CoreEngine {
 
         [[nodiscard]] bool ShouldClose() const;
 
+        [[nodiscard]] NativeWindowHandle GetNativeHandle() const;
+
         [[nodiscard]] std::string_view LastError() const;
 
     private:
