@@ -1,6 +1,6 @@
 #include <memory>
 
-#include <glm/gtc/quaternion.hpp>
+#include "core/math/math.h"
 
 #include "player_controller.h"
 #include "player_pawn.h"
@@ -61,7 +61,7 @@ public:
 
         plane_node_.SetPosition({0.f, -0.75f, 0.f});
         plane_node_.SetScale({3.f, 1.f, 3.f});
-        plane_node_.SetRotation(glm::angleAxis(glm::radians(180.0f), CoreEngine::Math::Vec3(0.0f, 0.f, 1.f)));
+        plane_node_.SetRotation(CoreEngine::Math::AngleAxis(CoreEngine::Math::Deg2Rad(180.0f), CoreEngine::Math::Vec3(0.0f, 0.f, 1.f)));
 
         player_controller_.Possess(player_pawn_);
 

@@ -83,10 +83,10 @@ namespace CoreEngine::Math {
     template<typename T>
     concept AngleConvertible = Scalar<T> || Vector<T>;
 
-    inline constexpr float Pi = glm::pi<float>();
-    inline constexpr float TwoPi = glm::two_pi<float>();
-    inline constexpr float HalfPi = glm::half_pi<float>();
-    inline constexpr float Epsilon = glm::epsilon<float>();
+    inline constexpr float Pi      = 3.14159265358979323846f;
+    inline constexpr float TwoPi   = 6.28318530717958647692f;
+    inline constexpr float HalfPi  = 1.57079632679489661923f;
+    inline constexpr float Epsilon = 1.192092896e-07f;
 
     /// Converts degrees to radians.
     template<AngleConvertible T>

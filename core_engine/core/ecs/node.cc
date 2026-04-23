@@ -34,15 +34,15 @@ namespace CoreEngine {
 
     bool Node::operator!=(const Node &other) const { return !(*this == other); }
 
-    void Node::SetPosition(const glm::vec3 &position) {
+    void Node::SetPosition(const Math::Vec3 &position) {
         GetComponent<TransformComponent>().position = position;
     }
 
-    void Node::SetRotation(const glm::quat &rotation) {
+    void Node::SetRotation(const Math::Quat &rotation) {
         GetComponent<TransformComponent>().rotation = rotation;
     }
 
-    void Node::SetScale(const glm::vec3 &scale) {
+    void Node::SetScale(const Math::Vec3 &scale) {
         GetComponent<TransformComponent>().scale = scale;
     }
 } // namespace CoreEngine

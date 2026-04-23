@@ -1,9 +1,9 @@
 #pragma once
 
-#include <glm/glm.hpp>
 #include <span>
 #include <vector>
 
+#include "core/math/math.h"
 #include "core/render/render_handle.h"
 #include "core/render/material_desc.h"
 
@@ -11,7 +11,7 @@ namespace CoreEngine {
     class IRenderContext;
 
     struct UnlitProps {
-        alignas(16) glm::vec4 color{1.f, 1.f, 1.f, 1.f};
+        alignas(16) Math::Vec4 color{1.f, 1.f, 1.f, 1.f};
     };
 
     class Material {

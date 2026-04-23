@@ -21,16 +21,16 @@
 #include "core/render/render_batch.h"
 #include "core/render/vertex.h"
 
-#include <glm/glm.hpp>
+#include "core/math/math.h"
 
 namespace CoreEngine {
     namespace {
         struct PerFrameCB {
-            glm::mat4 view_proj;
+            Math::Mat4 view_proj;
         };
 
         struct PerObjectCB {
-            glm::mat4 model;
+            Math::Mat4 model;
         };
 
         struct DiligentMeshData {

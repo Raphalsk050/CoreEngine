@@ -5,7 +5,7 @@
 #include <utility>
 
 namespace CoreEngine {
-    void BatchAccumulator::Add(MaterialHandle material, MeshHandle mesh, const glm::mat4 &transform) {
+    void BatchAccumulator::Add(MaterialHandle material, MeshHandle mesh, const Math::Mat4 &transform) {
         const BatchKey key{.material = material, .mesh = mesh};
         const auto it = std::find(keys_.begin(), keys_.end(), key);
 

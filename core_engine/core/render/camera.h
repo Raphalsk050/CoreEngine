@@ -1,16 +1,14 @@
 #pragma once
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-
+#include "core/math/math.h"
 #include "core/render/camera_data.h"
 
 namespace CoreEngine {
     class Camera {
     public:
-        Camera &LookAt(const glm::vec3 &position,
-                       const glm::vec3 &target,
-                       const glm::vec3 &up = {0.f, 1.f, 0.f});
+        Camera &LookAt(const Math::Vec3 &position,
+                       const Math::Vec3 &target,
+                       const Math::Vec3 &up = {0.f, 1.f, 0.f});
 
         Camera &Perspective(float fov_y_degrees,
                             float width,
@@ -27,14 +25,14 @@ namespace CoreEngine {
                              float bottom, float top,
                              float near_z, float far_z);
 
-        [[nodiscard]] const glm::vec3 &Position() const { return position_; }
+        [[nodiscard]] const Math::Vec3 &Position() const { return position_; }
 
         [[nodiscard]] CameraData GetCameraData() const;
 
     private:
-        glm::vec3 position_{0.f, 0.f, -5.f};
-        glm::vec3 target_{0.f, 0.f, 0.f};
-        glm::vec3 up_{0.f, 1.f, 0.f};
-        glm::mat4 projection_{1.f};
+        Math::Vec3 position_{0.f, 0.f, -5.f};
+        Math::Vec3 target_{0.f, 0.f, 0.f};
+        Math::Vec3 up_{0.f, 1.f, 0.f};
+        Math::Mat4 projection_{1.f};
     };
 }
