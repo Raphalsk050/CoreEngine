@@ -1,7 +1,6 @@
 #include "core/ecs/node.h"
 
 #include "components/name_component.h"
-#include "components/transform_component.h"
 #include "core/ecs/world.h"
 
 namespace CoreEngine {
@@ -33,16 +32,4 @@ namespace CoreEngine {
     }
 
     bool Node::operator!=(const Node &other) const { return !(*this == other); }
-
-    void Node::SetPosition(const glm::vec3 &position) {
-        GetComponent<TransformComponent>().position = position;
-    }
-
-    void Node::SetRotation(const glm::quat &rotation) {
-        GetComponent<TransformComponent>().rotation = rotation;
-    }
-
-    void Node::SetScale(const glm::vec3 &scale) {
-        GetComponent<TransformComponent>().scale = scale;
-    }
 } // namespace CoreEngine

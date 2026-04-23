@@ -9,20 +9,12 @@ namespace CoreEngine {
         return backend_ != nullptr && backend_->Initialize(desc);
     }
 
-    void WindowSystem::BeginFrame() {
-        events_.Clear();
-    }
-
     void WindowSystem::PollEvents() {
-        BeginFrame();
+        events_.Clear();
 
         if (backend_ != nullptr) {
             backend_->PollEvents(events_);
         }
-    }
-
-    bool WindowSystem::PushEvent(const WindowEvent &event) {
-        return events_.Push(event);
     }
 
     void WindowSystem::Shutdown() const {
@@ -35,10 +27,6 @@ namespace CoreEngine {
         return backend_ == nullptr || backend_->ShouldClose();
     }
 
-    NativeWindowHandle WindowSystem::GetNativeHandle() const {
-        return backend_ != nullptr ? backend_->GetNativeHandle() : NativeWindowHandle{};
-    }
-
     std::span<const WindowEvent> WindowSystem::Events() const {
         return events_.Events();
     }
@@ -46,4 +34,4 @@ namespace CoreEngine {
     std::string_view WindowSystem::LastError() const {
         return backend_ != nullptr ? backend_->LastError() : "Window backend is not available";
     }
-} // namespace CoreEngine
+}

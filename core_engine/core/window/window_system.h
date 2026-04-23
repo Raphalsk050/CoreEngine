@@ -13,19 +13,13 @@ namespace CoreEngine {
 
         [[nodiscard]] bool Initialize(const WindowDesc &desc) const;
 
-        void BeginFrame();
-
         void PollEvents();
-
-        [[nodiscard]] bool PushEvent(const WindowEvent &event);
 
         void Shutdown() const;
 
         [[nodiscard]] std::span<const WindowEvent> Events() const;
 
         [[nodiscard]] bool ShouldClose() const;
-
-        [[nodiscard]] NativeWindowHandle GetNativeHandle() const;
 
         [[nodiscard]] std::string_view LastError() const;
 

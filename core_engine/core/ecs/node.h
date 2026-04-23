@@ -2,9 +2,6 @@
 #include <cstdint>
 #include <entt/entt.hpp>
 
-#include "glm/fwd.hpp"
-#include "glm/vec3.hpp"
-
 namespace CoreEngine {
     class World;
 
@@ -50,12 +47,6 @@ namespace CoreEngine {
         bool operator==(const Node &other) const;
 
         bool operator!=(const Node &other) const;
-
-        void SetPosition(const glm::vec3 &position);
-
-        void SetRotation(const glm::quat &rotation);
-
-        void SetScale(const glm::vec3 &scale);
 
     private:
         entt::entity handle_{entt::null};
