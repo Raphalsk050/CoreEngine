@@ -19,6 +19,7 @@ namespace {
         return CoreEngine::WindowSurfaceType::Default;
     }
 }
+
 namespace CoreEngine {
     int RunEngine(std::unique_ptr<IGameApp> app, const EngineConfig &config) {
         if (!app)
@@ -45,6 +46,7 @@ namespace CoreEngine {
         EngineContext engineContext{
             .world = *world_,
             .audio_system = *audio_system_,
+            .input_system = *input_system_,
             .window_system = *window_system_,
             .render_system = *render_system_,
         };
@@ -59,6 +61,7 @@ namespace CoreEngine {
                 .delta_time = deltaTime,
                 .world = *world_,
                 .audio_system = *audio_system_,
+                .input_system = *input_system_,
                 .window_system = *window_system_,
                 .render_system = *render_system_,
             };
@@ -86,6 +89,7 @@ namespace CoreEngine {
         InitializeSink();
         InitializeWorld();
         InitializeWindowBackend();
+        InitializeInputSystem();
         InitializeAudioBackend();
         InitializeRenderBackend();
         return true;
@@ -106,6 +110,7 @@ namespace CoreEngine {
     void Runtime::InitializeWindowBackend() {
         // TODO(rafael): improve this in the future to take off the SDL specification from here
         auto backend = std::make_unique<SdlWindowBackend>(sdl_context_);
+        sdl_window_backend_ = backend.get();
         window_system_ = std::make_unique<WindowSystem>(std::move(backend));
 
         WindowDesc desc;
@@ -120,6 +125,15 @@ namespace CoreEngine {
 
         if (!window_system_->Initialize(desc)) {
             Log::Error("Window", window_system_->LastError());
+        }
+    }
+
+    void Runtime::InitializeInputSystem() {
+        input_system_ = std::make_unique<InputSystem>();
+        sdl_input_backend_ = std::make_unique<SdlInputBackend>(*input_system_);
+
+        if (sdl_window_backend_ != nullptr) {
+            sdl_event_pump_ = std::make_unique<SdlPlatformEventPump>(*sdl_window_backend_, *sdl_input_backend_);
         }
     }
 
@@ -157,7 +171,23 @@ namespace CoreEngine {
 
     void Runtime::Tick(const FrameContext &frame) {
         (void) frame;
-        window_system_->PollEvents();
+
+        input_system_->BeginFrame();
+        window_system_->BeginFrame();
+
+        if (sdl_event_pump_ != nullptr) {
+            sdl_event_pump_->PumpEvents(*window_system_);
+        } else {
+            window_system_->PollEvents();
+        }
+
+        input_system_->CommitFrame();
+
+        for (const WindowEvent &event: window_system_->Events()) {
+            if (event.type == WindowEventType::Resized || event.type == WindowEventType::PixelSizeChanged) {
+                render_system_->Resize(event.width, event.height);
+            }
+        }
 
         for (const WindowEvent &event: window_system_->Events()) {
             if (event.type == WindowEventType::Resized || event.type == WindowEventType::PixelSizeChanged) {
@@ -178,6 +208,10 @@ namespace CoreEngine {
             render_system_.reset();
         }
 
+        sdl_event_pump_.reset();
+        sdl_input_backend_.reset();
+        input_system_.reset();
+
         if (audio_system_ != nullptr) {
             audio_system_->Shutdown();
             audio_system_.reset();
@@ -186,6 +220,7 @@ namespace CoreEngine {
         if (window_system_ != nullptr) {
             window_system_->Shutdown();
             window_system_.reset();
+            sdl_window_backend_ = nullptr;
         }
 
         Log::Unbind();

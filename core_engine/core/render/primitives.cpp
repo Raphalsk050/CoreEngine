@@ -5,7 +5,9 @@
 
 namespace CoreEngine::Primitives {
     namespace {
-        constexpr std::array<StaticMeshVertex, 24> kCubeVertices{{
+        // NOTE: Cannot be constexpr — aligned GLM types (GLM_FORCE_DEFAULT_ALIGNED_GENTYPES)
+        // use SIMD intrinsics in constructors which are not constexpr-evaluable.
+        const std::array<StaticMeshVertex, 24> kCubeVertices{{
             {{-0.5f,  0.5f, -0.5f}, { 0.f,  0.f, -1.f}, {1.f, 1.f, 1.f}, {0.f, 0.f}},
             {{ 0.5f,  0.5f, -0.5f}, { 0.f,  0.f, -1.f}, {1.f, 1.f, 1.f}, {1.f, 0.f}},
             {{ 0.5f, -0.5f, -0.5f}, { 0.f,  0.f, -1.f}, {1.f, 1.f, 1.f}, {1.f, 1.f}},
@@ -46,7 +48,7 @@ namespace CoreEngine::Primitives {
             20, 21, 22, 22, 23, 20,
         }};
 
-        constexpr std::array<StaticMeshVertex, 4> kPlaneVertices{{
+        const std::array<StaticMeshVertex, 4> kPlaneVertices{{
             {{-0.5f, 0.f, -0.5f}, {0.f, 1.f, 0.f}, {1.f, 1.f, 1.f}, {0.f, 0.f}},
             {{ 0.5f, 0.f, -0.5f}, {0.f, 1.f, 0.f}, {1.f, 1.f, 1.f}, {1.f, 0.f}},
             {{ 0.5f, 0.f,  0.5f}, {0.f, 1.f, 0.f}, {1.f, 1.f, 1.f}, {1.f, 1.f}},
@@ -55,7 +57,7 @@ namespace CoreEngine::Primitives {
 
         constexpr std::array<uint32_t, 6> kPlaneIndices{{0, 1, 2, 2, 3, 0}};
 
-        constexpr std::array<StaticMeshVertex, 4> kQuadVertices{{
+        const std::array<StaticMeshVertex, 4> kQuadVertices{{
             {{-0.5f, -0.5f, 0.f}, {0.f, 0.f, 1.f}, {1.f, 1.f, 1.f}, {0.f, 1.f}},
             {{ 0.5f, -0.5f, 0.f}, {0.f, 0.f, 1.f}, {1.f, 1.f, 1.f}, {1.f, 1.f}},
             {{ 0.5f,  0.5f, 0.f}, {0.f, 0.f, 1.f}, {1.f, 1.f, 1.f}, {1.f, 0.f}},

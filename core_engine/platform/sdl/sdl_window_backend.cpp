@@ -2,7 +2,6 @@
 
 #include "core/window/window_event.h"
 #include "core/window/window_event_queue.h"
-#include "SDL3/SDL_events.h"
 #include "SDL3/SDL_properties.h"
 
 #if defined(__APPLE__)
@@ -74,48 +73,55 @@ namespace CoreEngine {
         SDL_Event event;
 
         while (SDL_PollEvent(&event)) {
-            switch (event.type) {
-                case SDL_EVENT_QUIT:
-                case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-                    should_close_ = true;
-                    queue.Push(WindowEvent{.type = WindowEventType::CloseRequested});
-                    break;
-
-                case SDL_EVENT_WINDOW_RESIZED:
-                    queue.Push(WindowEvent{
-                        .type = WindowEventType::Resized,
-                        .width = event.window.data1,
-                        .height = event.window.data2
-                    });
-                    break;
-
-                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-                    queue.Push(WindowEvent{
-                        .type = WindowEventType::PixelSizeChanged,
-                        .width = event.window.data1,
-                        .height = event.window.data2
-                    });
-                    break;
-
-                case SDL_EVENT_WINDOW_FOCUS_GAINED:
-                    queue.Push(WindowEvent{.type = WindowEventType::FocusGained});
-                    break;
-
-                case SDL_EVENT_WINDOW_FOCUS_LOST:
-                    queue.Push(WindowEvent{.type = WindowEventType::FocusLost});
-                    break;
-
-                case SDL_EVENT_WINDOW_MINIMIZED:
-                    queue.Push(WindowEvent{.type = WindowEventType::Minimized});
-                    break;
-
-                case SDL_EVENT_WINDOW_RESTORED:
-                    queue.Push(WindowEvent{.type = WindowEventType::Restored});
-                    break;
-
-                default:
-                    break;
+            WindowEvent window_event;
+            if (HandleEvent(event, window_event)) {
+                queue.Push(window_event);
             }
+        }
+    }
+
+    bool SdlWindowBackend::HandleEvent(const SDL_Event &event, WindowEvent &out_event) noexcept {
+        switch (event.type) {
+            case SDL_EVENT_QUIT:
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                should_close_ = true;
+                out_event = WindowEvent{.type = WindowEventType::CloseRequested};
+                return true;
+
+            case SDL_EVENT_WINDOW_RESIZED:
+                out_event = WindowEvent{
+                    .type = WindowEventType::Resized,
+                    .width = event.window.data1,
+                    .height = event.window.data2,
+                };
+                return true;
+
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                out_event = WindowEvent{
+                    .type = WindowEventType::PixelSizeChanged,
+                    .width = event.window.data1,
+                    .height = event.window.data2,
+                };
+                return true;
+
+            case SDL_EVENT_WINDOW_FOCUS_GAINED:
+                out_event = WindowEvent{.type = WindowEventType::FocusGained};
+                return true;
+
+            case SDL_EVENT_WINDOW_FOCUS_LOST:
+                out_event = WindowEvent{.type = WindowEventType::FocusLost};
+                return true;
+
+            case SDL_EVENT_WINDOW_MINIMIZED:
+                out_event = WindowEvent{.type = WindowEventType::Minimized};
+                return true;
+
+            case SDL_EVENT_WINDOW_RESTORED:
+                out_event = WindowEvent{.type = WindowEventType::Restored};
+                return true;
+
+            default:
+                return false;
         }
     }
 
@@ -165,4 +171,4 @@ namespace CoreEngine {
     std::string_view SdlWindowBackend::LastError() const {
         return last_error_;
     }
-}
+} // namespace CoreEngine
