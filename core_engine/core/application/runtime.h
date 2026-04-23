@@ -1,5 +1,4 @@
 #pragma once
-#include <atomic>
 #include "application.h"
 #include "core/application/frame_context.h"
 #include "core/ecs/world_access.h"
@@ -8,14 +7,9 @@
 #include "core/ecs/world.h"
 #include "engine.h"
 #include "core/audio/audio_system.h"
-#include "core/input/input_system.h"
-#include "core/render/render_system.h"
 #include "core/time/frame_clock.h"
 #include "core/window/window_system.h"
 #include "platform/sdl/sdl_context.h"
-#include "platform/sdl/sdl_input_backend.h"
-#include "platform/sdl/sdl_platform_event_pump.h"
-#include "platform/sdl/sdl_window_backend.h"
 
 namespace CoreEngine {
     class IGameApp;
@@ -43,11 +37,7 @@ namespace CoreEngine {
 
         void InitializeWindowBackend();
 
-        void InitializeInputSystem();
-
         void InitializeAudioBackend();
-
-        void InitializeRenderBackend();
 
         void Tick(const FrameContext &frame);
 
@@ -63,11 +53,6 @@ namespace CoreEngine {
         std::shared_ptr<ConsoleSink> console_sink_;
         std::unique_ptr<WindowSystem> window_system_;
         std::unique_ptr<AudioSystem> audio_system_;
-        std::unique_ptr<InputSystem> input_system_;
-        std::unique_ptr<RenderSystem> render_system_;
-        std::unique_ptr<SdlInputBackend> sdl_input_backend_;
-        std::unique_ptr<SdlPlatformEventPump> sdl_event_pump_;
-        SdlWindowBackend *sdl_window_backend_ = nullptr;
         SdlContext sdl_context_;
         std::atomic_bool shutdown_requested_{false};
     };

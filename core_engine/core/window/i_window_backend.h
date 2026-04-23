@@ -1,8 +1,5 @@
 #pragma once
 
-#include <string_view>
-
-#include "core/window/native_window_handle.h"
 #include "core/window/window_desc.h"
 
 namespace CoreEngine {
@@ -19,8 +16,6 @@ namespace CoreEngine {
         virtual void Shutdown() = 0;
 
         [[nodiscard]] virtual bool ShouldClose() const = 0;
-
-        [[nodiscard]] virtual NativeWindowHandle GetNativeHandle() const = 0;
 
         [[nodiscard]] virtual std::string_view LastError() const = 0;
     };
