@@ -19,6 +19,7 @@
 #endif
 #include "DiligentCore/Common/interface/RefCntAutoPtr.hpp"
 #include "core/render/render_batch.h"
+#include "core/render/vertex.h"
 
 #include <glm/glm.hpp>
 
@@ -261,11 +262,21 @@ namespace CoreEngine {
             auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL,
                                     desc.pixel_shader_source.c_str(), "PS");
 
+            // NOTE: Explicit offsets required — GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+            // changes sizeof(glm::vec3) from 12 to 16, adding padding between fields.
+            constexpr Diligent::Uint32 kStride = sizeof(StaticMeshVertex);
+
             Diligent::LayoutElement layout[] = {
-                {0, 0, 3, Diligent::VT_FLOAT32, false},
-                {1, 0, 3, Diligent::VT_FLOAT32, false},
-                {2, 0, 3, Diligent::VT_FLOAT32, false},
-                {3, 0, 2, Diligent::VT_FLOAT32, false},
+                // InputIndex, BufferSlot, NumComponents, ValueType, IsNormalized,
+                //   RelativeOffset, Stride
+                {0, 0, 3, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, position)), kStride},
+                {1, 0, 3, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, normal)),   kStride},
+                {2, 0, 3, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, color)),    kStride},
+                {3, 0, 2, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, uv)),       kStride},
             };
 
             Diligent::GraphicsPipelineStateCreateInfo pci;

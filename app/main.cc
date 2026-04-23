@@ -29,8 +29,11 @@ public:
                 context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Cube);
         const CoreEngine::MeshHandle plane_mesh =
                 context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Plane);
-        const CoreEngine::MaterialHandle material =
+        const CoreEngine::MaterialHandle cube_material =
                 CoreEngine::Material::Unlit({.color = {1.2f, 0.6f, 1.0f, 1.0f}}).Resolve(context.render_system);
+
+        const CoreEngine::MaterialHandle plane_material =
+                CoreEngine::Material::Unlit({.color = {0.5f, 0.6f, 1.0f, 1.0f}}).Resolve(context.render_system);
 
         player_pawn_ = Game::PlayerPawn(
             context.world.CreateNode("Player"),
@@ -45,14 +48,14 @@ public:
         player_pawn_.Node().AddComponent<CoreEngine::MeshRendererComponent>(
             CoreEngine::MeshRendererComponent{
                 .mesh = cube_mesh,
-                .material = material,
+                .material = cube_material,
             });
 
         plane_node_ = context.world.CreateNode("Plane");
         plane_node_.AddComponent<CoreEngine::MeshRendererComponent>(
             CoreEngine::MeshRendererComponent{
                 .mesh = plane_mesh,
-                .material = material,
+                .material = plane_material,
             });
 
         plane_node_.SetPosition({0.f, -0.75f, 0.f});
