@@ -1,13 +1,13 @@
 #pragma once
 
-#include <glm/glm.hpp>
 #include <vector>
 
+#include "core/math/math.h"
 #include "core/render/render_handle.h"
 
 namespace CoreEngine {
     struct RenderInstance {
-        glm::mat4 transform{1.f};
+        Math::Mat4 transform{1.f};
     };
 
     struct RenderBatch {
@@ -18,7 +18,7 @@ namespace CoreEngine {
 
     class BatchAccumulator {
     public:
-        void Add(MaterialHandle material, MeshHandle mesh, const glm::mat4 &transform);
+        void Add(MaterialHandle material, MeshHandle mesh, const Math::Mat4 &transform);
 
         [[nodiscard]] const std::vector<RenderBatch> &Batches() const { return batches_; }
 

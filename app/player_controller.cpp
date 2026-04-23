@@ -61,7 +61,7 @@ namespace Game {
         const CoreEngine::InputVector2 movement = frame.input_system.GetAxis2D(Actions::Move);
 
         return PlayerCommand{
-            .movement = glm::vec2{movement.x, movement.y},
+            .movement = CoreEngine::Math::Vec2{movement.x, movement.y},
             .jump_pressed = frame.input_system.WasActionPressed(Actions::Jump),
             .run_held = frame.input_system.IsActionDown(Actions::Run),
         };

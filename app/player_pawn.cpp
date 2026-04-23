@@ -1,8 +1,6 @@
 #include "player_pawn.h"
 
-#include <glm/geometric.hpp>
-#include <glm/vec3.hpp>
-
+#include "core/math/math.h"
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/world.h"
 
@@ -24,14 +22,14 @@ namespace Game {
             return;
         }
 
-        glm::vec2 movement = command.movement;
-        const float length_squared = glm::dot(movement, movement);
+        CoreEngine::Math::Vec2 movement = command.movement;
+        const float length_squared = CoreEngine::Math::Dot(movement, movement);
         if (length_squared <= 0.0f) {
             return;
         }
 
         if (length_squared > 1.0f) {
-            movement = glm::normalize(movement);
+            movement = CoreEngine::Math::Normalize(movement);
         }
 
         auto *transform = node_.TryGetComponent<CoreEngine::TransformComponent>();
@@ -40,7 +38,7 @@ namespace Game {
         }
 
         const float speed = ResolveSpeed(command);
-        transform->position += glm::vec3(movement.x, 0.0f, movement.y) * speed * delta_time;
+        transform->position += CoreEngine::Math::Vec3(movement.x, 0.0f, movement.y) * speed * delta_time;
     }
 
     CoreEngine::Node &PlayerPawn::Node() noexcept {

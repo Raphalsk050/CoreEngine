@@ -2,8 +2,7 @@
 #include <cstdint>
 #include <entt/entt.hpp>
 
-#include "glm/fwd.hpp"
-#include "glm/vec3.hpp"
+#include "core/math/math.h"
 
 namespace CoreEngine {
     class World;
@@ -51,11 +50,11 @@ namespace CoreEngine {
 
         bool operator!=(const Node &other) const;
 
-        void SetPosition(const glm::vec3 &position);
+        void SetPosition(const Math::Vec3 &position);
 
-        void SetRotation(const glm::quat &rotation);
+        void SetRotation(const Math::Quat &rotation);
 
-        void SetScale(const glm::vec3 &scale);
+        void SetScale(const Math::Vec3 &scale);
 
     private:
         entt::entity handle_{entt::null};
