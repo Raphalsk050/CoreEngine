@@ -18,6 +18,10 @@ namespace Game {
 
         void SetDistance(float distance) noexcept;
 
+        float GetDistance() const noexcept {
+            return distance_;
+        }
+
         void Update(float delta_time);
 
     private:

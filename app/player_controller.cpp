@@ -32,6 +32,7 @@ namespace Game {
     void PlayerController::Update(const CoreEngine::FrameContext &frame) {
         if (camera_controller_ != nullptr) {
             camera_controller_->ApplyLookDelta(BuildLookDelta(frame));
+            BuildCameraDistance(frame);
         }
 
         if (possessable_ != nullptr) {
@@ -107,5 +108,12 @@ namespace Game {
             mouse_x * mouse_sensitivity_x_,
             mouse_y * mouse_sensitivity_y_ * y_sign,
         };
+    }
+
+    void PlayerController::BuildCameraDistance(const CoreEngine::FrameContext &frame) const noexcept {
+        float new_distance = CoreEngine::Math::Clamp(
+            camera_controller_->GetDistance() - frame.input_system.MouseWheel().y, min_camera_distance_,
+            max_camera_distance_);
+        camera_controller_->SetDistance(new_distance);
     }
 } // namespace Game

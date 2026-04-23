@@ -99,8 +99,6 @@ private:
     Game::ThirdPersonCameraController third_person_camera_controller_;
     Game::PlayerPawn player_pawn_;
     Game::PlayerController player_controller_;
-    float mouse_x_ = 0.0f;
-    float mouse_y_ = 0.0f;
 };
 
 int main() {

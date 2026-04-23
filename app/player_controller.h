@@ -32,11 +32,15 @@ namespace Game {
 
         [[nodiscard]] CoreEngine::Math::Vec2 BuildLookDelta(const CoreEngine::FrameContext &frame) const noexcept;
 
+        void BuildCameraDistance(const CoreEngine::FrameContext &frame) const noexcept;
+
         IPossessable *possessable_ = nullptr;
         ThirdPersonCameraController *camera_controller_ = nullptr;
 
         float mouse_sensitivity_x_ = 0.12f;
         float mouse_sensitivity_y_ = 0.12f;
+        float max_camera_distance_ = 20.0f;
+        float min_camera_distance_ = 3.0f;
         bool invert_y_ = false;
     };
 } // namespace Game
