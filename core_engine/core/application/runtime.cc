@@ -189,6 +189,12 @@ namespace CoreEngine {
             }
         }
 
+        for (const WindowEvent &event: window_system_->Events()) {
+            if (event.type == WindowEventType::Resized || event.type == WindowEventType::PixelSizeChanged) {
+                render_system_->Resize(event.width, event.height);
+            }
+        }
+
         if (window_system_->ShouldClose()) {
             RequestShutdown();
         }
