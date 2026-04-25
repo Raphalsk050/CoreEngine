@@ -59,4 +59,8 @@ namespace CoreEngine {
     std::string_view WindowSystem::LastError() const {
         return backend_ != nullptr ? backend_->LastError() : "Window backend is not available";
     }
+
+    void WindowSystem::SetWindowCursorMode(WindowCursorMode cursor_mode) const {
+        backend_->SetWindowCursorMode(cursor_mode);
+    }
 } // namespace CoreEngine

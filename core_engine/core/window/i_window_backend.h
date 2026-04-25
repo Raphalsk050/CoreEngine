@@ -26,5 +26,7 @@ namespace CoreEngine {
         [[nodiscard]] virtual const WindowState &GetState() const = 0;
 
         [[nodiscard]] virtual std::string_view LastError() const = 0;
+
+        virtual void SetWindowCursorMode(WindowCursorMode cursor_mode) = 0;
     };
 } // namespace CoreEngine

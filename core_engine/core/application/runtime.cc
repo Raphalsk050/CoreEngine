@@ -132,7 +132,7 @@ namespace CoreEngine {
         input_system_ = std::make_unique<InputSystem>();
         sdl_input_backend_ = std::make_unique<SdlInputBackend>(*input_system_);
 
-        if (sdl_window_backend_ != nullptr) {
+        if (sdl_input_backend_ != nullptr) {
             sdl_event_pump_ = std::make_unique<SdlPlatformEventPump>(*sdl_window_backend_, *sdl_input_backend_);
         }
     }
@@ -152,7 +152,8 @@ namespace CoreEngine {
     void Runtime::InitializeRenderBackend() {
         std::unique_ptr<IRenderBackend> backend = CreateRenderBackend(config_.renderBackend);
         if (backend == nullptr) {
-            Log::Error("Render", "Requested render backend is not available. Enable CORE_ENGINE_ENABLE_DILIGENT or choose RenderBackendType::None.");
+            Log::Error("Render",
+                       "Requested render backend is not available. Enable CORE_ENGINE_ENABLE_DILIGENT or choose RenderBackendType::None.");
             backend = CreateRenderBackend(RenderBackendType::None);
         }
 
@@ -160,9 +161,9 @@ namespace CoreEngine {
 
         RenderDesc desc;
         desc.backend = config_.renderBackend;
-        desc.vsync   = config_.vsync;
-        desc.width   = config_.windowWidth;
-        desc.height  = config_.windowHeight;
+        desc.vsync = config_.vsync;
+        desc.width = config_.windowWidth;
+        desc.height = config_.windowHeight;
 
         if (!render_system_->Initialize(desc, window_system_->GetNativeHandle())) {
             Log::Error("Render", render_system_->LastError());

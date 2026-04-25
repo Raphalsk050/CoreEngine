@@ -9,6 +9,35 @@
 #endif
 
 namespace CoreEngine {
+    void SdlWindowBackend::SetWindowCursorMode(WindowCursorMode cursor_mode) {
+        if (state_.cursor_mode == cursor_mode)
+            return;
+
+        bool success = false;
+
+        switch (cursor_mode) {
+            case WindowCursorMode::CURSOR_CONSTRAINED:
+                success = SDL_SetWindowRelativeMouseMode(window_, true) && SDL_ShowCursor();
+                break;
+            case WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN:
+                success = SDL_SetWindowRelativeMouseMode(window_, true) && SDL_HideCursor();
+                break;
+            case WindowCursorMode::CURSOR_NORMAL:
+                SDL_WarpMouseInWindow(window_, 0.5, 0.5);
+                success = SDL_SetWindowRelativeMouseMode(window_, false) && SDL_ShowCursor();
+                SDL_FlashWindow(window_, SDL_FLASH_BRIEFLY);
+                break;
+            default:
+                break;
+        }
+
+        if (!success) {
+            last_error_ = SDL_GetError();
+        }
+
+        state_.cursor_mode = cursor_mode;
+    }
+
     SdlWindowBackend::SdlWindowBackend(SdlContext &context) : context_(context) {
     }
 

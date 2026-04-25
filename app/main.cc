@@ -78,6 +78,8 @@ public:
         plane_node_.SetScale({3.f, 1.f, 3.f});
         plane_node_.SetRotation(
             CoreEngine::Math::AngleAxis(CoreEngine::Math::Deg2Rad(180.0f), CoreEngine::Math::Vec3(0.0f, 0.f, 1.f)));
+
+        context.window_system.SetWindowCursorMode(CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN);
     }
 
     void Update(const CoreEngine::FrameContext &frame) override {
@@ -86,6 +88,24 @@ public:
         }
 
         player_controller_.Update(frame);
+
+        if (frame.input_system.WasKeyPressed(CoreEngine::Key::Tab)) {
+            switch (current_cursor_mode_) {
+                case CoreEngine::WindowCursorMode::CURSOR_NORMAL:
+                    frame.window_system.
+                            SetWindowCursorMode(CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN);
+                    current_cursor_mode_ = CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN;
+                    break;
+                case CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN:
+                    frame.window_system.SetWindowCursorMode(CoreEngine::WindowCursorMode::CURSOR_NORMAL);
+                    current_cursor_mode_ = CoreEngine::WindowCursorMode::CURSOR_NORMAL;
+                    break;
+                default:
+                    frame.window_system.SetWindowCursorMode(CoreEngine::WindowCursorMode::CURSOR_NORMAL);
+                    current_cursor_mode_ = CoreEngine::WindowCursorMode::CURSOR_NORMAL;
+                    break;
+            }
+        }
     }
 
     void Shutdown(const CoreEngine::EngineContext &) override {
@@ -99,6 +119,7 @@ private:
     Game::ThirdPersonCameraController third_person_camera_controller_;
     Game::PlayerPawn player_pawn_;
     Game::PlayerController player_controller_;
+    CoreEngine::WindowCursorMode current_cursor_mode_ = CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN;
 };
 
 int main() {
