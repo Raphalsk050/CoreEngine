@@ -5,6 +5,7 @@
 #include "movement_component.h"
 #include "core/ecs/node.h"
 #include "core/ecs/components/camera_component.h"
+#include "core/ecs/components/transform_component.h"
 
 namespace Game {
     class PlayerPawn final : public IPossessable {
@@ -30,6 +31,10 @@ namespace Game {
 
     private:
         [[nodiscard]] float ResolveSpeed(const PlayerCommand &command) const noexcept;
+
+        void RotateThroughMovement(float delta_time,
+                                   CoreEngine::TransformComponent *transform,
+                                   CoreEngine::Math::Vec3 move) noexcept;
 
         CoreEngine::Node node_{};
         MovementComponent movement_{};
