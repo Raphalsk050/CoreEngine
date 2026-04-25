@@ -37,9 +37,10 @@ namespace CoreEngine {
             return;
         }
 
-        accumulator_.Clear();
-
         auto view = world.View<TransformComponent, MeshRendererComponent>();
+        accumulator_.Clear();
+        accumulator_.Reserve(static_cast<std::size_t>(view.size_hint()));
+
         for (auto [entity, transform, renderer]: view.each()) {
             (void) entity;
 

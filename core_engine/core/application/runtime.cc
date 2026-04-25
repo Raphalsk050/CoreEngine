@@ -6,6 +6,9 @@
 #include "core/window/window_event.h"
 #include "platform/render_backend_factory.h"
 #include "platform/sdl/sdl_audio_backend.h"
+#include "platform/sdl/sdl_context.h"
+#include "platform/sdl/sdl_input_backend.h"
+#include "platform/sdl/sdl_platform_event_pump.h"
 #include "platform/sdl/sdl_window_backend.h"
 
 namespace {
@@ -21,6 +24,13 @@ namespace {
 }
 
 namespace CoreEngine {
+    struct Runtime::PlatformServices {
+        SdlContext sdl_context;
+        std::unique_ptr<SdlInputBackend> sdl_input_backend;
+        std::unique_ptr<SdlPlatformEventPump> sdl_event_pump;
+        SdlWindowBackend *sdl_window_backend = nullptr;
+    };
+
     int RunEngine(std::unique_ptr<IGameApp> app, const EngineConfig &config) {
         if (!app)
             return 1;
@@ -38,7 +48,11 @@ namespace CoreEngine {
         return shutdown_requested_.load(std::memory_order_acquire);
     }
 
-    Runtime::Runtime(const EngineConfig &config) { config_ = config; }
+    Runtime::Runtime(const EngineConfig &config)
+        : config_(config), platform_(std::make_unique<PlatformServices>()) {
+    }
+
+    Runtime::~Runtime() = default;
 
     int Runtime::Run(IGameApp &app) {
         Initialize();
@@ -109,8 +123,8 @@ namespace CoreEngine {
 
     void Runtime::InitializeWindowBackend() {
         // TODO(rafael): improve this in the future to take off the SDL specification from here
-        auto backend = std::make_unique<SdlWindowBackend>(sdl_context_);
-        sdl_window_backend_ = backend.get();
+        auto backend = std::make_unique<SdlWindowBackend>(platform_->sdl_context);
+        platform_->sdl_window_backend = backend.get();
         window_system_ = std::make_unique<WindowSystem>(std::move(backend));
 
         WindowDesc desc;
@@ -130,15 +144,17 @@ namespace CoreEngine {
 
     void Runtime::InitializeInputSystem() {
         input_system_ = std::make_unique<InputSystem>();
-        sdl_input_backend_ = std::make_unique<SdlInputBackend>(*input_system_);
+        platform_->sdl_input_backend = std::make_unique<SdlInputBackend>(*input_system_);
 
-        if (sdl_input_backend_ != nullptr) {
-            sdl_event_pump_ = std::make_unique<SdlPlatformEventPump>(*sdl_window_backend_, *sdl_input_backend_);
+        if (platform_->sdl_window_backend != nullptr && platform_->sdl_input_backend != nullptr) {
+            platform_->sdl_event_pump = std::make_unique<SdlPlatformEventPump>(
+                *platform_->sdl_window_backend,
+                *platform_->sdl_input_backend);
         }
     }
 
     void Runtime::InitializeAudioBackend() {
-        auto backend = std::make_unique<SdlAudioBackend>(sdl_context_);
+        auto backend = std::make_unique<SdlAudioBackend>(platform_->sdl_context);
         audio_system_ = std::make_unique<AudioSystem>(std::move(backend));
 
         AudioDesc desc;
@@ -176,19 +192,13 @@ namespace CoreEngine {
         input_system_->BeginFrame();
         window_system_->BeginFrame();
 
-        if (sdl_event_pump_ != nullptr) {
-            sdl_event_pump_->PumpEvents(*window_system_);
+        if (platform_->sdl_event_pump != nullptr) {
+            platform_->sdl_event_pump->PumpEvents(*window_system_);
         } else {
             window_system_->PollEvents();
         }
 
         input_system_->CommitFrame();
-
-        for (const WindowEvent &event: window_system_->Events()) {
-            if (event.type == WindowEventType::Resized || event.type == WindowEventType::PixelSizeChanged) {
-                render_system_->Resize(event.width, event.height);
-            }
-        }
 
         for (const WindowEvent &event: window_system_->Events()) {
             if (event.type == WindowEventType::Resized || event.type == WindowEventType::PixelSizeChanged) {
@@ -203,14 +213,15 @@ namespace CoreEngine {
 
     void Runtime::Shutdown() {
         Application::Unbind();
+        WorldAccess::Unbind();
 
         if (render_system_ != nullptr) {
             render_system_->Shutdown();
             render_system_.reset();
         }
 
-        sdl_event_pump_.reset();
-        sdl_input_backend_.reset();
+        platform_->sdl_event_pump.reset();
+        platform_->sdl_input_backend.reset();
         input_system_.reset();
 
         if (audio_system_ != nullptr) {
@@ -221,8 +232,10 @@ namespace CoreEngine {
         if (window_system_ != nullptr) {
             window_system_->Shutdown();
             window_system_.reset();
-            sdl_window_backend_ = nullptr;
+            platform_->sdl_window_backend = nullptr;
         }
+
+        world_.reset();
 
         Log::Unbind();
         console_sink_.reset();

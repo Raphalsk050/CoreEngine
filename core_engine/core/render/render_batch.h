@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstddef>
+#include <span>
+#include <unordered_map>
 #include <vector>
 
 #include "core/math/math.h"
@@ -20,7 +23,9 @@ namespace CoreEngine {
     public:
         void Add(MaterialHandle material, MeshHandle mesh, const Math::Mat4 &transform);
 
-        [[nodiscard]] const std::vector<RenderBatch> &Batches() const { return batches_; }
+        void Reserve(std::size_t expected_instances);
+
+        [[nodiscard]] std::span<const RenderBatch> Batches() const { return {batches_.data(), active_batch_count_}; }
 
         void Clear();
 
@@ -32,7 +37,12 @@ namespace CoreEngine {
             bool operator==(const BatchKey &other) const = default;
         };
 
+        struct BatchKeyHash {
+            [[nodiscard]] std::size_t operator()(const BatchKey &key) const noexcept;
+        };
+
         std::vector<RenderBatch> batches_;
-        std::vector<BatchKey> keys_;
+        std::unordered_map<BatchKey, std::size_t, BatchKeyHash> batch_indices_;
+        std::size_t active_batch_count_ = 0;
     };
 }

@@ -262,8 +262,7 @@ namespace CoreEngine {
             auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL,
                                     desc.pixel_shader_source.c_str(), "PS");
 
-            // NOTE: Explicit offsets required — GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
-            // changes sizeof(glm::vec3) from 12 to 16, adding padding between fields.
+            // Explicit offsets keep the vertex contract stable if math type packing changes.
             constexpr Diligent::Uint32 kStride = sizeof(StaticMeshVertex);
 
             Diligent::LayoutElement layout[] = {
