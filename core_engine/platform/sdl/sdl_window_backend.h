@@ -11,7 +11,7 @@
 namespace CoreEngine {
     class SdlWindowBackend final : public IWindowBackend {
     public:
-        void SetWindowCursorMode(WindowCursorMode cursor_mode) override;
+        [[nodiscard]] bool SetWindowCursorMode(WindowCursorMode cursor_mode) override;
 
         explicit SdlWindowBackend(SdlContext &context);
 

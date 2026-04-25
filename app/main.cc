@@ -79,7 +79,7 @@ public:
         plane_node_.SetRotation(
             CoreEngine::Math::AngleAxis(CoreEngine::Math::Deg2Rad(180.0f), CoreEngine::Math::Vec3(0.0f, 0.f, 1.f)));
 
-        context.window_system.SetWindowCursorMode(CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN);
+        ApplyCursorMode(context.window_system, CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN);
     }
 
     void Update(const CoreEngine::FrameContext &frame) override {
@@ -92,17 +92,13 @@ public:
         if (frame.input_system.WasKeyPressed(CoreEngine::Key::Tab)) {
             switch (current_cursor_mode_) {
                 case CoreEngine::WindowCursorMode::CURSOR_NORMAL:
-                    frame.window_system.
-                            SetWindowCursorMode(CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN);
-                    current_cursor_mode_ = CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN;
+                    ApplyCursorMode(frame.window_system, CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN);
                     break;
                 case CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN:
-                    frame.window_system.SetWindowCursorMode(CoreEngine::WindowCursorMode::CURSOR_NORMAL);
-                    current_cursor_mode_ = CoreEngine::WindowCursorMode::CURSOR_NORMAL;
+                    ApplyCursorMode(frame.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
                     break;
                 default:
-                    frame.window_system.SetWindowCursorMode(CoreEngine::WindowCursorMode::CURSOR_NORMAL);
-                    current_cursor_mode_ = CoreEngine::WindowCursorMode::CURSOR_NORMAL;
+                    ApplyCursorMode(frame.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
                     break;
             }
         }
@@ -114,12 +110,18 @@ public:
     }
 
 private:
+    void ApplyCursorMode(CoreEngine::WindowSystem &window_system, CoreEngine::WindowCursorMode cursor_mode) {
+        if (window_system.SetWindowCursorMode(cursor_mode)) {
+            current_cursor_mode_ = cursor_mode;
+        }
+    }
+
     CoreEngine::Node plane_node_;
     CoreEngine::Node camera_node_;
     Game::ThirdPersonCameraController third_person_camera_controller_;
     Game::PlayerPawn player_pawn_;
     Game::PlayerController player_controller_;
-    CoreEngine::WindowCursorMode current_cursor_mode_ = CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN;
+    CoreEngine::WindowCursorMode current_cursor_mode_ = CoreEngine::WindowCursorMode::CURSOR_NORMAL;
 };
 
 int main() {

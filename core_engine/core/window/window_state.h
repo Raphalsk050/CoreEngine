@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 namespace CoreEngine {
     struct WindowExtent {
         int width = 0;
@@ -10,7 +12,7 @@ namespace CoreEngine {
         }
     };
 
-    enum class WindowCursorMode : int8_t {
+    enum class WindowCursorMode : std::int8_t {
         CURSOR_NORMAL = 0,
         CURSOR_CONSTRAINED_AND_HIDDEN,
         CURSOR_CONSTRAINED,

@@ -35,7 +35,7 @@ namespace CoreEngine {
 
         [[nodiscard]] std::string_view LastError() const;
 
-        void SetWindowCursorMode(WindowCursorMode cursor_mode) const;
+        [[nodiscard]] bool SetWindowCursorMode(WindowCursorMode cursor_mode) const;
 
     private:
         std::unique_ptr<IWindowBackend> backend_;

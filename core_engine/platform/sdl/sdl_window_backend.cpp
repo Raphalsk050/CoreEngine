@@ -2,6 +2,7 @@
 
 #include "core/window/window_event.h"
 #include "core/window/window_event_queue.h"
+#include "SDL3/SDL_mouse.h"
 #include "SDL3/SDL_properties.h"
 
 #if defined(__APPLE__)
@@ -9,33 +10,80 @@
 #endif
 
 namespace CoreEngine {
-    void SdlWindowBackend::SetWindowCursorMode(WindowCursorMode cursor_mode) {
-        if (state_.cursor_mode == cursor_mode)
-            return;
+    namespace {
+        [[nodiscard]] WindowExtent GetCurrentWindowSize(SDL_Window *window, WindowExtent fallback) noexcept {
+            int width = 0;
+            int height = 0;
+            if (window != nullptr && SDL_GetWindowSize(window, &width, &height) && width > 0 && height > 0) {
+                return WindowExtent{.width = width, .height = height};
+            }
+
+            return fallback;
+        }
+
+        void WarpMouseToWindowCenter(SDL_Window *window, WindowExtent fallback) noexcept {
+            const WindowExtent extent = GetCurrentWindowSize(window, fallback);
+            if (!extent.IsValid()) {
+                return;
+            }
+
+            SDL_WarpMouseInWindow(
+                window,
+                static_cast<float>(extent.width) * 0.5f,
+                static_cast<float>(extent.height) * 0.5f);
+        }
+    }
+
+    bool SdlWindowBackend::SetWindowCursorMode(WindowCursorMode cursor_mode) {
+        if (window_ == nullptr) {
+            last_error_ = "Window is not initialized";
+            return false;
+        }
+
+        if (state_.cursor_mode == cursor_mode) {
+            return true;
+        }
 
         bool success = false;
 
         switch (cursor_mode) {
-            case WindowCursorMode::CURSOR_CONSTRAINED:
-                success = SDL_SetWindowRelativeMouseMode(window_, true) && SDL_ShowCursor();
+            case WindowCursorMode::CURSOR_CONSTRAINED: {
+                const bool relative_disabled = SDL_SetWindowRelativeMouseMode(window_, false);
+                const bool rect_cleared = SDL_SetWindowMouseRect(window_, nullptr);
+                const bool grabbed = SDL_SetWindowMouseGrab(window_, true);
+                const bool visible = SDL_ShowCursor();
+                success = relative_disabled && rect_cleared && grabbed && visible;
                 break;
-            case WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN:
-                success = SDL_SetWindowRelativeMouseMode(window_, true) && SDL_HideCursor();
+            }
+            case WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN: {
+                const bool rect_cleared = SDL_SetWindowMouseRect(window_, nullptr);
+                const bool grab_released = SDL_SetWindowMouseGrab(window_, false);
+                const bool relative_enabled = SDL_SetWindowRelativeMouseMode(window_, true);
+                success = rect_cleared && grab_released && relative_enabled;
                 break;
-            case WindowCursorMode::CURSOR_NORMAL:
-                SDL_WarpMouseInWindow(window_, 0.5, 0.5);
-                success = SDL_SetWindowRelativeMouseMode(window_, false) && SDL_ShowCursor();
-                SDL_FlashWindow(window_, SDL_FLASH_BRIEFLY);
+            }
+            case WindowCursorMode::CURSOR_NORMAL: {
+                WarpMouseToWindowCenter(window_, state_.logical_size);
+                const bool relative_disabled = SDL_SetWindowRelativeMouseMode(window_, false);
+                const bool grab_released = SDL_SetWindowMouseGrab(window_, false);
+                const bool rect_cleared = SDL_SetWindowMouseRect(window_, nullptr);
+                const bool visible = SDL_ShowCursor();
+                success = relative_disabled && grab_released && rect_cleared && visible;
                 break;
+            }
             default:
-                break;
+                last_error_ = "Unsupported window cursor mode";
+                return false;
         }
 
-        if (!success) {
-            last_error_ = SDL_GetError();
+        if (success) {
+            state_.cursor_mode = cursor_mode;
+            last_error_.clear();
+            return true;
         }
 
-        state_.cursor_mode = cursor_mode;
+        last_error_ = SDL_GetError();
+        return false;
     }
 
     SdlWindowBackend::SdlWindowBackend(SdlContext &context) : context_(context) {
@@ -95,6 +143,10 @@ namespace CoreEngine {
 #endif
 
         should_close_ = false;
+        state_.logical_size = GetCurrentWindowSize(window_, WindowExtent{.width = desc.width, .height = desc.height});
+        state_.pixel_size = state_.logical_size;
+        (void) SDL_GetWindowSizeInPixels(window_, &state_.pixel_size.width, &state_.pixel_size.height);
+        state_.cursor_mode = WindowCursorMode::CURSOR_NORMAL;
         return true;
     }
 

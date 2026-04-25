@@ -1,4 +1,6 @@
 #pragma once
+#include <string>
+
 #include "sdl_context.h"
 #include "core/audio/i_audio_backend.h"
 #include "SDL3/SDL_audio.h"
