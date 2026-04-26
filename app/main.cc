@@ -21,6 +21,12 @@
 #include "core/render/primitive_type.h"
 #include "core/render/render_system.h"
 #include "core/window/window_system.h"
+#include "shaders/test_shader.h"
+
+struct TestShaderProps {
+    alignas(16) CoreEngine::Math::Vec4 color{1.f, 1.f, 1.f, 1.f};
+    float alpha = 1.0f;
+};
 
 class MyGameApp final : public CoreEngine::IGameApp {
 public:
@@ -38,6 +44,15 @@ public:
         const CoreEngine::MaterialHandle cube_material =
                 CoreEngine::Material::Unlit({.color = {1.2f, 0.6f, 1.0f, 1.0f}}).Resolve(context.render_system);
 
+        TestShaderProps shader_props;
+        shader_props.color = {1.0, 0.0, 0.0, 1.0};
+        shader_props.alpha = 0.1f;
+
+        auto custom_material = CoreEngine::Material::Custom(Game::Shaders::kTestVS, Game::Shaders::kTestPS,
+                                                            shader_props);
+
+        const CoreEngine::MaterialHandle player_material = custom_material.Resolve(context.render_system);
+
         const CoreEngine::MaterialHandle plane_material =
                 CoreEngine::Material::Unlit({.color = {0.5f, 0.6f, 1.0f, 1.0f}}).Resolve(context.render_system);
 
@@ -54,7 +69,7 @@ public:
         player_pawn_.Node().AddComponent<CoreEngine::MeshRendererComponent>(
             CoreEngine::MeshRendererComponent{
                 .mesh = cube_mesh,
-                .material = cube_material,
+                .material = player_material,
             });
 
         camera_node_ = context.world.CreateNode("MainCamera");
@@ -98,8 +113,6 @@ public:
                     ApplyCursorMode(frame.window_system, CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN);
                     break;
                 case CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN:
-                    ApplyCursorMode(frame.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
-                    break;
                 default:
                     ApplyCursorMode(frame.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
                     break;
@@ -122,7 +135,7 @@ private:
         ImGui::SetNextWindowSize(ImVec2{360.0f, 0.0f}, ImGuiCond_FirstUseEver);
 
         if (ImGui::Begin("CoreEngine Debug")) {
-            ImGui::Text("FPS: %.3f ms", 1.0 / frame.delta_time);
+            ImGui::Text("FPS: %.0f", 1.0 / frame.delta_time);
         }
         ImGui::End();
     }

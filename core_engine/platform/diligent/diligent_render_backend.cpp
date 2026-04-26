@@ -271,14 +271,22 @@ namespace CoreEngine {
             Diligent::LayoutElement layout[] = {
                 // InputIndex, BufferSlot, NumComponents, ValueType, IsNormalized,
                 //   RelativeOffset, Stride
-                {0, 0, 3, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, position)), kStride},
-                {1, 0, 3, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, normal)),   kStride},
-                {2, 0, 3, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, color)),    kStride},
-                {3, 0, 2, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, uv)),       kStride},
+                {
+                    0, 0, 3, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, position)), kStride
+                },
+                {
+                    1, 0, 3, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, normal)), kStride
+                },
+                {
+                    2, 0, 3, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, color)), kStride
+                },
+                {
+                    3, 0, 2, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, uv)), kStride
+                },
             };
 
             Diligent::GraphicsPipelineStateCreateInfo pci;

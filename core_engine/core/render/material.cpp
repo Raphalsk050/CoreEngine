@@ -10,19 +10,20 @@ namespace CoreEngine {
         uint64_t HashDesc(const MaterialDesc &desc) {
             size_t h = std::hash<std::string>{}(desc.vertex_shader_source);
             h ^= std::hash<std::string>{}(desc.pixel_shader_source) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
-            for (uint8_t byte : desc.properties_data) {
+            for (uint8_t byte: desc.properties_data) {
                 h ^= std::hash<uint8_t>{}(byte) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
             }
             return static_cast<uint64_t>(h);
         }
     }
 
-    Material::Material(MaterialDesc desc) : desc_(std::move(desc)) {}
+    Material::Material(MaterialDesc desc) : desc_(std::move(desc)) {
+    }
 
     Material Material::Unlit(const UnlitProps &props) {
         MaterialDesc desc;
         desc.vertex_shader_source = BuiltinShaders::kUnlitVS;
-        desc.pixel_shader_source  = BuiltinShaders::kUnlitPS;
+        desc.pixel_shader_source = BuiltinShaders::kUnlitPS;
 
         const auto *bytes = reinterpret_cast<const uint8_t *>(&props);
         desc.properties_data.assign(bytes, bytes + sizeof(UnlitProps));
@@ -36,14 +37,14 @@ namespace CoreEngine {
                               std::span<const uint8_t> raw_props) {
         MaterialDesc desc;
         desc.vertex_shader_source = vs_source;
-        desc.pixel_shader_source  = ps_source;
+        desc.pixel_shader_source = ps_source;
         desc.properties_data.assign(raw_props.begin(), raw_props.end());
         desc.hash = HashDesc(desc);
         return Material{std::move(desc)};
     }
 
-    MaterialHandle Material::Resolve(IRenderContext &ctx) const {
-        return ctx.ResolveMaterial(desc_);
+    MaterialHandle Material::Resolve(IRenderContext &render_context) const {
+        return render_context.ResolveMaterial(desc_);
     }
 
     MaterialBuilder &MaterialBuilder::Vertex(std::string source) {
