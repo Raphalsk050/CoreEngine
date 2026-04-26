@@ -6,7 +6,9 @@
 #include "core/ecs/components/mesh_renderer_component.h"
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/world.h"
+#include "core/time/frame_clock.h"
 #include "core/ecs/components/camera_component.h"
+#include "core/log/logger.h"
 #include "core/render/primitives.h"
 
 namespace CoreEngine {
@@ -40,7 +42,7 @@ namespace CoreEngine {
         backend_->BeginImGuiFrame();
     }
 
-    void RenderSystem::RenderFrame(World &world) {
+    void RenderSystem::RenderFrame(World &world, FrameClock frame_clock) {
         if (!initialized_ || backend_ == nullptr) {
             return;
         }
@@ -49,7 +51,7 @@ namespace CoreEngine {
         accumulator_.Clear();
         accumulator_.Reserve(static_cast<std::size_t>(view.size_hint()));
 
-        for (auto [entity, transform, renderer]: view.each()) {
+        for (const auto &[entity, transform, renderer]: view.each()) {
             (void) entity;
 
             if (!renderer.visible || !renderer.material.IsValid() || !renderer.mesh.IsValid()) {
@@ -63,7 +65,12 @@ namespace CoreEngine {
                                              ? manual_camera_override_
                                              : ResolveWorldCamera(world);
 
-        backend_->SetCamera(active_camera);
+        PerFrameProps pros{
+            .camera = active_camera,
+            .frame_clock = Math::Vec4(frame_clock.TickSeconds(), static_cast<float>(frame_clock.TotalSeconds()), 0.0f,
+                                      0.0f)
+        };
+        backend_->SetPerFrameProps(pros);
         backend_->BeginFrame();
         backend_->Clear(desc_.clear_color);
 

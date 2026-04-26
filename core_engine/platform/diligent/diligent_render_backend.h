@@ -43,7 +43,7 @@ namespace CoreEngine {
 
         [[nodiscard]] MaterialHandle ResolveMaterial(const MaterialDesc &desc) override;
 
-        void SetCamera(const CameraData &camera) override;
+        void SetPerFrameProps(PerFrameProps props) override;
 
         void SubmitBatch(const RenderBatch &batch) override;
 

@@ -10,6 +10,11 @@
 #include "core/window/native_window_handle.h"
 
 namespace CoreEngine {
+    struct PerFrameProps {
+        const CameraData &camera;
+        Math::Vec4 frame_clock;
+    };
+
     class IRenderBackend {
     public:
         virtual ~IRenderBackend() = default;
@@ -37,7 +42,7 @@ namespace CoreEngine {
 
         [[nodiscard]] virtual MaterialHandle ResolveMaterial(const MaterialDesc &desc) = 0;
 
-        virtual void SetCamera(const CameraData &camera) = 0;
+        virtual void SetPerFrameProps(PerFrameProps props) = 0;
 
         virtual void SubmitBatch(const RenderBatch &batch) = 0;
 

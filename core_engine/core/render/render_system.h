@@ -14,6 +14,10 @@
 #include "core/render/render_batch.h"
 
 namespace CoreEngine {
+    class FrameClock;
+}
+
+namespace CoreEngine {
     class World;
     struct CameraComponent;
     struct TransformComponent;
@@ -26,7 +30,7 @@ namespace CoreEngine {
 
         void BeginImGuiFrame() const;
 
-        void RenderFrame(World &world);
+        void RenderFrame(World &world, FrameClock frame_clock);
 
         [[nodiscard]] MeshHandle GetOrCreatePrimitive(PrimitiveType type) override;
 

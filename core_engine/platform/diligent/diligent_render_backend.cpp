@@ -29,6 +29,7 @@ namespace CoreEngine {
     namespace {
         struct PerFrameCB {
             Math::Mat4 view_proj;
+            Math::Vec4 frame_clock;
         };
 
         struct PerObjectCB {
@@ -287,6 +288,10 @@ namespace CoreEngine {
                     3, 0, 2, Diligent::VT_FLOAT32, false,
                     static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, uv)), kStride
                 },
+                {
+                    4, 0, 4, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, time)), kStride
+                },
             };
 
             Diligent::GraphicsPipelineStateCreateInfo pci;
@@ -299,7 +304,7 @@ namespace CoreEngine {
             pci.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_BACK;
             pci.GraphicsPipeline.DepthStencilDesc.DepthEnable = true;
             pci.GraphicsPipeline.InputLayout.LayoutElements = layout;
-            pci.GraphicsPipeline.InputLayout.NumElements = 4;
+            pci.GraphicsPipeline.InputLayout.NumElements = 5;
             pci.pVS = vs;
             pci.pPS = ps;
 
@@ -620,11 +625,13 @@ namespace CoreEngine {
         return handle;
     }
 
-    void DiligentRenderBackend::SetCamera(const CameraData &camera) {
+    void DiligentRenderBackend::SetPerFrameProps(PerFrameProps props) {
         if (!impl_->per_frame_cb) {
             return;
         }
-        PerFrameCB cb{camera.projection * camera.view};
+
+
+        PerFrameCB cb{.view_proj = props.camera.projection * props.camera.view, .frame_clock = props.frame_clock};
         UpdateBuffer(impl_->immediate_context,
                      impl_->per_frame_cb,
                      &cb, sizeof(cb));

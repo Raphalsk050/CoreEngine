@@ -83,7 +83,7 @@ namespace CoreEngine {
             Tick(frameContext);
             render_system_->BeginImGuiFrame();
             app.Update(frameContext);
-            render_system_->RenderFrame(*world_);
+            render_system_->RenderFrame(*world_, frame_clock_);
         }
 
         app.Shutdown(engineContext);
