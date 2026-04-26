@@ -72,10 +72,24 @@ public:
                 .material = player_material,
             });
 
-        camera_node_ = context.world.CreateNode("MainCamera");
-        camera_node_.AddComponent<CoreEngine::CameraComponent>();
 
+        CoreEngine::CameraComponent camera{.priority = 1, .enabled = false};
+        camera_node_ = context.world.CreateNode("MainCamera");
+        secondary_camera_node_ = context.world.CreateNode("SecondaryCamera");
+        secondary_camera_node_.AddComponent<CoreEngine::CameraComponent>(camera);
+        secondary_camera_node_.AddComponent<CoreEngine::MeshRendererComponent>(
+            CoreEngine::MeshRendererComponent{
+                .mesh = cube_mesh,
+                .material = player_material,
+            });
+
+        camera_node_.AddComponent<CoreEngine::CameraComponent>();
         camera_node_.SetPosition({0.0f, 1.5f, -4.0f});
+        camera_node_.AddComponent<CoreEngine::MeshRendererComponent>(
+            CoreEngine::MeshRendererComponent{
+                .mesh = cube_mesh,
+                .material = player_material,
+            });
 
         third_person_camera_controller_.Attach(camera_node_, player_pawn_.Node());
         third_person_camera_controller_.SetFocusOffset({0.0f, 1.25f, 0.0f});
@@ -107,14 +121,20 @@ public:
         player_controller_.Update(frame);
         RenderDebugUi(frame);
 
+        auto &editor_camera = secondary_camera_node_.GetComponent<CoreEngine::CameraComponent>();
+
         if (frame.input_system.WasKeyPressed(CoreEngine::Key::Tab)) {
             switch (current_cursor_mode_) {
                 case CoreEngine::WindowCursorMode::CURSOR_NORMAL:
                     ApplyCursorMode(frame.window_system, CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN);
+                    editor_camera.enabled = false;
+                    editor_camera.priority = 0;
                     break;
                 case CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN:
                 default:
                     ApplyCursorMode(frame.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
+                    editor_camera.enabled = true;
+                    editor_camera.priority = 10;
                     break;
             }
         }
@@ -148,6 +168,7 @@ private:
 
     CoreEngine::Node plane_node_;
     CoreEngine::Node camera_node_;
+    CoreEngine::Node secondary_camera_node_;
     Game::ThirdPersonCameraController third_person_camera_controller_;
     Game::PlayerPawn player_pawn_;
     Game::PlayerController player_controller_;
