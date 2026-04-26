@@ -1,5 +1,7 @@
 #include <memory>
 
+#include "imgui.h"
+
 #include "core/math/math.h"
 
 #include "player_controller.h"
@@ -79,7 +81,7 @@ public:
         plane_node_.SetRotation(
             CoreEngine::Math::AngleAxis(CoreEngine::Math::Deg2Rad(180.0f), CoreEngine::Math::Vec3(0.0f, 0.f, 1.f)));
 
-        ApplyCursorMode(context.window_system, CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN);
+        ApplyCursorMode(context.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
     }
 
     void Update(const CoreEngine::FrameContext &frame) override {
@@ -88,6 +90,7 @@ public:
         }
 
         player_controller_.Update(frame);
+        RenderDebugUi(frame);
 
         if (frame.input_system.WasKeyPressed(CoreEngine::Key::Tab)) {
             switch (current_cursor_mode_) {
@@ -110,6 +113,20 @@ public:
     }
 
 private:
+    void RenderDebugUi(const CoreEngine::FrameContext &frame) {
+        if (ImGui::GetCurrentContext() == nullptr) {
+            return;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2{16.0f, 16.0f}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2{360.0f, 0.0f}, ImGuiCond_FirstUseEver);
+
+        if (ImGui::Begin("CoreEngine Debug")) {
+            ImGui::Text("FPS: %.3f ms", 1.0 / frame.delta_time);
+        }
+        ImGui::End();
+    }
+
     void ApplyCursorMode(CoreEngine::WindowSystem &window_system, CoreEngine::WindowCursorMode cursor_mode) {
         if (window_system.SetWindowCursorMode(cursor_mode)) {
             current_cursor_mode_ = cursor_mode;
@@ -122,6 +139,9 @@ private:
     Game::PlayerPawn player_pawn_;
     Game::PlayerController player_controller_;
     CoreEngine::WindowCursorMode current_cursor_mode_ = CoreEngine::WindowCursorMode::CURSOR_NORMAL;
+    float debug_value_ = 0.5f;
+    float debug_color_[3] = {0.25f, 0.55f, 0.9f};
+    int debug_counter_ = 0;
 };
 
 int main() {
@@ -136,6 +156,7 @@ int main() {
     config.windowTitle = "CoreEngine - Player Input Demo";
     config.renderBackend = CoreEngine::RenderBackendType::DiligentVulkan;
     config.vsync = false;
+    config.enableImGui = true;
 
     return CoreEngine::RunEngine(std::move(app), config);
 }

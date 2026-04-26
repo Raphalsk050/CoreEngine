@@ -81,6 +81,7 @@ namespace CoreEngine {
             };
 
             Tick(frameContext);
+            render_system_->BeginImGuiFrame();
             app.Update(frameContext);
             render_system_->RenderFrame(*world_);
         }
@@ -178,6 +179,7 @@ namespace CoreEngine {
         RenderDesc desc;
         desc.backend = config_.renderBackend;
         desc.vsync = config_.vsync;
+        desc.enable_imgui = config_.enableImGui;
         desc.width = config_.windowWidth;
         desc.height = config_.windowHeight;
 

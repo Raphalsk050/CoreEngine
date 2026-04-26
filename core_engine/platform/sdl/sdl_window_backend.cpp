@@ -251,10 +251,12 @@ namespace CoreEngine {
         const SDL_PropertiesID properties = SDL_GetWindowProperties(window_);
         native_handle.platform = NativeWindowPlatform::Win32;
         native_handle.window = SDL_GetPointerProperty(properties, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+        native_handle.platform_window = window_;
 #elif defined(__APPLE__)
         if (metal_view_ != nullptr) {
             native_handle.platform = NativeWindowPlatform::MacOS;
             native_handle.window = metal_view_;
+            native_handle.platform_window = window_;
         }
 #endif
 

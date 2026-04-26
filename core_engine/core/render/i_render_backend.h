@@ -21,6 +21,10 @@ namespace CoreEngine {
 
         virtual void Clear(const RenderClearColor &clear_color) = 0;
 
+        virtual void BeginImGuiFrame() = 0;
+
+        virtual void RenderImGui() = 0;
+
         virtual void EndFrame() = 0;
 
         virtual void Resize(int width, int height) = 0;

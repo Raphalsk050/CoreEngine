@@ -8,6 +8,7 @@ namespace CoreEngine {
         RenderBackendType backend = RenderBackendType::None;
         RenderClearColor clear_color{};
         bool vsync = true;
+        bool enable_imgui = true;
         // Explicit swapchain dimensions.
         // Must match the window size at initialization time.
         // Passing 0 lets the backend infer from the HWND (may fail on some drivers).

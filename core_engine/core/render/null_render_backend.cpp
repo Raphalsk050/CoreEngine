@@ -4,6 +4,8 @@ namespace CoreEngine {
     bool NullRenderBackend::Initialize(const RenderDesc &, NativeWindowHandle) { return true; }
     void NullRenderBackend::BeginFrame() {}
     void NullRenderBackend::Clear(const RenderClearColor &) {}
+    void NullRenderBackend::BeginImGuiFrame() {}
+    void NullRenderBackend::RenderImGui() {}
     void NullRenderBackend::EndFrame() {}
     void NullRenderBackend::Resize(int, int) {}
     void NullRenderBackend::Shutdown() {}

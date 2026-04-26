@@ -12,6 +12,10 @@ namespace CoreEngine {
 
         void Clear(const RenderClearColor &clear_color) override;
 
+        void BeginImGuiFrame() override;
+
+        void RenderImGui() override;
+
         void EndFrame() override;
 
         void Resize(int width, int height) override;

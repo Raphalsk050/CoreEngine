@@ -8,6 +8,25 @@ set_property(DIRECTORY entt PROPERTY FOLDER "ThirdParty")
 set_property(DIRECTORY glm PROPERTY FOLDER "ThirdParty")
 set_property(DIRECTORY sdl3 PROPERTY FOLDER "ThirdParty")
 
+set(CORE_ENGINE_DEAR_IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/DiligentTools/ThirdParty/imgui")
+
+add_library(imgui STATIC
+        "${CORE_ENGINE_DEAR_IMGUI_DIR}/imgui.cpp"
+        "${CORE_ENGINE_DEAR_IMGUI_DIR}/imgui_draw.cpp"
+        "${CORE_ENGINE_DEAR_IMGUI_DIR}/imgui_tables.cpp"
+        "${CORE_ENGINE_DEAR_IMGUI_DIR}/imgui_widgets.cpp"
+        "${CORE_ENGINE_DEAR_IMGUI_DIR}/backends/imgui_impl_sdl3.cpp"
+)
+
+target_include_directories(imgui PUBLIC
+        "${CORE_ENGINE_DEAR_IMGUI_DIR}"
+        "${CORE_ENGINE_DEAR_IMGUI_DIR}/backends"
+)
+
+target_link_libraries(imgui PUBLIC SDL3::SDL3)
+target_compile_definitions(imgui PUBLIC IMGUI_DEFINE_MATH_OPERATORS)
+set_target_properties(imgui PROPERTIES FOLDER "ThirdParty")
+
 if (CORE_ENGINE_ENABLE_DILIGENT)
     if (CORE_ENGINE_DILIGENT_CORE_DIR STREQUAL "")
         set(CORE_ENGINE_DILIGENT_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/DiligentCore" CACHE PATH "Path to a DiligentCore checkout" FORCE)
@@ -27,6 +46,7 @@ if (CORE_ENGINE_ENABLE_DILIGENT)
     set(DILIGENT_NO_WEBGPU ON CACHE BOOL "" FORCE)
 
     add_subdirectory("${CORE_ENGINE_DILIGENT_CORE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/DiligentCore" EXCLUDE_FROM_ALL)
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/DiligentTools/Imgui" "${CMAKE_CURRENT_BINARY_DIR}/DiligentTools/Imgui" EXCLUDE_FROM_ALL)
 endif ()
 
 add_library(ThirdParty INTERFACE)
@@ -37,10 +57,10 @@ target_include_directories(ThirdParty INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/sdl3/include"   # sdl with strip prefix of sdl3/include/
 )
 
-target_link_libraries(ThirdParty INTERFACE glm Entt SDL3::SDL3)
+target_link_libraries(ThirdParty INTERFACE glm Entt SDL3::SDL3 imgui)
 
 if (CORE_ENGINE_ENABLE_DILIGENT)
-    target_link_libraries(ThirdParty INTERFACE Diligent-BuildSettings)
+    target_link_libraries(ThirdParty INTERFACE Diligent-BuildSettings Diligent-Imgui)
 
     if (WIN32)
         target_link_libraries(ThirdParty INTERFACE

@@ -24,6 +24,8 @@ namespace CoreEngine {
 
         [[nodiscard]] bool Initialize(const RenderDesc &desc, NativeWindowHandle native_window);
 
+        void BeginImGuiFrame() const;
+
         void RenderFrame(World &world);
 
         [[nodiscard]] MeshHandle GetOrCreatePrimitive(PrimitiveType type) override;

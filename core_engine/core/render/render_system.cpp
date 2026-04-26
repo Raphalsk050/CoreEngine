@@ -32,6 +32,14 @@ namespace CoreEngine {
         return initialized_;
     }
 
+    void RenderSystem::BeginImGuiFrame() const {
+        if (!initialized_ || backend_ == nullptr || !desc_.enable_imgui) {
+            return;
+        }
+
+        backend_->BeginImGuiFrame();
+    }
+
     void RenderSystem::RenderFrame(World &world) {
         if (!initialized_ || backend_ == nullptr) {
             return;
@@ -61,6 +69,10 @@ namespace CoreEngine {
 
         for (const RenderBatch &batch: accumulator_.Batches()) {
             backend_->SubmitBatch(batch);
+        }
+
+        if (desc_.enable_imgui) {
+            backend_->RenderImGui();
         }
 
         backend_->EndFrame();

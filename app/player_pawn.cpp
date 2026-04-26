@@ -3,7 +3,6 @@
 #include "core/math/math.h"
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/world.h"
-#include "DiligentCore/Common/interface/BasicMath.hpp"
 
 namespace Game {
     PlayerPawn::PlayerPawn(CoreEngine::Node node, MovementComponent movement,

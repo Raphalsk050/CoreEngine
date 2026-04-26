@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <span>
@@ -18,6 +19,7 @@
 #include "EngineFactoryD3D12.h"
 #endif
 #include "DiligentCore/Common/interface/RefCntAutoPtr.hpp"
+#include "ImGuiImplSDL3.hpp"
 #include "core/render/render_batch.h"
 #include "core/render/vertex.h"
 
@@ -60,6 +62,7 @@ namespace CoreEngine {
         Diligent::RefCntAutoPtr<Diligent::IRenderDevice> device;
         Diligent::RefCntAutoPtr<Diligent::IDeviceContext> immediate_context;
         Diligent::RefCntAutoPtr<Diligent::ISwapChain> swap_chain;
+        std::unique_ptr<Diligent::ImGuiImplSDL3> imgui;
 
         Diligent::RefCntAutoPtr<Diligent::IBuffer> per_frame_cb;
         Diligent::RefCntAutoPtr<Diligent::IBuffer> per_object_cb;
@@ -456,6 +459,21 @@ namespace CoreEngine {
             return false;
         }
 
+        if (desc.enable_imgui && native_window.platform_window != nullptr) {
+            try {
+                Diligent::ImGuiDiligentCreateInfo imgui_ci{impl_->device, impl_->swap_chain->GetDesc()};
+                impl_->imgui = Diligent::ImGuiImplSDL3::Create(
+                    imgui_ci,
+                    static_cast<SDL_Window *>(native_window.platform_window));
+            } catch (const std::exception &error) {
+                impl_->last_error = error.what();
+                impl_->imgui.reset();
+            } catch (...) {
+                impl_->last_error = "Failed to initialize ImGui";
+                impl_->imgui.reset();
+            }
+        }
+
         return true;
     }
 
@@ -491,6 +509,23 @@ namespace CoreEngine {
         }
     }
 
+    void DiligentRenderBackend::BeginImGuiFrame() {
+        if (!impl_->imgui || !impl_->swap_chain) {
+            return;
+        }
+
+        const Diligent::SwapChainDesc &swap_desc = impl_->swap_chain->GetDesc();
+        impl_->imgui->NewFrame(swap_desc.Width, swap_desc.Height, swap_desc.PreTransform);
+    }
+
+    void DiligentRenderBackend::RenderImGui() {
+        if (!impl_->imgui || !impl_->immediate_context) {
+            return;
+        }
+
+        impl_->imgui->Render(impl_->immediate_context);
+    }
+
     void DiligentRenderBackend::EndFrame() {
         if (!impl_->swap_chain) {
             return;
@@ -511,6 +546,7 @@ namespace CoreEngine {
         if (!impl_) {
             return;
         }
+        impl_->imgui.reset();
         impl_->immediate_context.Release();
         impl_->mesh_registry.clear();
         impl_->material_registry.clear();
