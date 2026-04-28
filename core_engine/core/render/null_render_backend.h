@@ -22,6 +22,16 @@ namespace CoreEngine {
 
         void Shutdown() override;
 
+        [[nodiscard]] FrameBufferHandle CreateFrameBuffer(const FrameBufferDesc &desc) override;
+
+        void DestroyFrameBuffer(FrameBufferHandle handle) override;
+
+        void SetFrameBuffer(FrameBufferHandle handle) override;
+
+        void SetSwapChainFrameBuffer() override;
+
+        void CompositeFrameBuffer(FrameBufferHandle source) override;
+
         [[nodiscard]] MeshHandle UploadMesh(const MeshDesc &desc) override;
 
         void DestroyMesh(MeshHandle handle) override;

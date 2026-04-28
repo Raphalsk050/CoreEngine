@@ -3,6 +3,7 @@
 #include <string_view>
 
 #include "core/render/camera_data.h"
+#include "core/render/frame_buffer.h"
 #include "core/render/material_desc.h"
 #include "core/render/mesh_desc.h"
 #include "core/render/render_batch.h"
@@ -35,6 +36,16 @@ namespace CoreEngine {
         virtual void Resize(int width, int height) = 0;
 
         virtual void Shutdown() = 0;
+
+        [[nodiscard]] virtual FrameBufferHandle CreateFrameBuffer(const FrameBufferDesc &desc) = 0;
+
+        virtual void DestroyFrameBuffer(FrameBufferHandle handle) = 0;
+
+        virtual void SetFrameBuffer(FrameBufferHandle handle) = 0;
+
+        virtual void SetSwapChainFrameBuffer() = 0;
+
+        virtual void CompositeFrameBuffer(FrameBufferHandle source) = 0;
 
         [[nodiscard]] virtual MeshHandle UploadMesh(const MeshDesc &desc) = 0;
 

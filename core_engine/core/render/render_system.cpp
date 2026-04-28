@@ -31,6 +31,10 @@ namespace CoreEngine {
                 .GetCameraData();
 
         initialized_ = backend_ != nullptr && backend_->Initialize(desc, native_window);
+        if (initialized_) {
+            initialized_ = CreateSceneFrameBuffer();
+        }
+
         return initialized_;
     }
 
@@ -72,11 +76,14 @@ namespace CoreEngine {
         };
         backend_->SetPerFrameProps(pros);
         backend_->BeginFrame();
+        backend_->SetFrameBuffer(scene_framebuffer_);
         backend_->Clear(desc_.clear_color);
 
         for (const RenderBatch &batch: accumulator_.Batches()) {
             backend_->SubmitBatch(batch);
         }
+
+        backend_->CompositeFrameBuffer(scene_framebuffer_);
 
         if (desc_.enable_imgui) {
             backend_->RenderImGui();
@@ -153,12 +160,16 @@ namespace CoreEngine {
         if (!initialized_ || backend_ == nullptr) {
             return;
         }
+        DestroySceneFrameBuffer();
         surface_width_ = width > 0 ? width : 1;
         surface_height_ = height > 0 ? height : 1;
         backend_->Resize(surface_width_, surface_height_);
+        initialized_ = CreateSceneFrameBuffer();
     }
 
     void RenderSystem::Shutdown() {
+        DestroySceneFrameBuffer();
+
         if (backend_ != nullptr) {
             backend_->Shutdown();
         }
@@ -177,6 +188,29 @@ namespace CoreEngine {
 
     IRenderContext &RenderSystem::Context() {
         return *this;
+    }
+
+    bool RenderSystem::CreateSceneFrameBuffer() {
+        if (backend_ == nullptr) {
+            return false;
+        }
+
+        FrameBufferDesc desc;
+        desc.width = surface_width_;
+        desc.height = surface_height_;
+        desc.sample_color = true;
+
+        scene_framebuffer_ = backend_->CreateFrameBuffer(desc);
+        return scene_framebuffer_.IsValid();
+    }
+
+    void RenderSystem::DestroySceneFrameBuffer() {
+        if (backend_ == nullptr || !scene_framebuffer_.IsValid()) {
+            return;
+        }
+
+        backend_->DestroyFrameBuffer(scene_framebuffer_);
+        scene_framebuffer_ = {};
     }
 
     CameraData RenderSystem::ResolveWorldCamera(World &world) const {

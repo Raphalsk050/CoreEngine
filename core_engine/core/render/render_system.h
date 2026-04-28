@@ -57,6 +57,10 @@ namespace CoreEngine {
         [[nodiscard]] IRenderContext &Context();
 
     private:
+        [[nodiscard]] bool CreateSceneFrameBuffer();
+
+        void DestroySceneFrameBuffer();
+
         [[nodiscard]] CameraData ResolveWorldCamera(World &world) const;
 
         [[nodiscard]] CameraData BuildCameraData(const TransformComponent &transform,
@@ -75,6 +79,7 @@ namespace CoreEngine {
 
         BatchAccumulator accumulator_;
         std::array<MeshHandle, kPrimitiveCount> primitive_cache_{};
+        FrameBufferHandle scene_framebuffer_{};
         bool initialized_ = false;
     };
 } // namespace CoreEngine

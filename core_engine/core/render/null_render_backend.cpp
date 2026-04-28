@@ -24,6 +24,20 @@ namespace CoreEngine {
     void NullRenderBackend::Shutdown() {
     }
 
+    FrameBufferHandle NullRenderBackend::CreateFrameBuffer(const FrameBufferDesc &) { return {.id = 1, .generation = 1}; }
+
+    void NullRenderBackend::DestroyFrameBuffer(FrameBufferHandle) {
+    }
+
+    void NullRenderBackend::SetFrameBuffer(FrameBufferHandle) {
+    }
+
+    void NullRenderBackend::SetSwapChainFrameBuffer() {
+    }
+
+    void NullRenderBackend::CompositeFrameBuffer(FrameBufferHandle) {
+    }
+
     MeshHandle NullRenderBackend::UploadMesh(const MeshDesc &) { return {}; }
 
     void NullRenderBackend::DestroyMesh(MeshHandle) {

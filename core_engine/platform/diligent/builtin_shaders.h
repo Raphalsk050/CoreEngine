@@ -62,4 +62,48 @@ float4 main(in PSInput i) : SV_TARGET
     return float4(i.color, 1.0) * g_Tint;
 }
 )HLSL";
+
+    inline constexpr const char *kCompositeVS = R"HLSL(
+struct VSOutput
+{
+    float4 pos : SV_POSITION;
+    float2 uv  : TEXCOORD0;
+};
+
+void main(uint vertex_id : SV_VertexID, out VSOutput o)
+{
+    float2 positions[3] =
+    {
+        float2(-1.0, -1.0),
+        float2(-1.0,  3.0),
+        float2( 3.0, -1.0)
+    };
+
+    float2 uvs[3] =
+    {
+        float2(0.0, 1.0),
+        float2(0.0, -1.0),
+        float2(2.0, 1.0)
+    };
+
+    o.pos = float4(positions[vertex_id], 0.0, 1.0);
+    o.uv  = uvs[vertex_id];
+}
+)HLSL";
+
+    inline constexpr const char *kCompositePS = R"HLSL(
+Texture2D g_SceneColor;
+SamplerState g_SceneColor_sampler;
+
+struct VSOutput
+{
+    float4 pos : SV_POSITION;
+    float2 uv  : TEXCOORD0;
+};
+
+float4 main(VSOutput i) : SV_TARGET
+{
+    return g_SceneColor.Sample(g_SceneColor_sampler, i.uv);
+}
+)HLSL";
 } // namespace CoreEngine::BuiltinShaders
