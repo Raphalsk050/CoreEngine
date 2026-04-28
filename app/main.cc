@@ -1,5 +1,7 @@
 #include <memory>
 
+#include "imgui.h"
+
 #include "core/math/math.h"
 
 #include "player_controller.h"
@@ -19,6 +21,12 @@
 #include "core/render/primitive_type.h"
 #include "core/render/render_system.h"
 #include "core/window/window_system.h"
+#include "shaders/test_shader.h"
+
+struct TestShaderProps {
+    alignas(16) CoreEngine::Math::Vec4 color{1.f, 1.f, 1.f, 1.f};
+    float alpha = 1.0f;
+};
 
 class MyGameApp final : public CoreEngine::IGameApp {
 public:
@@ -36,6 +44,15 @@ public:
         const CoreEngine::MaterialHandle cube_material =
                 CoreEngine::Material::Unlit({.color = {1.2f, 0.6f, 1.0f, 1.0f}}).Resolve(context.render_system);
 
+        TestShaderProps shader_props;
+        shader_props.color = {1.0, 0.0, 0.0, 1.0};
+        shader_props.alpha = 0.1f;
+
+        auto custom_material = CoreEngine::Material::Custom(Game::Shaders::kTestVS, Game::Shaders::kTestPS,
+                                                            shader_props);
+
+        const CoreEngine::MaterialHandle player_material = custom_material.Resolve(context.render_system);
+
         const CoreEngine::MaterialHandle plane_material =
                 CoreEngine::Material::Unlit({.color = {0.5f, 0.6f, 1.0f, 1.0f}}).Resolve(context.render_system);
 
@@ -52,13 +69,27 @@ public:
         player_pawn_.Node().AddComponent<CoreEngine::MeshRendererComponent>(
             CoreEngine::MeshRendererComponent{
                 .mesh = cube_mesh,
-                .material = cube_material,
+                .material = player_material,
             });
 
-        camera_node_ = context.world.CreateNode("MainCamera");
-        camera_node_.AddComponent<CoreEngine::CameraComponent>();
 
+        CoreEngine::CameraComponent camera{.priority = 1, .enabled = false};
+        camera_node_ = context.world.CreateNode("MainCamera");
+        secondary_camera_node_ = context.world.CreateNode("SecondaryCamera");
+        secondary_camera_node_.AddComponent<CoreEngine::CameraComponent>(camera);
+        secondary_camera_node_.AddComponent<CoreEngine::MeshRendererComponent>(
+            CoreEngine::MeshRendererComponent{
+                .mesh = cube_mesh,
+                .material = player_material,
+            });
+
+        camera_node_.AddComponent<CoreEngine::CameraComponent>();
         camera_node_.SetPosition({0.0f, 1.5f, -4.0f});
+        camera_node_.AddComponent<CoreEngine::MeshRendererComponent>(
+            CoreEngine::MeshRendererComponent{
+                .mesh = cube_mesh,
+                .material = player_material,
+            });
 
         third_person_camera_controller_.Attach(camera_node_, player_pawn_.Node());
         third_person_camera_controller_.SetFocusOffset({0.0f, 1.25f, 0.0f});
@@ -79,7 +110,7 @@ public:
         plane_node_.SetRotation(
             CoreEngine::Math::AngleAxis(CoreEngine::Math::Deg2Rad(180.0f), CoreEngine::Math::Vec3(0.0f, 0.f, 1.f)));
 
-        ApplyCursorMode(context.window_system, CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN);
+        ApplyCursorMode(context.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
     }
 
     void Update(const CoreEngine::FrameContext &frame) override {
@@ -88,17 +119,22 @@ public:
         }
 
         player_controller_.Update(frame);
+        RenderDebugUi(frame);
+
+        auto &editor_camera = secondary_camera_node_.GetComponent<CoreEngine::CameraComponent>();
 
         if (frame.input_system.WasKeyPressed(CoreEngine::Key::Tab)) {
             switch (current_cursor_mode_) {
                 case CoreEngine::WindowCursorMode::CURSOR_NORMAL:
                     ApplyCursorMode(frame.window_system, CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN);
+                    editor_camera.enabled = false;
+                    editor_camera.priority = 0;
                     break;
                 case CoreEngine::WindowCursorMode::CURSOR_CONSTRAINED_AND_HIDDEN:
-                    ApplyCursorMode(frame.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
-                    break;
                 default:
                     ApplyCursorMode(frame.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
+                    editor_camera.enabled = true;
+                    editor_camera.priority = 10;
                     break;
             }
         }
@@ -110,6 +146,20 @@ public:
     }
 
 private:
+    void RenderDebugUi(const CoreEngine::FrameContext &frame) {
+        if (ImGui::GetCurrentContext() == nullptr) {
+            return;
+        }
+
+        ImGui::SetNextWindowPos(ImVec2{16.0f, 16.0f}, ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2{360.0f, 0.0f}, ImGuiCond_FirstUseEver);
+
+        if (ImGui::Begin("CoreEngine Debug")) {
+            ImGui::Text("FPS: %.0f", 1.0 / frame.delta_time);
+        }
+        ImGui::End();
+    }
+
     void ApplyCursorMode(CoreEngine::WindowSystem &window_system, CoreEngine::WindowCursorMode cursor_mode) {
         if (window_system.SetWindowCursorMode(cursor_mode)) {
             current_cursor_mode_ = cursor_mode;
@@ -118,10 +168,14 @@ private:
 
     CoreEngine::Node plane_node_;
     CoreEngine::Node camera_node_;
+    CoreEngine::Node secondary_camera_node_;
     Game::ThirdPersonCameraController third_person_camera_controller_;
     Game::PlayerPawn player_pawn_;
     Game::PlayerController player_controller_;
     CoreEngine::WindowCursorMode current_cursor_mode_ = CoreEngine::WindowCursorMode::CURSOR_NORMAL;
+    float debug_value_ = 0.5f;
+    float debug_color_[3] = {0.25f, 0.55f, 0.9f};
+    int debug_counter_ = 0;
 };
 
 int main() {
@@ -136,6 +190,7 @@ int main() {
     config.windowTitle = "CoreEngine - Player Input Demo";
     config.renderBackend = CoreEngine::RenderBackendType::DiligentVulkan;
     config.vsync = false;
+    config.enableImGui = true;
 
     return CoreEngine::RunEngine(std::move(app), config);
 }

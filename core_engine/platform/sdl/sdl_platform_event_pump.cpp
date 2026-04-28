@@ -3,6 +3,8 @@
 #include "core/window/window_system.h"
 #include "platform/sdl/sdl_input_backend.h"
 #include "platform/sdl/sdl_window_backend.h"
+#include "imgui.h"
+#include "backends/imgui_impl_sdl3.h"
 #include "SDL3/SDL_events.h"
 
 namespace CoreEngine {
@@ -14,6 +16,10 @@ namespace CoreEngine {
         SDL_Event event;
 
         while (SDL_PollEvent(&event)) {
+            if (ImGui::GetCurrentContext() != nullptr) {
+                (void) ImGui_ImplSDL3_ProcessEvent(&event);
+            }
+
             WindowEvent window_event;
             if (window_backend_.HandleEvent(event, window_event)) {
                 (void) window_system.PushEvent(window_event);

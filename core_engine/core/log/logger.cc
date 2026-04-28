@@ -6,13 +6,10 @@ namespace CoreEngine {
             return;
         }
 
-        const auto currentSinks = std::atomic_load_explicit(&sinks, std::memory_order_acquire);
+        const auto currentSinks = sinks.load(std::memory_order_acquire);
         auto updatedSinks = std::make_shared<SinkList>(*currentSinks);
         updatedSinks->push_back(sink);
-        std::atomic_store_explicit(
-            &sinks,
-            std::shared_ptr<const SinkList>(std::move(updatedSinks)),
-            std::memory_order_release);
+        sinks.store(std::shared_ptr<const SinkList>(std::move(updatedSinks)), std::memory_order_release);
     }
 
     void Logger::SetMinLevel(LogLevel level) {
@@ -24,7 +21,7 @@ namespace CoreEngine {
             return;
         }
 
-        const auto localSinks = std::atomic_load_explicit(&sinks, std::memory_order_acquire);
+        const auto localSinks = sinks.load(std::memory_order_acquire);
         if (localSinks->empty()) {
             return;
         }

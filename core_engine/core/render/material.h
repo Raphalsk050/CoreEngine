@@ -32,16 +32,18 @@ namespace CoreEngine {
                               sizeof(T)));
         }
 
-        [[nodiscard]] MaterialHandle Resolve(IRenderContext &ctx) const;
+        [[nodiscard]] MaterialHandle Resolve(IRenderContext &render_context) const;
 
     private:
         explicit Material(MaterialDesc desc);
+
         MaterialDesc desc_;
     };
 
     class MaterialBuilder {
     public:
         MaterialBuilder &Vertex(std::string source);
+
         MaterialBuilder &Pixel(std::string source);
 
         template<typename T>

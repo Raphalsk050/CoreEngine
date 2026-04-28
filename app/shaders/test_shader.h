@@ -1,7 +1,7 @@
 #pragma once
 
-namespace CoreEngine::BuiltinShaders {
-    inline constexpr const char *kUnlitVS = R"HLSL(
+namespace Game::Shaders {
+    inline constexpr const char *kTestVS = R"HLSL(
 cbuffer PerFrame : register(b0)
 {
     float4x4 g_ViewProj;
@@ -33,19 +33,19 @@ struct PSInput
 
 void main(in VSInput i, out PSInput o)
 {
+    o.time       = g_frameTime;
     float4 world = mul(g_Model, float4(i.pos, 1.0));
     o.pos        = mul(g_ViewProj, world);
     o.color      = i.color;
     o.norm       = i.norm;
     o.uv         = i.uv;
-    o.time       = i.time;
 }
 )HLSL";
-
-    inline constexpr const char *kUnlitPS = R"HLSL(
+    inline constexpr const char *kTestPS = R"HLSL(
 cbuffer PerMaterial : register(b2)
 {
     float4 g_Tint;
+    float alpha;
 };
 
 struct PSInput
@@ -59,51 +59,11 @@ struct PSInput
 
 float4 main(in PSInput i) : SV_TARGET
 {
-    return float4(i.color, 1.0) * g_Tint;
-}
-)HLSL";
-
-    inline constexpr const char *kCompositeVS = R"HLSL(
-struct VSOutput
-{
-    float4 pos : SV_POSITION;
-    float2 uv  : TEXCOORD0;
-};
-
-void main(uint vertex_id : SV_VertexID, out VSOutput o)
-{
-    float2 positions[3] =
-    {
-        float2(-1.0, -1.0),
-        float2(-1.0,  3.0),
-        float2( 3.0, -1.0)
-    };
-
-    float2 uvs[3] =
-    {
-        float2(0.0, 1.0),
-        float2(0.0, -1.0),
-        float2(2.0, 1.0)
-    };
-
-    o.pos = float4(positions[vertex_id], 0.0, 1.0);
-    o.uv  = uvs[vertex_id];
-}
-)HLSL";
-
-    inline constexpr const char *kCompositePS = R"HLSL(
-Texture2D g_SceneColor;
-SamplerState g_SceneColor_sampler;
-
-struct VSOutput
-{
-    float4 pos : SV_POSITION;
-    float2 uv  : TEXCOORD0;
-};
-
-float4 main(VSOutput i) : SV_TARGET
-{
-    return g_SceneColor.Sample(g_SceneColor_sampler, i.uv);
+    float4 new_color = float4(i.uv.x,0.0,0.0,1.0);
+    float new_alpha = (sin(i.time.y) * 0.5 + 0.5);
+    float lerp = lerp(0.0,0.2, new_alpha);
+    float new_value = smoothstep(0.8 - lerp,0.9 - lerp, 1.0 - length(i.uv - 0.5)) * abs(i.norm.z);
+    return float4(i.color * abs(i.norm), alpha) * new_value;
 }
 )HLSL";
 } // namespace CoreEngine::BuiltinShaders

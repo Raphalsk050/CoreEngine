@@ -14,6 +14,10 @@
 #include "core/render/render_batch.h"
 
 namespace CoreEngine {
+    class FrameClock;
+}
+
+namespace CoreEngine {
     class World;
     struct CameraComponent;
     struct TransformComponent;
@@ -24,7 +28,9 @@ namespace CoreEngine {
 
         [[nodiscard]] bool Initialize(const RenderDesc &desc, NativeWindowHandle native_window);
 
-        void RenderFrame(World &world);
+        void BeginImGuiFrame() const;
+
+        void RenderFrame(World &world, FrameClock frame_clock);
 
         [[nodiscard]] MeshHandle GetOrCreatePrimitive(PrimitiveType type) override;
 
@@ -51,6 +57,10 @@ namespace CoreEngine {
         [[nodiscard]] IRenderContext &Context();
 
     private:
+        [[nodiscard]] bool CreateSceneFrameBuffer();
+
+        void DestroySceneFrameBuffer();
+
         [[nodiscard]] CameraData ResolveWorldCamera(World &world) const;
 
         [[nodiscard]] CameraData BuildCameraData(const TransformComponent &transform,
@@ -69,6 +79,7 @@ namespace CoreEngine {
 
         BatchAccumulator accumulator_;
         std::array<MeshHandle, kPrimitiveCount> primitive_cache_{};
+        FrameBufferHandle scene_framebuffer_{};
         bool initialized_ = false;
     };
 } // namespace CoreEngine

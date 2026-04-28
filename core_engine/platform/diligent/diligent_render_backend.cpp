@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <span>
@@ -18,6 +19,8 @@
 #include "EngineFactoryD3D12.h"
 #endif
 #include "DiligentCore/Common/interface/RefCntAutoPtr.hpp"
+#include "ImGuiImplSDL3.hpp"
+#include "platform/diligent/builtin_shaders.h"
 #include "core/render/render_batch.h"
 #include "core/render/vertex.h"
 
@@ -27,6 +30,7 @@ namespace CoreEngine {
     namespace {
         struct PerFrameCB {
             Math::Mat4 view_proj;
+            Math::Vec4 frame_clock;
         };
 
         struct PerObjectCB {
@@ -47,6 +51,17 @@ namespace CoreEngine {
             Diligent::RefCntAutoPtr<Diligent::IBuffer> material_cbuffer;
             std::vector<uint8_t> properties_data;
         };
+
+        struct DiligentFrameBufferData {
+            Diligent::RefCntAutoPtr<Diligent::ITexture> color_texture;
+            Diligent::RefCntAutoPtr<Diligent::ITexture> depth_texture;
+            Diligent::RefCntAutoPtr<Diligent::ITextureView> color_rtv;
+            Diligent::RefCntAutoPtr<Diligent::ITextureView> color_srv;
+            Diligent::RefCntAutoPtr<Diligent::ITextureView> depth_dsv;
+            uint32_t width = 0;
+            uint32_t height = 0;
+            uint32_t generation = 0;
+        };
     }
 
     struct DiligentRenderBackend::Impl {
@@ -60,17 +75,28 @@ namespace CoreEngine {
         Diligent::RefCntAutoPtr<Diligent::IRenderDevice> device;
         Diligent::RefCntAutoPtr<Diligent::IDeviceContext> immediate_context;
         Diligent::RefCntAutoPtr<Diligent::ISwapChain> swap_chain;
+        std::unique_ptr<Diligent::ImGuiImplSDL3> imgui;
 
         Diligent::RefCntAutoPtr<Diligent::IBuffer> per_frame_cb;
         Diligent::RefCntAutoPtr<Diligent::IBuffer> per_object_cb;
 
         std::unordered_map<uint32_t, DiligentMeshData> mesh_registry;
         std::unordered_map<uint32_t, DiligentMaterialData> material_registry;
+        std::unordered_map<uint32_t, DiligentFrameBufferData> frame_buffer_registry;
         std::unordered_map<uint64_t, MaterialHandle> material_hash_cache;
+
+        Diligent::RefCntAutoPtr<Diligent::IPipelineState> composite_pso;
+        Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> composite_srb;
+        Diligent::RefCntAutoPtr<Diligent::ISampler> composite_sampler;
+        Diligent::IShaderResourceVariable *composite_scene_color_var = nullptr;
+        Diligent::IShaderResourceVariable *composite_scene_sampler_var = nullptr;
+        FrameBufferHandle active_frame_buffer{};
 
         uint32_t next_mesh_id = 1;
         uint32_t next_material_id = 1;
+        uint32_t next_frame_buffer_id = 1;
         uint32_t mesh_generation = 1;
+        uint32_t frame_buffer_generation = 1;
     };
 
     namespace {
@@ -262,21 +288,32 @@ namespace CoreEngine {
             auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL,
                                     desc.pixel_shader_source.c_str(), "PS");
 
-            // NOTE: Explicit offsets required — GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
-            // changes sizeof(glm::vec3) from 12 to 16, adding padding between fields.
+            // Explicit offsets keep the vertex contract stable if math type packing changes.
             constexpr Diligent::Uint32 kStride = sizeof(StaticMeshVertex);
 
             Diligent::LayoutElement layout[] = {
                 // InputIndex, BufferSlot, NumComponents, ValueType, IsNormalized,
                 //   RelativeOffset, Stride
-                {0, 0, 3, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, position)), kStride},
-                {1, 0, 3, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, normal)),   kStride},
-                {2, 0, 3, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, color)),    kStride},
-                {3, 0, 2, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, uv)),       kStride},
+                {
+                    0, 0, 3, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, position)), kStride
+                },
+                {
+                    1, 0, 3, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, normal)), kStride
+                },
+                {
+                    2, 0, 3, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, color)), kStride
+                },
+                {
+                    3, 0, 2, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, uv)), kStride
+                },
+                {
+                    4, 0, 4, Diligent::VT_FLOAT32, false,
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, time)), kStride
+                },
             };
 
             Diligent::GraphicsPipelineStateCreateInfo pci;
@@ -289,7 +326,7 @@ namespace CoreEngine {
             pci.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_BACK;
             pci.GraphicsPipeline.DepthStencilDesc.DepthEnable = true;
             pci.GraphicsPipeline.InputLayout.LayoutElements = layout;
-            pci.GraphicsPipeline.InputLayout.NumElements = 4;
+            pci.GraphicsPipeline.InputLayout.NumElements = 5;
             pci.pVS = vs;
             pci.pPS = ps;
 
@@ -327,6 +364,114 @@ namespace CoreEngine {
             mat.pso->CreateShaderResourceBinding(&mat.srb, true);
 
             return mat;
+        }
+
+        DiligentFrameBufferData CreateFrameBufferData(
+            Diligent::IRenderDevice *device,
+            const FrameBufferDesc &desc,
+            Diligent::TEXTURE_FORMAT color_format,
+            Diligent::TEXTURE_FORMAT depth_format) {
+            DiligentFrameBufferData frame_buffer;
+            frame_buffer.width = static_cast<uint32_t>(desc.width);
+            frame_buffer.height = static_cast<uint32_t>(desc.height);
+
+            Diligent::TextureDesc color_desc;
+            color_desc.Name = "SceneFramebufferColor";
+            color_desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
+            color_desc.Width = frame_buffer.width;
+            color_desc.Height = frame_buffer.height;
+            color_desc.Format = color_format;
+            color_desc.BindFlags = desc.sample_color
+                                       ? Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE
+                                       : Diligent::BIND_RENDER_TARGET;
+
+            device->CreateTexture(color_desc, nullptr, &frame_buffer.color_texture);
+            if (frame_buffer.color_texture) {
+                frame_buffer.color_rtv =
+                        frame_buffer.color_texture->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
+
+                if (desc.sample_color) {
+                    frame_buffer.color_srv =
+                            frame_buffer.color_texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+                }
+            }
+
+            Diligent::TextureDesc depth_desc;
+            depth_desc.Name = "SceneFramebufferDepth";
+            depth_desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
+            depth_desc.Width = frame_buffer.width;
+            depth_desc.Height = frame_buffer.height;
+            depth_desc.Format = depth_format;
+            depth_desc.BindFlags = Diligent::BIND_DEPTH_STENCIL;
+
+            device->CreateTexture(depth_desc, nullptr, &frame_buffer.depth_texture);
+            if (frame_buffer.depth_texture) {
+                frame_buffer.depth_dsv =
+                        frame_buffer.depth_texture->GetDefaultView(Diligent::TEXTURE_VIEW_DEPTH_STENCIL);
+            }
+
+            return frame_buffer;
+        }
+
+        bool CreateCompositePipeline(DiligentRenderBackend::Impl &impl) {
+            auto vs = CompileShader(impl.device, Diligent::SHADER_TYPE_VERTEX,
+                                    BuiltinShaders::kCompositeVS, "CompositeVS");
+            auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL,
+                                    BuiltinShaders::kCompositePS, "CompositePS");
+
+            if (!vs || !ps) {
+                return false;
+            }
+
+            Diligent::GraphicsPipelineStateCreateInfo pci;
+            pci.PSODesc.Name = "FramebufferComposite";
+            pci.PSODesc.PipelineType = Diligent::PIPELINE_TYPE_GRAPHICS;
+            pci.GraphicsPipeline.NumRenderTargets = 1;
+            pci.GraphicsPipeline.RTVFormats[0] = impl.swap_chain->GetDesc().ColorBufferFormat;
+            pci.GraphicsPipeline.DSVFormat = impl.swap_chain->GetDesc().DepthBufferFormat;
+            pci.GraphicsPipeline.PrimitiveTopology = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+            pci.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_NONE;
+            pci.GraphicsPipeline.DepthStencilDesc.DepthEnable = false;
+            pci.pVS = vs;
+            pci.pPS = ps;
+
+            Diligent::ShaderResourceVariableDesc vars[] = {
+                {Diligent::SHADER_TYPE_PIXEL, "g_SceneColor", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+                {Diligent::SHADER_TYPE_PIXEL, "g_SceneColor_sampler", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+            };
+            pci.PSODesc.ResourceLayout.Variables = vars;
+            pci.PSODesc.ResourceLayout.NumVariables = 2;
+
+            Diligent::SamplerDesc sampler;
+            sampler.AddressU = Diligent::TEXTURE_ADDRESS_CLAMP;
+            sampler.AddressV = Diligent::TEXTURE_ADDRESS_CLAMP;
+            sampler.AddressW = Diligent::TEXTURE_ADDRESS_CLAMP;
+
+            impl.device->CreateGraphicsPipelineState(pci, &impl.composite_pso);
+            if (!impl.composite_pso) {
+                return false;
+            }
+
+            impl.device->CreateSampler(sampler, &impl.composite_sampler);
+            if (!impl.composite_sampler) {
+                return false;
+            }
+
+            impl.composite_pso->CreateShaderResourceBinding(&impl.composite_srb, true);
+            if (!impl.composite_srb) {
+                return false;
+            }
+
+            impl.composite_scene_color_var =
+                    impl.composite_srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "g_SceneColor");
+            impl.composite_scene_sampler_var =
+                    impl.composite_srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "g_SceneColor_sampler");
+
+            if (impl.composite_scene_sampler_var != nullptr) {
+                impl.composite_scene_sampler_var->Set(impl.composite_sampler);
+            }
+
+            return impl.composite_scene_color_var != nullptr && impl.composite_scene_sampler_var != nullptr;
         }
 
         void UpdateBuffer(Diligent::IDeviceContext *ctx,
@@ -457,6 +602,26 @@ namespace CoreEngine {
             return false;
         }
 
+        if (!CreateCompositePipeline(*impl_)) {
+            impl_->last_error = "Failed to create framebuffer composite pipeline";
+            return false;
+        }
+
+        if (desc.enable_imgui && native_window.platform_window != nullptr) {
+            try {
+                Diligent::ImGuiDiligentCreateInfo imgui_ci{impl_->device, impl_->swap_chain->GetDesc()};
+                impl_->imgui = Diligent::ImGuiImplSDL3::Create(
+                    imgui_ci,
+                    static_cast<SDL_Window *>(native_window.platform_window));
+            } catch (const std::exception &error) {
+                impl_->last_error = error.what();
+                impl_->imgui.reset();
+            } catch (...) {
+                impl_->last_error = "Failed to initialize ImGui";
+                impl_->imgui.reset();
+            }
+        }
+
         return true;
     }
 
@@ -468,8 +633,20 @@ namespace CoreEngine {
             return;
         }
 
-        auto *rtv = impl_->swap_chain->GetCurrentBackBufferRTV();
-        auto *dsv = impl_->swap_chain->GetDepthBufferDSV();
+        Diligent::ITextureView *rtv = nullptr;
+        Diligent::ITextureView *dsv = nullptr;
+
+        if (impl_->active_frame_buffer.IsValid()) {
+            const auto it = impl_->frame_buffer_registry.find(impl_->active_frame_buffer.id);
+            if (it != impl_->frame_buffer_registry.end() &&
+                it->second.generation == impl_->active_frame_buffer.generation) {
+                rtv = it->second.color_rtv;
+                dsv = it->second.depth_dsv;
+            }
+        } else {
+            rtv = impl_->swap_chain->GetCurrentBackBufferRTV();
+            dsv = impl_->swap_chain->GetDepthBufferDSV();
+        }
 
         if (!rtv) {
             return;
@@ -492,6 +669,23 @@ namespace CoreEngine {
         }
     }
 
+    void DiligentRenderBackend::BeginImGuiFrame() {
+        if (!impl_->imgui || !impl_->swap_chain) {
+            return;
+        }
+
+        const Diligent::SwapChainDesc &swap_desc = impl_->swap_chain->GetDesc();
+        impl_->imgui->NewFrame(swap_desc.Width, swap_desc.Height, swap_desc.PreTransform);
+    }
+
+    void DiligentRenderBackend::RenderImGui() {
+        if (!impl_->imgui || !impl_->immediate_context) {
+            return;
+        }
+
+        impl_->imgui->Render(impl_->immediate_context);
+    }
+
     void DiligentRenderBackend::EndFrame() {
         if (!impl_->swap_chain) {
             return;
@@ -512,6 +706,14 @@ namespace CoreEngine {
         if (!impl_) {
             return;
         }
+        impl_->imgui.reset();
+        impl_->active_frame_buffer = {};
+        impl_->composite_scene_color_var = nullptr;
+        impl_->composite_scene_sampler_var = nullptr;
+        impl_->composite_sampler.Release();
+        impl_->composite_srb.Release();
+        impl_->composite_pso.Release();
+        impl_->frame_buffer_registry.clear();
         impl_->immediate_context.Release();
         impl_->mesh_registry.clear();
         impl_->material_registry.clear();
@@ -520,6 +722,107 @@ namespace CoreEngine {
         impl_->per_object_cb.Release();
         impl_->swap_chain.Release();
         impl_->device.Release();
+    }
+
+    FrameBufferHandle DiligentRenderBackend::CreateFrameBuffer(const FrameBufferDesc &desc) {
+        if (!impl_->device || !impl_->swap_chain || !desc.IsValid()) {
+            return {};
+        }
+
+        const Diligent::SwapChainDesc swap_desc = impl_->swap_chain->GetDesc();
+        DiligentFrameBufferData data = CreateFrameBufferData(
+            impl_->device,
+            desc,
+            swap_desc.ColorBufferFormat,
+            swap_desc.DepthBufferFormat);
+
+        if (!data.color_texture || !data.color_rtv || !data.depth_texture || !data.depth_dsv) {
+            impl_->last_error = "Failed to create framebuffer textures";
+            return {};
+        }
+
+        if (desc.sample_color && !data.color_srv) {
+            impl_->last_error = "Failed to create framebuffer shader resource view";
+            return {};
+        }
+
+        const uint32_t id = impl_->next_frame_buffer_id++;
+        data.generation = impl_->frame_buffer_generation++;
+        impl_->frame_buffer_registry[id] = std::move(data);
+        return FrameBufferHandle{.id = id, .generation = impl_->frame_buffer_registry[id].generation};
+    }
+
+    void DiligentRenderBackend::DestroyFrameBuffer(FrameBufferHandle handle) {
+        if (!handle.IsValid()) {
+            return;
+        }
+
+        const auto it = impl_->frame_buffer_registry.find(handle.id);
+        if (it == impl_->frame_buffer_registry.end() || it->second.generation != handle.generation) {
+            return;
+        }
+
+        if (impl_->active_frame_buffer == handle) {
+            impl_->active_frame_buffer = {};
+        }
+
+        impl_->frame_buffer_registry.erase(it);
+    }
+
+    void DiligentRenderBackend::SetFrameBuffer(FrameBufferHandle handle) {
+        if (!impl_->immediate_context || !handle.IsValid()) {
+            return;
+        }
+
+        const auto it = impl_->frame_buffer_registry.find(handle.id);
+        if (it == impl_->frame_buffer_registry.end() || it->second.generation != handle.generation) {
+            return;
+        }
+
+        Diligent::ITextureView *rtvs[] = {it->second.color_rtv};
+        impl_->immediate_context->SetRenderTargets(
+            1, rtvs, it->second.depth_dsv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        impl_->active_frame_buffer = handle;
+    }
+
+    void DiligentRenderBackend::SetSwapChainFrameBuffer() {
+        if (!impl_->immediate_context || !impl_->swap_chain) {
+            return;
+        }
+
+        Diligent::ITextureView *rtvs[] = {impl_->swap_chain->GetCurrentBackBufferRTV()};
+        impl_->immediate_context->SetRenderTargets(
+            1,
+            rtvs,
+            impl_->swap_chain->GetDepthBufferDSV(),
+            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        impl_->active_frame_buffer = {};
+    }
+
+    void DiligentRenderBackend::CompositeFrameBuffer(FrameBufferHandle source) {
+        if (!impl_->immediate_context || !impl_->composite_pso || !impl_->composite_srb ||
+            impl_->composite_scene_color_var == nullptr) {
+            return;
+        }
+
+        const auto it = impl_->frame_buffer_registry.find(source.id);
+        if (it == impl_->frame_buffer_registry.end() || it->second.generation != source.generation ||
+            !it->second.color_srv) {
+            return;
+        }
+
+        SetSwapChainFrameBuffer();
+
+        impl_->immediate_context->SetPipelineState(impl_->composite_pso);
+        impl_->composite_scene_color_var->Set(it->second.color_srv);
+        impl_->composite_scene_sampler_var->Set(impl_->composite_sampler);
+        impl_->immediate_context->CommitShaderResources(
+            impl_->composite_srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        Diligent::DrawAttribs draw;
+        draw.NumVertices = 3;
+        draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
+        impl_->immediate_context->Draw(draw);
     }
 
     MeshHandle DiligentRenderBackend::UploadMesh(const MeshDesc &desc) {
@@ -577,11 +880,13 @@ namespace CoreEngine {
         return handle;
     }
 
-    void DiligentRenderBackend::SetCamera(const CameraData &camera) {
+    void DiligentRenderBackend::SetPerFrameProps(PerFrameProps props) {
         if (!impl_->per_frame_cb) {
             return;
         }
-        PerFrameCB cb{camera.projection * camera.view};
+
+
+        PerFrameCB cb{.view_proj = props.camera.projection * props.camera.view, .frame_clock = props.frame_clock};
         UpdateBuffer(impl_->immediate_context,
                      impl_->per_frame_cb,
                      &cb, sizeof(cb));

@@ -1,5 +1,7 @@
 #pragma once
 #include <atomic>
+#include <memory>
+
 #include "application.h"
 #include "core/application/frame_context.h"
 #include "core/ecs/world_access.h"
@@ -12,10 +14,6 @@
 #include "core/render/render_system.h"
 #include "core/time/frame_clock.h"
 #include "core/window/window_system.h"
-#include "platform/sdl/sdl_context.h"
-#include "platform/sdl/sdl_input_backend.h"
-#include "platform/sdl/sdl_platform_event_pump.h"
-#include "platform/sdl/sdl_window_backend.h"
 
 namespace CoreEngine {
     class IGameApp;
@@ -28,6 +26,8 @@ namespace CoreEngine {
 
         explicit Runtime(const EngineConfig &config);
 
+        ~Runtime();
+
         int Run(IGameApp &app);
 
         World &GetWorld() override;
@@ -35,6 +35,8 @@ namespace CoreEngine {
         const World &GetWorld() const override;
 
     private:
+        struct PlatformServices;
+
         bool Initialize();
 
         void InitializeSink();
@@ -65,10 +67,7 @@ namespace CoreEngine {
         std::unique_ptr<AudioSystem> audio_system_;
         std::unique_ptr<InputSystem> input_system_;
         std::unique_ptr<RenderSystem> render_system_;
-        std::unique_ptr<SdlInputBackend> sdl_input_backend_;
-        std::unique_ptr<SdlPlatformEventPump> sdl_event_pump_;
-        SdlWindowBackend *sdl_window_backend_ = nullptr;
-        SdlContext sdl_context_;
+        std::unique_ptr<PlatformServices> platform_;
         std::atomic_bool shutdown_requested_{false};
     };
 } // namespace CoreEngine

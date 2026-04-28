@@ -6,7 +6,9 @@
 #include "core/ecs/components/mesh_renderer_component.h"
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/world.h"
+#include "core/time/frame_clock.h"
 #include "core/ecs/components/camera_component.h"
+#include "core/log/logger.h"
 #include "core/render/primitives.h"
 
 namespace CoreEngine {
@@ -29,18 +31,31 @@ namespace CoreEngine {
                 .GetCameraData();
 
         initialized_ = backend_ != nullptr && backend_->Initialize(desc, native_window);
+        if (initialized_) {
+            initialized_ = CreateSceneFrameBuffer();
+        }
+
         return initialized_;
     }
 
-    void RenderSystem::RenderFrame(World &world) {
+    void RenderSystem::BeginImGuiFrame() const {
+        if (!initialized_ || backend_ == nullptr || !desc_.enable_imgui) {
+            return;
+        }
+
+        backend_->BeginImGuiFrame();
+    }
+
+    void RenderSystem::RenderFrame(World &world, FrameClock frame_clock) {
         if (!initialized_ || backend_ == nullptr) {
             return;
         }
 
-        accumulator_.Clear();
-
         auto view = world.View<TransformComponent, MeshRendererComponent>();
-        for (auto [entity, transform, renderer]: view.each()) {
+        accumulator_.Clear();
+        accumulator_.Reserve(static_cast<std::size_t>(view.size_hint()));
+
+        for (const auto &[entity, transform, renderer]: view.each()) {
             (void) entity;
 
             if (!renderer.visible || !renderer.material.IsValid() || !renderer.mesh.IsValid()) {
@@ -54,12 +69,24 @@ namespace CoreEngine {
                                              ? manual_camera_override_
                                              : ResolveWorldCamera(world);
 
-        backend_->SetCamera(active_camera);
+        PerFrameProps pros{
+            .camera = active_camera,
+            .frame_clock = Math::Vec4(frame_clock.TickSeconds(), static_cast<float>(frame_clock.TotalSeconds()), 0.0f,
+                                      0.0f)
+        };
+        backend_->SetPerFrameProps(pros);
         backend_->BeginFrame();
+        backend_->SetFrameBuffer(scene_framebuffer_);
         backend_->Clear(desc_.clear_color);
 
         for (const RenderBatch &batch: accumulator_.Batches()) {
             backend_->SubmitBatch(batch);
+        }
+
+        backend_->CompositeFrameBuffer(scene_framebuffer_);
+
+        if (desc_.enable_imgui) {
+            backend_->RenderImGui();
         }
 
         backend_->EndFrame();
@@ -133,12 +160,16 @@ namespace CoreEngine {
         if (!initialized_ || backend_ == nullptr) {
             return;
         }
+        DestroySceneFrameBuffer();
         surface_width_ = width > 0 ? width : 1;
         surface_height_ = height > 0 ? height : 1;
         backend_->Resize(surface_width_, surface_height_);
+        initialized_ = CreateSceneFrameBuffer();
     }
 
     void RenderSystem::Shutdown() {
+        DestroySceneFrameBuffer();
+
         if (backend_ != nullptr) {
             backend_->Shutdown();
         }
@@ -157,6 +188,29 @@ namespace CoreEngine {
 
     IRenderContext &RenderSystem::Context() {
         return *this;
+    }
+
+    bool RenderSystem::CreateSceneFrameBuffer() {
+        if (backend_ == nullptr) {
+            return false;
+        }
+
+        FrameBufferDesc desc;
+        desc.width = surface_width_;
+        desc.height = surface_height_;
+        desc.sample_color = true;
+
+        scene_framebuffer_ = backend_->CreateFrameBuffer(desc);
+        return scene_framebuffer_.IsValid();
+    }
+
+    void RenderSystem::DestroySceneFrameBuffer() {
+        if (backend_ == nullptr || !scene_framebuffer_.IsValid()) {
+            return;
+        }
+
+        backend_->DestroyFrameBuffer(scene_framebuffer_);
+        scene_framebuffer_ = {};
     }
 
     CameraData RenderSystem::ResolveWorldCamera(World &world) const {

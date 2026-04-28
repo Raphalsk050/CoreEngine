@@ -27,11 +27,25 @@ namespace CoreEngine {
 
         void Clear(const RenderClearColor &clear_color) override;
 
+        void BeginImGuiFrame() override;
+
+        void RenderImGui() override;
+
         void EndFrame() override;
 
         void Resize(int width, int height) override;
 
         void Shutdown() override;
+
+        [[nodiscard]] FrameBufferHandle CreateFrameBuffer(const FrameBufferDesc &desc) override;
+
+        void DestroyFrameBuffer(FrameBufferHandle handle) override;
+
+        void SetFrameBuffer(FrameBufferHandle handle) override;
+
+        void SetSwapChainFrameBuffer() override;
+
+        void CompositeFrameBuffer(FrameBufferHandle source) override;
 
         [[nodiscard]] MeshHandle UploadMesh(const MeshDesc &desc) override;
 
@@ -39,7 +53,7 @@ namespace CoreEngine {
 
         [[nodiscard]] MaterialHandle ResolveMaterial(const MaterialDesc &desc) override;
 
-        void SetCamera(const CameraData &camera) override;
+        void SetPerFrameProps(PerFrameProps props) override;
 
         void SubmitBatch(const RenderBatch &batch) override;
 

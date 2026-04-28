@@ -16,6 +16,7 @@ namespace CoreEngine {
         bool decorated = true;
         bool highDPI = true;
         bool vsync = true;
+        bool enableImGui = false;
         RenderBackendType renderBackend = RenderBackendType::None;
         const char *windowTitle = "Sample game";
     };

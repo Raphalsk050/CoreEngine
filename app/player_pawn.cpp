@@ -40,6 +40,8 @@ namespace Game {
 
         const float speed = ResolveSpeed(command);
         transform->position += move * speed * delta_time;
+
+        RotateThroughMovement(delta_time, transform, move);
     }
 
     CoreEngine::Node &PlayerPawn::Node() noexcept {
@@ -69,5 +71,23 @@ namespace Game {
         }
 
         return movement_.walk_speed;
+    }
+
+    void PlayerPawn::RotateThroughMovement(float delta_time,
+                                           CoreEngine::TransformComponent *transform,
+                                           CoreEngine::Math::Vec3 move) noexcept {
+        CoreEngine::Math::Vec3 facing = move;
+        facing.y = 0.0f;
+
+        if (CoreEngine::Math::LengthSquared(facing) > 0.0001f) {
+            facing = CoreEngine::Math::Normalize(facing);
+
+            const float yaw = std::atan2(facing.x, facing.z); // +Z is forward, LH
+            const auto target_rotation =
+                    CoreEngine::Math::AngleAxis(yaw, CoreEngine::Math::Vec3{0.0f, 1.0f, 0.0f});
+
+            const float turn_alpha = 1.0f - std::exp(-20.0f * delta_time);
+            transform->rotation = CoreEngine::Math::Slerp(transform->rotation, target_rotation, turn_alpha);
+        }
     }
 } // namespace Game

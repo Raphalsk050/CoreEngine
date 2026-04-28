@@ -50,6 +50,6 @@ namespace CoreEngine {
         using SinkList = std::vector<std::shared_ptr<ILogSink> >;
 
         std::atomic<LogLevel> minLevel{LogLevel::Debug};
-        std::shared_ptr<const SinkList> sinks{std::make_shared<SinkList>()};
+        std::atomic<std::shared_ptr<const SinkList>> sinks{std::make_shared<SinkList>()};
     };
 }
