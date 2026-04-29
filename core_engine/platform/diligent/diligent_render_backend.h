@@ -45,6 +45,10 @@ namespace CoreEngine {
 
         void SetSwapChainFrameBuffer() override;
 
+        [[nodiscard]] FrameBufferColorView GetFrameBufferColorView(FrameBufferHandle handle) const override;
+
+        [[nodiscard]] FrameBufferDepthView GetFrameBufferDepthView(FrameBufferHandle handle) const override;
+
         void CompositeFrameBuffer(FrameBufferHandle source) override;
 
         [[nodiscard]] MeshHandle UploadMesh(const MeshDesc &desc) override;

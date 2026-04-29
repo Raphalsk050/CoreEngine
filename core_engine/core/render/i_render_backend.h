@@ -45,6 +45,10 @@ namespace CoreEngine {
 
         virtual void SetSwapChainFrameBuffer() = 0;
 
+        [[nodiscard]] virtual FrameBufferColorView GetFrameBufferColorView(FrameBufferHandle handle) const = 0;
+
+        [[nodiscard]] virtual FrameBufferDepthView GetFrameBufferDepthView(FrameBufferHandle handle) const = 0;
+
         virtual void CompositeFrameBuffer(FrameBufferHandle source) = 0;
 
         [[nodiscard]] virtual MeshHandle UploadMesh(const MeshDesc &desc) = 0;

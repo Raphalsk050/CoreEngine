@@ -24,4 +24,12 @@ namespace CoreEngine {
         [[nodiscard]] bool IsValid() const { return id != 0 && generation != 0; }
         bool operator==(const FrameBufferHandle &other) const = default;
     };
+
+    struct RenderPassHandle {
+        uint32_t id = 0;
+        uint32_t generation = 0;
+
+        [[nodiscard]] bool IsValid() const { return id != 0 && generation != 0; }
+        bool operator==(const RenderPassHandle &other) const = default;
+    };
 }

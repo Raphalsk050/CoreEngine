@@ -24,15 +24,39 @@ namespace CoreEngine {
     void NullRenderBackend::Shutdown() {
     }
 
-    FrameBufferHandle NullRenderBackend::CreateFrameBuffer(const FrameBufferDesc &) { return {.id = 1, .generation = 1}; }
+    FrameBufferHandle NullRenderBackend::CreateFrameBuffer(const FrameBufferDesc &desc) {
+        if (!desc.IsValid()) {
+            return {};
+        }
 
-    void NullRenderBackend::DestroyFrameBuffer(FrameBufferHandle) {
+        const FrameBufferHandle handle{
+            .id = next_frame_buffer_id_++,
+            .generation = next_frame_buffer_generation_++,
+        };
+
+        frame_buffers_[handle.id] = handle.generation;
+        return handle;
+    }
+
+    void NullRenderBackend::DestroyFrameBuffer(FrameBufferHandle handle) {
+        const auto it = frame_buffers_.find(handle.id);
+        if (it != frame_buffers_.end() && it->second == handle.generation) {
+            frame_buffers_.erase(it);
+        }
     }
 
     void NullRenderBackend::SetFrameBuffer(FrameBufferHandle) {
     }
 
     void NullRenderBackend::SetSwapChainFrameBuffer() {
+    }
+
+    FrameBufferColorView NullRenderBackend::GetFrameBufferColorView(FrameBufferHandle) const {
+        return {};
+    }
+
+    FrameBufferDepthView NullRenderBackend::GetFrameBufferDepthView(FrameBufferHandle) const {
+        return {};
     }
 
     void NullRenderBackend::CompositeFrameBuffer(FrameBufferHandle) {

@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <unordered_map>
+
 #include "core/render/i_render_backend.h"
 
 namespace CoreEngine {
@@ -30,6 +33,10 @@ namespace CoreEngine {
 
         void SetSwapChainFrameBuffer() override;
 
+        [[nodiscard]] FrameBufferColorView GetFrameBufferColorView(FrameBufferHandle handle) const override;
+
+        [[nodiscard]] FrameBufferDepthView GetFrameBufferDepthView(FrameBufferHandle handle) const override;
+
         void CompositeFrameBuffer(FrameBufferHandle source) override;
 
         [[nodiscard]] MeshHandle UploadMesh(const MeshDesc &desc) override;
@@ -43,5 +50,10 @@ namespace CoreEngine {
         void SubmitBatch(const RenderBatch &batch) override;
 
         [[nodiscard]] std::string_view LastError() const override;
+
+    private:
+        std::unordered_map<uint32_t, uint32_t> frame_buffers_;
+        uint32_t next_frame_buffer_id_ = 1;
+        uint32_t next_frame_buffer_generation_ = 1;
     };
 } // namespace CoreEngine

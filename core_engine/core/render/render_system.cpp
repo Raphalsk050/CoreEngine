@@ -10,6 +10,7 @@
 #include "core/ecs/components/camera_component.h"
 #include "core/log/logger.h"
 #include "core/render/primitives.h"
+#include "core/render/render_pass/default_scene_render_pass.h"
 
 namespace CoreEngine {
     RenderSystem::RenderSystem(std::unique_ptr<IRenderBackend> backend)
@@ -33,6 +34,7 @@ namespace CoreEngine {
         initialized_ = backend_ != nullptr && backend_->Initialize(desc, native_window);
         if (initialized_) {
             initialized_ = CreateSceneFrameBuffer();
+            default_scene_pass_ = render_graph_.AddPass(std::make_unique<DefaultSceneRenderPass>(*this));
         }
 
         return initialized_;
@@ -51,39 +53,25 @@ namespace CoreEngine {
             return;
         }
 
-        auto view = world.View<TransformComponent, MeshRendererComponent>();
-        accumulator_.Clear();
-        accumulator_.Reserve(static_cast<std::size_t>(view.size_hint()));
-
-        for (const auto &[entity, transform, renderer]: view.each()) {
-            (void) entity;
-
-            if (!renderer.visible || !renderer.material.IsValid() || !renderer.mesh.IsValid()) {
-                continue;
-            }
-
-            accumulator_.Add(renderer.material, renderer.mesh, transform.WorldMatrix());
-        }
-
-        const CameraData active_camera = has_manual_camera_override_
-                                             ? manual_camera_override_
-                                             : ResolveWorldCamera(world);
-
-        PerFrameProps pros{
-            .camera = active_camera,
-            .frame_clock = Math::Vec4(frame_clock.TickSeconds(), static_cast<float>(frame_clock.TotalSeconds()), 0.0f,
-                                      0.0f)
-        };
-        backend_->SetPerFrameProps(pros);
         backend_->BeginFrame();
-        backend_->SetFrameBuffer(scene_framebuffer_);
-        backend_->Clear(desc_.clear_color);
 
-        for (const RenderBatch &batch: accumulator_.Batches()) {
-            backend_->SubmitBatch(batch);
-        }
+        const RenderFrameTiming timing{
+            .delta_seconds = frame_clock.TickSeconds(),
+            .total_seconds = frame_clock.TotalSeconds(),
+            .frame_index = frame_clock.FrameIndex(),
+        };
+
+        // preserves the time snapshot to pass to all the render passes equally
+        RenderPassContext pass_context{*backend_, world, frame_clock, timing};
+
+        render_graph_.Execute(RenderPassStage::BeforeMainScene, pass_context);
+        render_graph_.Execute(RenderPassStage::MainScene, pass_context);
+        render_graph_.Execute(RenderPassStage::AfterMainScene, pass_context);
 
         backend_->CompositeFrameBuffer(scene_framebuffer_);
+
+        render_graph_.Execute(RenderPassStage::BeforeImGui, pass_context);
+        backend_->SetSwapChainFrameBuffer();
 
         if (desc_.enable_imgui) {
             backend_->RenderImGui();
@@ -142,6 +130,70 @@ namespace CoreEngine {
         }
     }
 
+    FrameBufferHandle RenderSystem::CreateFrameBuffer(const FrameBufferDesc &desc) {
+        if (!initialized_ || backend_ == nullptr || !desc.IsValid()) {
+            return {};
+        }
+
+        return backend_->CreateFrameBuffer(desc);
+    }
+
+    void RenderSystem::DestroyFrameBuffer(FrameBufferHandle handle) {
+        if (!handle.IsValid() || backend_ == nullptr) {
+            return;
+        }
+
+        backend_->DestroyFrameBuffer(handle);
+    }
+
+    void RenderSystem::SetFrameBuffer(FrameBufferHandle handle) {
+        if (!handle.IsValid() || backend_ == nullptr) {
+            return;
+        }
+
+        backend_->SetFrameBuffer(handle);
+    }
+
+    void RenderSystem::SetSwapChainFrameBuffer() {
+        if (backend_ == nullptr) {
+            return;
+        }
+
+        backend_->SetSwapChainFrameBuffer();
+    }
+
+    void RenderSystem::Clear(const RenderClearColor &clear_color) {
+        if (backend_ == nullptr) {
+            return;
+        }
+
+        backend_->Clear(clear_color);
+    }
+
+    FrameBufferColorView RenderSystem::GetFrameBufferColorView(FrameBufferHandle handle) const {
+        if (!handle.IsValid() || backend_ == nullptr) {
+            return {};
+        }
+
+        return backend_->GetFrameBufferColorView(handle);
+    }
+
+    FrameBufferDepthView RenderSystem::GetFrameBufferDepthView(FrameBufferHandle handle) const {
+        if (!handle.IsValid() || backend_ == nullptr) {
+            return {};
+        }
+
+        return backend_->GetFrameBufferDepthView(handle);
+    }
+
+    RenderPassHandle RenderSystem::AddRenderPass(std::unique_ptr<IRenderPass> pass) {
+        return render_graph_.AddPass(std::move(pass));
+    }
+
+    void RenderSystem::RemoveRenderPass(RenderPassHandle handle) {
+        render_graph_.RemovePass(handle);
+    }
+
     void RenderSystem::SetCamera(const Camera &camera) {
         manual_camera_override_ = camera.GetCameraData();
         has_manual_camera_override_ = true;
@@ -168,6 +220,9 @@ namespace CoreEngine {
     }
 
     void RenderSystem::Shutdown() {
+        default_scene_pass_ = {};
+        render_graph_.Clear();
+
         DestroySceneFrameBuffer();
 
         if (backend_ != nullptr) {
@@ -188,6 +243,45 @@ namespace CoreEngine {
 
     IRenderContext &RenderSystem::Context() {
         return *this;
+    }
+
+    RenderGraph &RenderSystem::Graph() {
+        return render_graph_;
+    }
+
+    void RenderSystem::ExecuteDefaultScenePass(RenderPassContext &context) {
+        World &world = context.GetWorld();
+        auto view = world.View<TransformComponent, MeshRendererComponent>();
+        accumulator_.Clear();
+        accumulator_.Reserve(static_cast<std::size_t>(view.size_hint()));
+
+        for (const auto &[entity, transform, renderer]: view.each()) {
+            (void) entity;
+            if (!renderer.visible || !renderer.material.IsValid() || !renderer.mesh.IsValid()) {
+                continue;
+            }
+
+            accumulator_.Add(renderer.material, renderer.mesh, transform.WorldMatrix());
+        }
+
+        const CameraData active_camera = has_manual_camera_override_
+                                             ? manual_camera_override_
+                                             : ResolveWorldCamera(world);
+
+        PerFrameProps props{
+            .camera = active_camera,
+            .frame_clock = Math::Vec4(
+                context.DeltaSeconds(),
+                static_cast<float>(context.TotalSeconds()), 0.0f, 0.0f)
+        };
+
+        context.SetPerFrameProps(props);
+        context.SetFrameBuffer(scene_framebuffer_);
+        context.Clear(desc_.clear_color);
+
+        for (const RenderBatch &batch: accumulator_.Batches()) {
+            context.SubmitBatch(batch);
+        }
     }
 
     bool RenderSystem::CreateSceneFrameBuffer() {

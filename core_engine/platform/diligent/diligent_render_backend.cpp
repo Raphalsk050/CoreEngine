@@ -58,6 +58,7 @@ namespace CoreEngine {
             Diligent::RefCntAutoPtr<Diligent::ITextureView> color_rtv;
             Diligent::RefCntAutoPtr<Diligent::ITextureView> color_srv;
             Diligent::RefCntAutoPtr<Diligent::ITextureView> depth_dsv;
+            Diligent::RefCntAutoPtr<Diligent::ITextureView> depth_srv;
             uint32_t width = 0;
             uint32_t height = 0;
             uint32_t generation = 0;
@@ -366,48 +367,107 @@ namespace CoreEngine {
             return mat;
         }
 
+        Diligent::TEXTURE_FORMAT ResolveFrameBufferColorFormat(FrameBufferFormat format,
+                                                               Diligent::TEXTURE_FORMAT swap_chain_format) {
+            switch (format) {
+                case FrameBufferFormat::SwapChainColor:
+                    return swap_chain_format;
+                case FrameBufferFormat::RGBA8Unorm:
+                    return Diligent::TEX_FORMAT_RGBA8_UNORM;
+                case FrameBufferFormat::RGBA16Float:
+                    return Diligent::TEX_FORMAT_RGBA16_FLOAT;
+                case FrameBufferFormat::R32Float:
+                    return Diligent::TEX_FORMAT_R32_FLOAT;
+                case FrameBufferFormat::SwapChainDepth:
+                case FrameBufferFormat::Depth32Float:
+                    return Diligent::TEX_FORMAT_UNKNOWN;
+            }
+
+            return Diligent::TEX_FORMAT_UNKNOWN;
+        }
+
+        Diligent::TEXTURE_FORMAT ResolveFrameBufferDepthFormat(FrameBufferFormat format,
+                                                               Diligent::TEXTURE_FORMAT swap_chain_format) {
+            switch (format) {
+                case FrameBufferFormat::SwapChainDepth:
+                    return swap_chain_format;
+                case FrameBufferFormat::Depth32Float:
+                    return Diligent::TEX_FORMAT_D32_FLOAT;
+                case FrameBufferFormat::SwapChainColor:
+                case FrameBufferFormat::RGBA8Unorm:
+                case FrameBufferFormat::RGBA16Float:
+                case FrameBufferFormat::R32Float:
+                    return Diligent::TEX_FORMAT_UNKNOWN;
+            }
+
+            return Diligent::TEX_FORMAT_UNKNOWN;
+        }
+
         DiligentFrameBufferData CreateFrameBufferData(
             Diligent::IRenderDevice *device,
             const FrameBufferDesc &desc,
-            Diligent::TEXTURE_FORMAT color_format,
-            Diligent::TEXTURE_FORMAT depth_format) {
+            Diligent::TEXTURE_FORMAT swap_chain_color_format,
+            Diligent::TEXTURE_FORMAT swap_chain_depth_format) {
             DiligentFrameBufferData frame_buffer;
             frame_buffer.width = static_cast<uint32_t>(desc.width);
             frame_buffer.height = static_cast<uint32_t>(desc.height);
 
-            Diligent::TextureDesc color_desc;
-            color_desc.Name = "SceneFramebufferColor";
-            color_desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
-            color_desc.Width = frame_buffer.width;
-            color_desc.Height = frame_buffer.height;
-            color_desc.Format = color_format;
-            color_desc.BindFlags = desc.sample_color
-                                       ? Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE
-                                       : Diligent::BIND_RENDER_TARGET;
+            if (desc.has_color) {
+                const Diligent::TEXTURE_FORMAT color_format =
+                        ResolveFrameBufferColorFormat(desc.color_format, swap_chain_color_format);
+                if (color_format == Diligent::TEX_FORMAT_UNKNOWN) {
+                    return frame_buffer;
+                }
 
-            device->CreateTexture(color_desc, nullptr, &frame_buffer.color_texture);
-            if (frame_buffer.color_texture) {
-                frame_buffer.color_rtv =
-                        frame_buffer.color_texture->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
+                Diligent::TextureDesc color_desc;
+                color_desc.Name = "FrameBufferColor";
+                color_desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
+                color_desc.Width = frame_buffer.width;
+                color_desc.Height = frame_buffer.height;
+                color_desc.Format = color_format;
+                color_desc.BindFlags = desc.sample_color
+                                           ? Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE
+                                           : Diligent::BIND_RENDER_TARGET;
 
-                if (desc.sample_color) {
-                    frame_buffer.color_srv =
-                            frame_buffer.color_texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+                device->CreateTexture(color_desc, nullptr, &frame_buffer.color_texture);
+                if (frame_buffer.color_texture) {
+                    frame_buffer.color_rtv =
+                            frame_buffer.color_texture->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
+
+                    if (desc.sample_color) {
+                        frame_buffer.color_srv =
+                                frame_buffer.color_texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+                    }
                 }
             }
 
-            Diligent::TextureDesc depth_desc;
-            depth_desc.Name = "SceneFramebufferDepth";
-            depth_desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
-            depth_desc.Width = frame_buffer.width;
-            depth_desc.Height = frame_buffer.height;
-            depth_desc.Format = depth_format;
-            depth_desc.BindFlags = Diligent::BIND_DEPTH_STENCIL;
+            if (desc.has_depth) {
+                const Diligent::TEXTURE_FORMAT depth_format =
+                        ResolveFrameBufferDepthFormat(desc.depth_format, swap_chain_depth_format);
+                if (depth_format == Diligent::TEX_FORMAT_UNKNOWN) {
+                    return frame_buffer;
+                }
 
-            device->CreateTexture(depth_desc, nullptr, &frame_buffer.depth_texture);
-            if (frame_buffer.depth_texture) {
-                frame_buffer.depth_dsv =
-                        frame_buffer.depth_texture->GetDefaultView(Diligent::TEXTURE_VIEW_DEPTH_STENCIL);
+                Diligent::TextureDesc depth_desc;
+                depth_desc.Name = "FrameBufferDepth";
+                depth_desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
+                depth_desc.Width = frame_buffer.width;
+                depth_desc.Height = frame_buffer.height;
+                depth_desc.Format = depth_format;
+                depth_desc.BindFlags = desc.sample_depth
+                                           ? Diligent::BIND_DEPTH_STENCIL | Diligent::BIND_SHADER_RESOURCE
+                                           : Diligent::BIND_DEPTH_STENCIL;
+
+                device->CreateTexture(depth_desc, nullptr, &frame_buffer.depth_texture);
+                if (frame_buffer.depth_texture) {
+                    frame_buffer.depth_dsv =
+                            frame_buffer.depth_texture->GetDefaultView(Diligent::TEXTURE_VIEW_DEPTH_STENCIL);
+
+                    if (desc.sample_depth) {
+                        frame_buffer.depth_srv =
+                                frame_buffer.depth_texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+                    }
+                }
             }
 
             return frame_buffer;
@@ -648,17 +708,23 @@ namespace CoreEngine {
             dsv = impl_->swap_chain->GetDepthBufferDSV();
         }
 
-        if (!rtv) {
+        if (!rtv && !dsv) {
             return;
         }
 
         Diligent::ITextureView *rtvs[] = {rtv};
+        const Diligent::Uint32 render_target_count = rtv != nullptr ? 1u : 0u;
         impl_->immediate_context->SetRenderTargets(
-            1, rtvs, dsv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            render_target_count,
+            rtv != nullptr ? rtvs : nullptr,
+            dsv,
+            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-        const std::array<float, 4> rgba{clear_color.r, clear_color.g, clear_color.b, clear_color.a};
-        impl_->immediate_context->ClearRenderTarget(
-            rtv, rgba.data(), Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        if (rtv) {
+            const std::array<float, 4> rgba{clear_color.r, clear_color.g, clear_color.b, clear_color.a};
+            impl_->immediate_context->ClearRenderTarget(
+                rtv, rgba.data(), Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        }
 
         if (dsv) {
             impl_->immediate_context->ClearDepthStencil(
@@ -736,13 +802,19 @@ namespace CoreEngine {
             swap_desc.ColorBufferFormat,
             swap_desc.DepthBufferFormat);
 
-        if (!data.color_texture || !data.color_rtv || !data.depth_texture || !data.depth_dsv) {
+        if ((desc.has_color && (!data.color_texture || !data.color_rtv)) ||
+            (desc.has_depth && (!data.depth_texture || !data.depth_dsv))) {
             impl_->last_error = "Failed to create framebuffer textures";
             return {};
         }
 
         if (desc.sample_color && !data.color_srv) {
             impl_->last_error = "Failed to create framebuffer shader resource view";
+            return {};
+        }
+
+        if (desc.sample_depth && !data.depth_srv) {
+            impl_->last_error = "Failed to create framebuffer depth shader resource view";
             return {};
         }
 
@@ -779,9 +851,14 @@ namespace CoreEngine {
             return;
         }
 
-        Diligent::ITextureView *rtvs[] = {it->second.color_rtv};
+        Diligent::ITextureView *rtv = it->second.color_rtv.RawPtr();
+        Diligent::ITextureView *rtvs[] = {rtv};
+        const Diligent::Uint32 render_target_count = rtv != nullptr ? 1u : 0u;
         impl_->immediate_context->SetRenderTargets(
-            1, rtvs, it->second.depth_dsv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            render_target_count,
+            rtv != nullptr ? rtvs : nullptr,
+            it->second.depth_dsv,
+            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         impl_->active_frame_buffer = handle;
     }
 
@@ -797,6 +874,32 @@ namespace CoreEngine {
             impl_->swap_chain->GetDepthBufferDSV(),
             Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         impl_->active_frame_buffer = {};
+    }
+
+    FrameBufferColorView DiligentRenderBackend::GetFrameBufferColorView(FrameBufferHandle handle) const {
+        if (!handle.IsValid()) {
+            return {};
+        }
+
+        const auto it = impl_->frame_buffer_registry.find(handle.id);
+        if (it == impl_->frame_buffer_registry.end() || it->second.generation != handle.generation) {
+            return {};
+        }
+
+        return FrameBufferColorView{.native_handle = it->second.color_srv.RawPtr()};
+    }
+
+    FrameBufferDepthView DiligentRenderBackend::GetFrameBufferDepthView(FrameBufferHandle handle) const {
+        if (!handle.IsValid()) {
+            return {};
+        }
+
+        const auto it = impl_->frame_buffer_registry.find(handle.id);
+        if (it == impl_->frame_buffer_registry.end() || it->second.generation != handle.generation) {
+            return {};
+        }
+
+        return FrameBufferDepthView{.native_handle = it->second.depth_srv.RawPtr()};
     }
 
     void DiligentRenderBackend::CompositeFrameBuffer(FrameBufferHandle source) {
