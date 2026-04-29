@@ -28,6 +28,32 @@ struct TestShaderProps {
     float alpha = 1.0f;
 };
 
+// this example here serves just to demonstrates that the Render pass is working
+// to try this just change the .stage from BeforeMainScene to BeforeImGui to see
+// that all the main scene will change to a green color and the imgui panel will
+// continue to be shown :)
+class ClearScreenPass final : public CoreEngine::IRenderPass {
+public:
+    [[nodiscard]] CoreEngine::RenderPassDesc Describe() const override {
+        return {
+            .name = "ClearScreenPass",
+            .stage = CoreEngine::RenderPassStage::BeforeMainScene,
+            .order = 0,
+        };
+    }
+
+    void Execute(CoreEngine::RenderPassContext &context) override {
+        context.SetSwapChainFrameBuffer();
+
+        context.Clear({
+            .r = 0.05f,
+            .g = 0.35f,
+            .b = 0.15f,
+            .a = 1.0f,
+        });
+    }
+};
+
 class MyGameApp final : public CoreEngine::IGameApp {
 public:
     MyGameApp() = default;
@@ -36,6 +62,9 @@ public:
         if (!player_controller_.Init(context)) {
             CoreEngine::Log::Warn("Game", "Failed to bind one or more player input actions");
         }
+
+        clear_pass_ = context.render_system.AddRenderPass(
+            std::make_unique<ClearScreenPass>());
 
         const CoreEngine::MeshHandle cube_mesh =
                 context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Cube);
@@ -140,7 +169,9 @@ public:
         }
     }
 
-    void Shutdown(const CoreEngine::EngineContext &) override {
+    void Shutdown(const CoreEngine::EngineContext &context) override {
+        context.render_system.RemoveRenderPass(clear_pass_);
+        clear_pass_ = {};
         player_controller_.DetachCameraController();
         player_controller_.Unpossess();
     }
@@ -176,6 +207,7 @@ private:
     float debug_value_ = 0.5f;
     float debug_color_[3] = {0.25f, 0.55f, 0.9f};
     int debug_counter_ = 0;
+    CoreEngine::RenderPassHandle clear_pass_{};
 };
 
 int main() {
