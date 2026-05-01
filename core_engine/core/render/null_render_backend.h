@@ -37,6 +37,9 @@ namespace CoreEngine {
 
         [[nodiscard]] FrameBufferDepthView GetFrameBufferDepthView(FrameBufferHandle handle) const override;
 
+        void RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
+                                const DepthVisualizationDesc &desc) override;
+
         void CompositeFrameBuffer(FrameBufferHandle source) override;
 
         [[nodiscard]] MeshHandle UploadMesh(const MeshDesc &desc) override;

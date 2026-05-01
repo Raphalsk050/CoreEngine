@@ -547,6 +547,10 @@ namespace CoreEngine {
         }
     }
 
+    void DiligentRenderBackend::RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
+                                                   const DepthVisualizationDesc &desc) {
+    }
+
     DiligentRenderBackend::DiligentRenderBackend(DiligentRenderBackendApi api)
         : impl_(std::make_unique<Impl>(api)) {
     }

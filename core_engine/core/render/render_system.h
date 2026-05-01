@@ -44,15 +44,15 @@ namespace CoreEngine {
 
         void DestroyMesh(MeshHandle handle);
 
-        [[nodiscard]] FrameBufferHandle CreateFrameBuffer(const FrameBufferDesc &desc);
+        [[nodiscard]] FrameBufferHandle CreateFrameBuffer(const FrameBufferDesc &desc) const;
 
-        void DestroyFrameBuffer(FrameBufferHandle handle);
+        void DestroyFrameBuffer(FrameBufferHandle handle) const;
 
-        void SetFrameBuffer(FrameBufferHandle handle);
+        void SetFrameBuffer(FrameBufferHandle handle) const;
 
-        void SetSwapChainFrameBuffer();
+        void SetSwapChainFrameBuffer() const;
 
-        void Clear(const RenderClearColor &clear_color);
+        void Clear(const RenderClearColor &clear_color) const;
 
         [[nodiscard]] FrameBufferColorView GetFrameBufferColorView(FrameBufferHandle handle) const;
 
@@ -108,6 +108,7 @@ namespace CoreEngine {
         BatchAccumulator accumulator_;
         RenderGraph render_graph_;
         RenderPassHandle default_scene_pass_;
+        RenderFrameResources render_frame_resources_;
         std::array<MeshHandle, kPrimitiveCount> primitive_cache_{};
         FrameBufferHandle scene_framebuffer_{};
         bool initialized_ = false;

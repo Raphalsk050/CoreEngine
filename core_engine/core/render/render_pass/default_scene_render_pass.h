@@ -11,7 +11,7 @@ namespace CoreEngine {
         [[nodiscard]] RenderPassDesc Describe() const override {
             return {
                 .name = "Default",
-                .stage = RenderPassStage::MainScene,
+                .stage = RenderPassStage::ForwardOpaque,
                 .order = 0
             };
         }

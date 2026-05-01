@@ -9,6 +9,7 @@
 #include "core/render/render_batch.h"
 #include "core/render/render_desc.h"
 #include "core/window/native_window_handle.h"
+#include "debug/depth_visualization.h"
 
 namespace CoreEngine {
     struct PerFrameProps {
@@ -48,6 +49,9 @@ namespace CoreEngine {
         [[nodiscard]] virtual FrameBufferColorView GetFrameBufferColorView(FrameBufferHandle handle) const = 0;
 
         [[nodiscard]] virtual FrameBufferDepthView GetFrameBufferDepthView(FrameBufferHandle handle) const = 0;
+
+        virtual void RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
+                                        const DepthVisualizationDesc &desc) = 0;
 
         virtual void CompositeFrameBuffer(FrameBufferHandle source) = 0;
 

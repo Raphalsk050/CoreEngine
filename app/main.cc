@@ -37,7 +37,7 @@ public:
     [[nodiscard]] CoreEngine::RenderPassDesc Describe() const override {
         return {
             .name = "ClearScreenPass",
-            .stage = CoreEngine::RenderPassStage::BeforeMainScene,
+            .stage = CoreEngine::RenderPassStage::FrameSetup,
             .order = 0,
         };
     }

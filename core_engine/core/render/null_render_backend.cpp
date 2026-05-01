@@ -59,6 +59,10 @@ namespace CoreEngine {
         return {};
     }
 
+    void NullRenderBackend::RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
+                                               const DepthVisualizationDesc &desc) {
+    }
+
     void NullRenderBackend::CompositeFrameBuffer(FrameBufferHandle) {
     }
 

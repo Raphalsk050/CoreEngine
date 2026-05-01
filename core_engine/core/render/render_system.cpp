@@ -13,6 +13,20 @@
 #include "core/render/render_pass/default_scene_render_pass.h"
 
 namespace CoreEngine {
+    //clang-format off
+    constexpr RenderPassStage kScenePassStages[] = {
+        RenderPassStage::FrameSetup,            // Per-frame setup before any scene rendering.
+        RenderPassStage::Shadow,                // Renders shadows maps and other light-space depth resources
+        RenderPassStage::DepthPrePass,          // Fills scene depth before color rendering
+        RenderPassStage::GBuffer,               // Writes deferred rendering geometry buffers
+        RenderPassStage::Lighting,              // Computes lighting from scene/material buffers
+        RenderPassStage::ForwardOpaque,         // Renders opaque forward geometry
+        RenderPassStage::ForwardTransparent,    // Renders transparent forward geometry after opaque
+        RenderPassStage::PostProcess,           // Applies fullscreen effects after scene rendering
+        RenderPassStage::Debug,                 // Produces debug overlays or debug textures
+    };
+    //clang-format on
+
     RenderSystem::RenderSystem(std::unique_ptr<IRenderBackend> backend)
         : backend_(std::move(backend)) {
     }
@@ -53,6 +67,8 @@ namespace CoreEngine {
             return;
         }
 
+        render_frame_resources_.Clear();
+
         backend_->BeginFrame();
 
         const RenderFrameTiming timing{
@@ -62,20 +78,24 @@ namespace CoreEngine {
         };
 
         // preserves the time snapshot to pass to all the render passes equally
-        RenderPassContext pass_context{*backend_, world, frame_clock, timing};
+        RenderPassContext pass_context{
+            *backend_, world, frame_clock, timing, render_frame_resources_, surface_width_, surface_height_
+        };
 
-        render_graph_.Execute(RenderPassStage::BeforeMainScene, pass_context);
-        render_graph_.Execute(RenderPassStage::MainScene, pass_context);
-        render_graph_.Execute(RenderPassStage::AfterMainScene, pass_context);
+        for (const RenderPassStage &stage: kScenePassStages) {
+            render_graph_.Execute(stage, pass_context);
+        }
 
         backend_->CompositeFrameBuffer(scene_framebuffer_);
 
-        render_graph_.Execute(RenderPassStage::BeforeImGui, pass_context);
+        render_graph_.Execute(RenderPassStage::UI, pass_context);
         backend_->SetSwapChainFrameBuffer();
 
         if (desc_.enable_imgui) {
             backend_->RenderImGui();
         }
+
+        render_graph_.Execute(RenderPassStage::Present, pass_context);
 
         backend_->EndFrame();
     }
@@ -130,7 +150,7 @@ namespace CoreEngine {
         }
     }
 
-    FrameBufferHandle RenderSystem::CreateFrameBuffer(const FrameBufferDesc &desc) {
+    FrameBufferHandle RenderSystem::CreateFrameBuffer(const FrameBufferDesc &desc) const {
         if (!initialized_ || backend_ == nullptr || !desc.IsValid()) {
             return {};
         }
@@ -138,7 +158,7 @@ namespace CoreEngine {
         return backend_->CreateFrameBuffer(desc);
     }
 
-    void RenderSystem::DestroyFrameBuffer(FrameBufferHandle handle) {
+    void RenderSystem::DestroyFrameBuffer(FrameBufferHandle handle) const {
         if (!handle.IsValid() || backend_ == nullptr) {
             return;
         }
@@ -146,7 +166,7 @@ namespace CoreEngine {
         backend_->DestroyFrameBuffer(handle);
     }
 
-    void RenderSystem::SetFrameBuffer(FrameBufferHandle handle) {
+    void RenderSystem::SetFrameBuffer(FrameBufferHandle handle) const {
         if (!handle.IsValid() || backend_ == nullptr) {
             return;
         }
@@ -154,7 +174,7 @@ namespace CoreEngine {
         backend_->SetFrameBuffer(handle);
     }
 
-    void RenderSystem::SetSwapChainFrameBuffer() {
+    void RenderSystem::SetSwapChainFrameBuffer() const {
         if (backend_ == nullptr) {
             return;
         }
@@ -162,7 +182,7 @@ namespace CoreEngine {
         backend_->SetSwapChainFrameBuffer();
     }
 
-    void RenderSystem::Clear(const RenderClearColor &clear_color) {
+    void RenderSystem::Clear(const RenderClearColor &clear_color) const {
         if (backend_ == nullptr) {
             return;
         }
@@ -279,6 +299,11 @@ namespace CoreEngine {
         context.SetFrameBuffer(scene_framebuffer_);
         context.Clear(desc_.clear_color);
 
+        context.SetGlobalColorTexture(GlobalTextureSlot::SceneColor,
+                                      context.GetFrameBufferColorView(scene_framebuffer_));
+        context.SetGlobalDepthTexture(GlobalTextureSlot::SceneDepth,
+                                      context.GetFrameBufferDepthView(scene_framebuffer_));
+
         for (const RenderBatch &batch: accumulator_.Batches()) {
             context.SubmitBatch(batch);
         }
@@ -293,6 +318,9 @@ namespace CoreEngine {
         desc.width = surface_width_;
         desc.height = surface_height_;
         desc.sample_color = true;
+        desc.has_depth = true;
+        desc.sample_depth = true;
+        desc.depth_format = FrameBufferFormat::Depth32Float;
 
         scene_framebuffer_ = backend_->CreateFrameBuffer(desc);
         return scene_framebuffer_.IsValid();
@@ -313,7 +341,7 @@ namespace CoreEngine {
 
         // TODO(rafael): searches through all entities for now that have the best camera, find a better solution in the future
         auto view = world.View<TransformComponent, CameraComponent>();
-        for (auto [entity, transform, camera]: view.each()) {
+        for (const auto &[entity, transform, camera]: view.each()) {
             (void) entity;
 
             if (!camera.enabled) {

@@ -14,6 +14,9 @@ namespace CoreEngine {
 
     class DiligentRenderBackend final : public IRenderBackend {
     public:
+        void RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
+                                const DepthVisualizationDesc &desc) override;
+
         struct Impl;
 
         explicit DiligentRenderBackend(DiligentRenderBackendApi api);
