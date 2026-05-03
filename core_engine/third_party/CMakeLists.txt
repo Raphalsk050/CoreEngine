@@ -48,7 +48,9 @@ if (CORE_ENGINE_ENABLE_DILIGENT)
     set(DILIGENT_NO_WEBGPU ON CACHE BOOL "" FORCE)
 
     add_subdirectory("${CORE_ENGINE_DILIGENT_CORE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/DiligentCore" EXCLUDE_FROM_ALL)
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/DiligentTools/ThirdParty" "${CMAKE_CURRENT_BINARY_DIR}/DiligentTools/ThirdParty" EXCLUDE_FROM_ALL)
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/DiligentTools/Imgui" "${CMAKE_CURRENT_BINARY_DIR}/DiligentTools/Imgui" EXCLUDE_FROM_ALL)
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/DiligentTools/TextureLoader" "${CMAKE_CURRENT_BINARY_DIR}/DiligentTools/TextureLoader" EXCLUDE_FROM_ALL)
 endif ()
 
 add_library(ThirdParty INTERFACE)
@@ -63,7 +65,7 @@ target_include_directories(ThirdParty INTERFACE
 target_link_libraries(ThirdParty INTERFACE glm Entt SDL3::SDL3 imgui robin_map)
 
 if (CORE_ENGINE_ENABLE_DILIGENT)
-    target_link_libraries(ThirdParty INTERFACE Diligent-BuildSettings Diligent-Imgui)
+    target_link_libraries(ThirdParty INTERFACE Diligent-BuildSettings Diligent-Imgui Diligent-TextureLoader)
 
     if (TARGET Diligent-GraphicsEngineD3D11-shared)
         target_link_libraries(ThirdParty INTERFACE Diligent-GraphicsEngineD3D11-shared)
