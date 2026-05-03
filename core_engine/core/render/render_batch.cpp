@@ -20,7 +20,7 @@ namespace CoreEngine {
         const auto it = batch_indices_.find(key);
 
         if (it != batch_indices_.end()) {
-            batches_[it->second].instances.push_back({transform});
+            batches_[it.value()].instances.push_back({transform});
             return;
         }
 

@@ -40,7 +40,7 @@ namespace CoreEngine {
 
     void NullRenderBackend::DestroyFrameBuffer(FrameBufferHandle handle) {
         const auto it = frame_buffers_.find(handle.id);
-        if (it != frame_buffers_.end() && it->second == handle.generation) {
+        if (it != frame_buffers_.end() && it.value() == handle.generation) {
             frame_buffers_.erase(it);
         }
     }
@@ -88,7 +88,7 @@ namespace CoreEngine {
 
     void NullRenderBackend::DestroyShaderProgram(ShaderProgramHandle handle) {
         const auto it = shader_programs_.find(handle.id);
-        if (it != shader_programs_.end() && it->second == handle.generation) {
+        if (it != shader_programs_.end() && it.value() == handle.generation) {
             shader_programs_.erase(it);
         }
     }

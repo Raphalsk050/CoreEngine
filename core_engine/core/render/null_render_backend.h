@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <unordered_map>
+#include <tsl/robin_map.h>
 
 #include "core/render/i_render_backend.h"
 
@@ -69,8 +69,8 @@ namespace CoreEngine {
         [[nodiscard]] std::string_view LastError() const override;
 
     private:
-        std::unordered_map<uint32_t, uint32_t> frame_buffers_;
-        std::unordered_map<uint32_t, uint32_t> shader_programs_;
+        tsl::robin_map<uint32_t, uint32_t> frame_buffers_;
+        tsl::robin_map<uint32_t, uint32_t> shader_programs_;
         uint32_t next_frame_buffer_id_ = 1;
         uint32_t next_frame_buffer_generation_ = 1;
         uint32_t next_shader_program_id_ = 1;

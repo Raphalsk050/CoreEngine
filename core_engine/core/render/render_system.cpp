@@ -287,11 +287,11 @@ namespace CoreEngine {
 
     void RenderSystem::ExecuteDefaultScenePass(RenderPassContext &context) {
         World &world = context.GetWorld();
-        auto view = world.View<TransformComponent, MeshRendererComponent>();
+        auto group = world.Registry().group<TransformComponent, MeshRendererComponent>();
+        accumulator_.Reserve(group.size());
         accumulator_.Clear();
-        accumulator_.Reserve(static_cast<std::size_t>(view.size_hint()));
 
-        for (const auto &[entity, transform, renderer]: view.each()) {
+        for (const auto &[entity, transform, renderer]: group.each()) {
             (void) entity;
             if (!renderer.visible || !renderer.material.IsValid() || !renderer.mesh.IsValid()) {
                 continue;

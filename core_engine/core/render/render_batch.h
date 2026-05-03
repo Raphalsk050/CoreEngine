@@ -2,9 +2,8 @@
 
 #include <cstddef>
 #include <span>
-#include <unordered_map>
 #include <vector>
-
+#include <tsl/robin_map.h>
 #include "core/math/math.h"
 #include "core/render/render_handle.h"
 
@@ -42,7 +41,7 @@ namespace CoreEngine {
         };
 
         std::vector<RenderBatch> batches_;
-        std::unordered_map<BatchKey, std::size_t, BatchKeyHash> batch_indices_;
+        tsl::robin_map<BatchKey, std::size_t, BatchKeyHash> batch_indices_;
         std::size_t active_batch_count_ = 0;
     };
 }
