@@ -60,9 +60,23 @@ namespace CoreEngine {
 
         [[nodiscard]] MaterialHandle ResolveMaterial(const MaterialDesc &desc) override;
 
+        [[nodiscard]] ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) override;
+
+        void DestroyShaderProgram(ShaderProgramHandle handle) override;
+
+        void UseShaderProgram(ShaderProgramHandle handle) override;
+
+        void BindShaderTexture(std::string_view name, FrameBufferColorView view) override;
+
+        void BindShaderTexture(std::string_view name, FrameBufferDepthView view) override;
+
+        void BindShaderUniform(std::string_view name, std::span<const std::uint8_t> data) override;
+
         void SetPerFrameProps(PerFrameProps props) override;
 
         void SubmitBatch(const RenderBatch &batch) override;
+
+        void Draw(std::uint32_t vertex_count, std::uint32_t instance_count) override;
 
         [[nodiscard]] std::string_view LastError() const override;
 

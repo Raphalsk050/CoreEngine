@@ -106,4 +106,34 @@ float4 main(VSOutput i) : SV_TARGET
     return g_SceneColor.Sample(g_SceneColor_sampler, i.uv);
 }
 )HLSL";
+
+    inline constexpr const char *kDepthVisualizationPS = R"HLSL(
+Texture2D<float> g_DepthTexture;
+SamplerState g_DepthTexture_sampler;
+
+cbuffer DepthVisualization : register(b0)
+{
+    float4 g_DepthParams;
+};
+
+struct VSOutput
+{
+    float4 pos : SV_POSITION;
+    float2 uv  : TEXCOORD0;
+};
+
+float4 main(VSOutput i) : SV_TARGET
+{
+    float value = g_DepthTexture.Sample(g_DepthTexture_sampler, i.uv);
+    value = saturate(value * g_DepthParams.x + g_DepthParams.y);
+    value = pow(value, max(g_DepthParams.z, 0.0001));
+
+    if (g_DepthParams.w > 0.5)
+    {
+        value = 1.0 - value;
+    }
+
+    return float4(value, value, value, 1.0);
+}
+)HLSL";
 } // namespace CoreEngine::BuiltinShaders

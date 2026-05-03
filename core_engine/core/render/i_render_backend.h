@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+#include <span>
 #include <string_view>
 
 #include "core/render/camera_data.h"
@@ -61,9 +63,23 @@ namespace CoreEngine {
 
         [[nodiscard]] virtual MaterialHandle ResolveMaterial(const MaterialDesc &desc) = 0;
 
+        [[nodiscard]] virtual ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) = 0;
+
+        virtual void DestroyShaderProgram(ShaderProgramHandle handle) = 0;
+
+        virtual void UseShaderProgram(ShaderProgramHandle handle) = 0;
+
+        virtual void BindShaderTexture(std::string_view name, FrameBufferColorView view) = 0;
+
+        virtual void BindShaderTexture(std::string_view name, FrameBufferDepthView view) = 0;
+
+        virtual void BindShaderUniform(std::string_view name, std::span<const std::uint8_t> data) = 0;
+
         virtual void SetPerFrameProps(PerFrameProps props) = 0;
 
         virtual void SubmitBatch(const RenderBatch &batch) = 0;
+
+        virtual void Draw(std::uint32_t vertex_count, std::uint32_t instance_count) = 0;
 
         [[nodiscard]] virtual std::string_view LastError() const = 0;
     };

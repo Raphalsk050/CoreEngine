@@ -73,10 +73,45 @@ namespace CoreEngine {
 
     MaterialHandle NullRenderBackend::ResolveMaterial(const MaterialDesc &) { return {}; }
 
+    ShaderProgramHandle NullRenderBackend::CreateShaderProgram(const ShaderProgramDesc &desc) {
+        if (!desc.IsValid()) {
+            return {};
+        }
+
+        const ShaderProgramHandle handle{
+            .id = next_shader_program_id_++,
+            .generation = next_shader_program_generation_++,
+        };
+        shader_programs_[handle.id] = handle.generation;
+        return handle;
+    }
+
+    void NullRenderBackend::DestroyShaderProgram(ShaderProgramHandle handle) {
+        const auto it = shader_programs_.find(handle.id);
+        if (it != shader_programs_.end() && it->second == handle.generation) {
+            shader_programs_.erase(it);
+        }
+    }
+
+    void NullRenderBackend::UseShaderProgram(ShaderProgramHandle) {
+    }
+
+    void NullRenderBackend::BindShaderTexture(std::string_view, FrameBufferColorView) {
+    }
+
+    void NullRenderBackend::BindShaderTexture(std::string_view, FrameBufferDepthView) {
+    }
+
+    void NullRenderBackend::BindShaderUniform(std::string_view, std::span<const std::uint8_t>) {
+    }
+
     void NullRenderBackend::SetPerFrameProps(PerFrameProps props) {
     }
 
     void NullRenderBackend::SubmitBatch(const RenderBatch &) {
+    }
+
+    void NullRenderBackend::Draw(std::uint32_t, std::uint32_t) {
     }
 
     std::string_view NullRenderBackend::LastError() const { return {}; }

@@ -136,6 +136,22 @@ namespace CoreEngine {
         return backend_->ResolveMaterial(desc);
     }
 
+    ShaderProgramHandle RenderSystem::CreateShaderProgram(const ShaderProgramDesc &desc) {
+        if (!initialized_ || backend_ == nullptr || !desc.IsValid()) {
+            return {};
+        }
+
+        return backend_->CreateShaderProgram(desc);
+    }
+
+    void RenderSystem::DestroyShaderProgram(ShaderProgramHandle handle) {
+        if (!handle.IsValid() || backend_ == nullptr) {
+            return;
+        }
+
+        backend_->DestroyShaderProgram(handle);
+    }
+
     void RenderSystem::DestroyMesh(MeshHandle handle) {
         if (!handle.IsValid() || backend_ == nullptr) {
             return;

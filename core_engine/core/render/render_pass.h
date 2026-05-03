@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
+#include <string_view>
 
 #include "render_frame_resources.h"
 #include "core/render/frame_buffer.h"
@@ -84,6 +86,46 @@ namespace CoreEngine {
             backend_.SetSwapChainFrameBuffer();
         }
 
+        [[nodiscard]] ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) const {
+            return backend_.CreateShaderProgram(desc);
+        }
+
+        void DestroyShaderProgram(ShaderProgramHandle handle) const {
+            backend_.DestroyShaderProgram(handle);
+        }
+
+        void UseShaderProgram(ShaderProgramHandle handle) const {
+            backend_.UseShaderProgram(handle);
+        }
+
+        void BindTexture(std::string_view name, FrameBufferColorView view) const {
+            backend_.BindShaderTexture(name, view);
+        }
+
+        void BindTexture(std::string_view name, FrameBufferDepthView view) const {
+            backend_.BindShaderTexture(name, view);
+        }
+
+        void BindUniform(std::string_view name, std::span<const std::uint8_t> data) const {
+            backend_.BindShaderUniform(name, data);
+        }
+
+        template<typename T>
+        void BindUniform(std::string_view name, const T &data) const {
+            BindUniform(name,
+                        std::span<const std::uint8_t>(
+                            reinterpret_cast<const std::uint8_t *>(&data),
+                            sizeof(T)));
+        }
+
+        void Draw(std::uint32_t vertex_count, std::uint32_t instance_count = 1) const {
+            backend_.Draw(vertex_count, instance_count);
+        }
+
+        void DrawFullscreenTriangle() const {
+            Draw(3u, 1u);
+        }
+
         void SetGlobalColorTexture(GlobalTextureSlot slot, FrameBufferColorView view) {
             frame_resources_.SetColorTexture(slot, view);
         }
@@ -138,7 +180,7 @@ namespace CoreEngine {
         World &world_;
         const FrameClock &frame_clock_;
         RenderFrameTiming timing_;
-        RenderFrameResources frame_resources_;
+        RenderFrameResources &frame_resources_;
         int surface_width_ = 1;
         int surface_height_ = 1;
     };

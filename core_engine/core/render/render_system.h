@@ -42,6 +42,10 @@ namespace CoreEngine {
 
         [[nodiscard]] MaterialHandle ResolveMaterial(const MaterialDesc &desc) override;
 
+        [[nodiscard]] ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) override;
+
+        void DestroyShaderProgram(ShaderProgramHandle handle) override;
+
         void DestroyMesh(MeshHandle handle);
 
         [[nodiscard]] FrameBufferHandle CreateFrameBuffer(const FrameBufferDesc &desc) const;
