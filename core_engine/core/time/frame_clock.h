@@ -21,6 +21,7 @@ namespace CoreEngine {
     private:
         Clock::time_point start_;
         Clock::time_point previous_;
+        Clock::time_point current_;
         std::uint64_t frame_index_ = 0;
     };
 } // namespace CoreEngine

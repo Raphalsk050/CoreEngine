@@ -10,6 +10,7 @@ namespace CoreEngine {
 
         start_ = now;
         previous_ = now;
+        current_ = now;
         frame_index_ = 0;
     }
 
@@ -17,6 +18,7 @@ namespace CoreEngine {
         const Clock::time_point now = Clock::now();
         const std::chrono::duration<float> delta = now - previous_;
 
+        current_ = now;
         previous_ = now;
         ++frame_index_;
 
@@ -24,8 +26,7 @@ namespace CoreEngine {
     }
 
     double FrameClock::TotalSeconds() const noexcept {
-        const Clock::time_point now = Clock::now();
-        const std::chrono::duration<double> total = now - start_;
+        const std::chrono::duration<double> total = current_ - start_;
 
         return total.count();
     }

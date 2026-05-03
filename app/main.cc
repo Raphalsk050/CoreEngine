@@ -36,8 +36,6 @@ public:
                 context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Cube);
         const CoreEngine::MeshHandle plane_mesh =
                 context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Plane);
-        const CoreEngine::MaterialHandle cube_material =
-                CoreEngine::Material::Unlit({.color = {1.2f, 0.6f, 1.0f, 1.0f}}).Resolve(context.render_system);
 
         TestShaderProps shader_props;
         shader_props.color = {1.0, 0.0, 0.0, 1.0};
@@ -160,12 +158,28 @@ private:
 
     void UpdateFpsCounter(const CoreEngine::FrameContext &frame) {
         if (update_counter_ > update_frame_delay_) {
-            current_delta_time_ = (last_delta_time_ + frame.delta_time) / 2.0f;
+            current_delta_time_ = frame.delta_time;
+            int current_fps = 1.0 / current_delta_time_;
+
+            if (current_fps > max_fps_) {
+                max_fps_ = current_fps;
+            }
+
+            if (current_fps < min_fps_) {
+                min_fps_ = current_fps;
+            }
+
             update_counter_ = 0;
         }
 
         if (ImGui::Begin("CoreEngine Debug")) {
             ImGui::Text("FPS: %.0f", 1.0 / current_delta_time_);
+            ImGui::Text("FPS MAX: %d", max_fps_);
+            ImGui::Text("FPS MIN: %d", min_fps_);
+            if (ImGui::Button("Reset statistics")) {
+                max_fps_ = 0;
+                min_fps_ = INT32_MAX;
+            }
         }
         ImGui::End();
 
@@ -186,7 +200,9 @@ private:
     float last_delta_time_ = 0.0f;
     float current_delta_time_ = 0.0f;
     int update_counter_ = 0;
-    int update_frame_delay_ = 50;
+    int update_frame_delay_ = 500;
+    int max_fps_ = 0;
+    int min_fps_ = INT32_MAX;
 };
 
 int main() {
@@ -200,7 +216,7 @@ int main() {
     config.resizable = true;
     config.windowTitle = "CoreEngine - Player Input Demo";
     config.renderBackend = CoreEngine::RenderBackendType::DiligentVulkan;
-    config.vsync = true;
+    config.vsync = false;
     config.enableImGui = true;
 
     return CoreEngine::RunEngine(std::move(app), config);

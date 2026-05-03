@@ -1,39 +1,65 @@
 #include "core/render/material.h"
 
 #include <algorithm>
-#include <functional>
+#include <cstddef>
+#include <cstdint>
+#include <span>
 
 #include "core/render/i_render_context.h"
 #include "platform/diligent/builtin_shaders.h"
 
 namespace CoreEngine {
     namespace {
-        uint64_t HashDesc(const MaterialDesc &desc) {
-            size_t h = std::hash<std::string>{}(desc.vertex_shader_source);
-            h ^= std::hash<std::string>{}(desc.pixel_shader_source) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
+        constexpr uint64_t kFnvOffsetBasis = 14695981039346656037ull;
+        constexpr uint64_t kFnvPrime = 1099511628211ull;
 
-            for (uint8_t byte: desc.properties_data) {
-                h ^= std::hash<uint8_t>{}(byte) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
+        void HashBytes(uint64_t &hash, std::span<const uint8_t> bytes) noexcept {
+            for (const uint8_t byte: bytes) {
+                hash ^= byte;
+                hash *= kFnvPrime;
             }
+        }
+
+        void HashValue(uint64_t &hash, uint64_t value) noexcept {
+            const auto *bytes = reinterpret_cast<const uint8_t *>(&value);
+            HashBytes(hash, std::span<const uint8_t>(bytes, sizeof(value)));
+        }
+
+        void HashString(uint64_t &hash, const std::string &value) noexcept {
+            const auto *bytes = reinterpret_cast<const uint8_t *>(value.data());
+            HashBytes(hash, std::span<const uint8_t>(bytes, value.size()));
+            HashValue(hash, static_cast<uint64_t>(value.size()));
+        }
+
+        void HashVector(uint64_t &hash, const std::vector<uint8_t> &value) noexcept {
+            HashBytes(hash, std::span<const uint8_t>(value.data(), value.size()));
+            HashValue(hash, static_cast<uint64_t>(value.size()));
+        }
+
+        uint64_t HashDesc(const MaterialDesc &desc) {
+            uint64_t h = kFnvOffsetBasis;
+            HashString(h, desc.vertex_shader_source);
+            HashString(h, desc.pixel_shader_source);
+            HashVector(h, desc.properties_data);
 
             for (const ShaderBindingDesc &binding: desc.bindings) {
-                h ^= std::hash<std::string>{}(binding.name) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
-                h ^= static_cast<size_t>(binding.type) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
-                h ^= static_cast<size_t>(binding.scope) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
-                h ^= static_cast<size_t>(binding.stages) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
-                h ^= static_cast<size_t>(binding.byte_size) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
-                h ^= std::hash<std::string>{}(binding.sampler_name) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
+                HashString(h, binding.name);
+                HashValue(h, static_cast<uint64_t>(binding.type));
+                HashValue(h, static_cast<uint64_t>(binding.scope));
+                HashValue(h, static_cast<uint64_t>(binding.stages));
+                HashValue(h, static_cast<uint64_t>(binding.byte_size));
+                HashString(h, binding.sampler_name);
             }
+            HashValue(h, static_cast<uint64_t>(desc.bindings.size()));
 
             for (const ShaderUniformData &uniform: desc.uniforms) {
-                h ^= std::hash<std::string>{}(uniform.name) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
-                h ^= static_cast<size_t>(uniform.stages) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
-                for (uint8_t byte: uniform.data) {
-                    h ^= std::hash<uint8_t>{}(byte) + 0x9e3779b9u + (h << 6u) + (h >> 2u);
-                }
+                HashString(h, uniform.name);
+                HashValue(h, static_cast<uint64_t>(uniform.stages));
+                HashVector(h, uniform.data);
             }
+            HashValue(h, static_cast<uint64_t>(desc.uniforms.size()));
 
-            return static_cast<uint64_t>(h);
+            return h;
         }
     }
 

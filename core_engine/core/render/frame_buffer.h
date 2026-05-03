@@ -1,6 +1,9 @@
 #pragma once
 
 namespace CoreEngine {
+    struct NativeFrameBufferColorView;
+    struct NativeFrameBufferDepthView;
+
     enum class FrameBufferFormat {
         SwapChainColor,
         SwapChainDepth,
@@ -30,7 +33,7 @@ namespace CoreEngine {
     };
 
     struct FrameBufferColorView {
-        void *native_handle = nullptr;
+        NativeFrameBufferColorView *native_handle = nullptr;
 
         [[nodiscard]] bool IsValid() const {
             return native_handle != nullptr;
@@ -38,7 +41,7 @@ namespace CoreEngine {
     };
 
     struct FrameBufferDepthView {
-        void *native_handle = nullptr;
+        NativeFrameBufferDepthView *native_handle = nullptr;
 
         [[nodiscard]] bool IsValid() const {
             return native_handle != nullptr;

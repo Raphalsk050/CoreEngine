@@ -39,7 +39,7 @@ namespace Game {
         }
 
         const float speed = ResolveSpeed(command);
-        transform->position += move * speed * delta_time;
+        transform->SetPosition(transform->Position() + move * speed * delta_time);
 
         RotateThroughMovement(delta_time, transform, move);
     }
@@ -87,7 +87,7 @@ namespace Game {
                     CoreEngine::Math::AngleAxis(yaw, CoreEngine::Math::Vec3{0.0f, 1.0f, 0.0f});
 
             const float turn_alpha = 1.0f - std::exp(-20.0f * delta_time);
-            transform->rotation = CoreEngine::Math::Slerp(transform->rotation, target_rotation, turn_alpha);
+            transform->SetRotation(CoreEngine::Math::Slerp(transform->Rotation(), target_rotation, turn_alpha));
         }
     }
 } // namespace Game

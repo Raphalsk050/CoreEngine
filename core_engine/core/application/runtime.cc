@@ -72,18 +72,20 @@ namespace CoreEngine {
         while (!IsShutdownRequested()) {
             const float deltaTime = frame_clock_.TickSeconds();
             FrameContext frameContext{
-                .delta_time = deltaTime,
-                .world = *world_,
-                .audio_system = *audio_system_,
-                .input_system = *input_system_,
-                .window_system = *window_system_,
-                .render_system = *render_system_,
+                EngineContext{
+                    .world = *world_,
+                    .audio_system = *audio_system_,
+                    .input_system = *input_system_,
+                    .window_system = *window_system_,
+                    .render_system = *render_system_,
+                },
+                deltaTime,
             };
 
             Tick(frameContext);
             render_system_->BeginImGuiFrame();
             app.Update(frameContext);
-            render_system_->RenderFrame(*world_, frame_clock_);
+            render_system_->RenderFrame(*world_, frame_clock_, deltaTime);
         }
 
         app.Shutdown(engineContext);

@@ -62,7 +62,7 @@ namespace CoreEngine {
         backend_->BeginImGuiFrame();
     }
 
-    void RenderSystem::RenderFrame(World &world, FrameClock frame_clock) {
+    void RenderSystem::RenderFrame(World &world, const FrameClock &frame_clock, float delta_seconds) {
         if (!initialized_ || backend_ == nullptr) {
             return;
         }
@@ -72,7 +72,7 @@ namespace CoreEngine {
         backend_->BeginFrame();
 
         const RenderFrameTiming timing{
-            .delta_seconds = frame_clock.TickSeconds(),
+            .delta_seconds = delta_seconds,
             .total_seconds = frame_clock.TotalSeconds(),
             .frame_index = frame_clock.FrameIndex(),
         };
@@ -355,10 +355,10 @@ namespace CoreEngine {
         const TransformComponent *best_transform = nullptr;
         const CameraComponent *best_camera = nullptr;
 
-        // TODO(rafael): searches through all entities for now that have the best camera, find a better solution in the future
-        auto view = world.View<TransformComponent, CameraComponent>();
-        for (const auto &[entity, transform, camera]: view.each()) {
-            (void) entity;
+        auto group = world.Registry().group<CameraComponent>(entt::get<TransformComponent>);
+        for (const entt::entity entity: group) {
+            const CameraComponent &camera = group.get<CameraComponent>(entity);
+            const TransformComponent &transform = group.get<TransformComponent>(entity);
 
             if (!camera.enabled) {
                 continue;
@@ -385,11 +385,13 @@ namespace CoreEngine {
                                        ? camera.fixed_aspect_ratio
                                        : static_cast<float>(width) / static_cast<float>(height);
 
-        const Math::Vec3 forward = transform.rotation * Math::Vec3{0.f, 0.f, 1.f};
-        const Math::Vec3 up = transform.rotation * Math::Vec3{0.f, 1.f, 0.f};
+        const Math::Quat &rotation = transform.Rotation();
+        const Math::Vec3 &position = transform.Position();
+        const Math::Vec3 forward = rotation * Math::Vec3{0.f, 0.f, 1.f};
+        const Math::Vec3 up = rotation * Math::Vec3{0.f, 1.f, 0.f};
 
         CameraData data;
-        data.view = Math::LookAtLH(transform.position, transform.position + forward, up);
+        data.view = Math::LookAtLH(position, position + forward, up);
 
         if (camera.projection_type == CameraProjectionType::Perspective) {
             data.projection = Math::PerspectiveLH(Math::Deg2Rad(camera.fov_y_degrees), aspect_ratio, camera.near_z,

@@ -35,26 +35,26 @@ namespace CoreEngine {
     bool Node::operator!=(const Node &other) const { return !(*this == other); }
 
     void Node::SetPosition(const Math::Vec3 &position) {
-        GetComponent<TransformComponent>().position = position;
+        GetComponent<TransformComponent>().SetPosition(position);
     }
 
     void Node::SetRotation(const Math::Quat &rotation) {
-        GetComponent<TransformComponent>().rotation = rotation;
+        GetComponent<TransformComponent>().SetRotation(rotation);
     }
 
     void Node::SetScale(const Math::Vec3 &scale) {
-        GetComponent<TransformComponent>().scale = scale;
+        GetComponent<TransformComponent>().SetScale(scale);
     }
 
-    Math::Vec3 Node::GetPosition() {
-        return GetComponent<TransformComponent>().position;
+    Math::Vec3 Node::GetPosition() const {
+        return GetComponent<TransformComponent>().Position();
     }
 
-    Math::Quat Node::GetRotation() {
-        return GetComponent<TransformComponent>().rotation;
+    Math::Quat Node::GetRotation() const {
+        return GetComponent<TransformComponent>().Rotation();
     }
 
-    Math::Vec3 Node::GetScale() {
-        return GetComponent<TransformComponent>().scale;
+    Math::Vec3 Node::GetScale() const {
+        return GetComponent<TransformComponent>().Scale();
     }
 } // namespace CoreEngine

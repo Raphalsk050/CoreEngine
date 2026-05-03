@@ -34,7 +34,12 @@ target_link_libraries(${PROJECT_NAME} PUBLIC ThirdParty)
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 
-target_compile_definitions(${PROJECT_NAME} PRIVATE CORE_ENGINE_ENABLE_DILIGENT=$<BOOL:${CORE_ENGINE_ENABLE_DILIGENT}>)
+target_compile_definitions(${PROJECT_NAME}
+    PUBLIC CENGINE_DEBUG_BUILD=$<IF:$<CONFIG:Debug>,1,0>
+    PRIVATE CORE_ENGINE_ENABLE_DILIGENT=$<BOOL:${CORE_ENGINE_ENABLE_DILIGENT}>
+)
+
+target_compile_options(${PROJECT_NAME} PUBLIC $<$<CXX_COMPILER_ID:MSVC>:/wd4324>)
 
 if(CORE_ENGINE_ENABLE_DILIGENT)
     if(WIN32)

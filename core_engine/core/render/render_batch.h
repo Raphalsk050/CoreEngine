@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <span>
 #include <vector>
@@ -15,7 +16,23 @@ namespace CoreEngine {
     struct RenderBatch {
         MaterialHandle material;
         MeshHandle mesh;
-        std::vector<RenderInstance> instances;
+
+        void AddInstance(const RenderInstance &instance);
+
+        void ClearInstances();
+
+        [[nodiscard]] std::span<const RenderInstance> InlineInstances() const;
+
+        [[nodiscard]] std::span<const RenderInstance> OverflowInstances() const;
+
+        [[nodiscard]] std::size_t InstanceCount() const;
+
+    private:
+        static constexpr std::size_t kInlineInstanceCount = 8;
+
+        std::array<RenderInstance, kInlineInstanceCount> inline_instances_{};
+        std::size_t inline_instance_count_ = 0;
+        std::vector<RenderInstance> overflow_instances_;
     };
 
     class BatchAccumulator {

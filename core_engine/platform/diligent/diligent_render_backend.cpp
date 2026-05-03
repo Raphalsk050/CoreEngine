@@ -9,9 +9,10 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include <tsl/robin_map.h>
 
 #include "EngineFactoryVk.h"
 
@@ -75,6 +76,7 @@ namespace CoreEngine {
             Diligent::RefCntAutoPtr<Diligent::IBuffer> material_cbuffer;
             std::vector<DiligentUniformBinding> uniforms;
             std::vector<uint8_t> properties_data;
+            uint32_t generation = 0;
         };
 
         struct DiligentShaderProgramData {
@@ -115,11 +117,11 @@ namespace CoreEngine {
         Diligent::RefCntAutoPtr<Diligent::IBuffer> per_frame_cb;
         Diligent::RefCntAutoPtr<Diligent::IBuffer> per_object_cb;
 
-        std::unordered_map<uint32_t, DiligentMeshData> mesh_registry;
-        std::unordered_map<uint32_t, DiligentMaterialData> material_registry;
-        std::unordered_map<uint32_t, DiligentShaderProgramData> shader_program_registry;
-        std::unordered_map<uint32_t, DiligentFrameBufferData> frame_buffer_registry;
-        std::unordered_map<uint64_t, MaterialHandle> material_hash_cache;
+        tsl::robin_map<uint32_t, DiligentMeshData> mesh_registry;
+        tsl::robin_map<uint32_t, DiligentMaterialData> material_registry;
+        tsl::robin_map<uint32_t, DiligentShaderProgramData> shader_program_registry;
+        tsl::robin_map<uint32_t, DiligentFrameBufferData> frame_buffer_registry;
+        tsl::robin_map<uint64_t, MaterialHandle> material_hash_cache;
 
         Diligent::RefCntAutoPtr<Diligent::IPipelineState> composite_pso;
         Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> composite_srb;
@@ -135,6 +137,7 @@ namespace CoreEngine {
         uint32_t next_shader_program_id = 1;
         uint32_t next_frame_buffer_id = 1;
         uint32_t mesh_generation = 1;
+        uint32_t material_generation = 1;
         uint32_t shader_program_generation = 1;
         uint32_t frame_buffer_generation = 1;
     };
@@ -426,7 +429,7 @@ namespace CoreEngine {
                 },
                 {
                     4, 0, 4, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, time)), kStride
+                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, custom0)), kStride
                 },
             };
 
@@ -1199,7 +1202,9 @@ namespace CoreEngine {
             return {};
         }
 
-        return FrameBufferColorView{.native_handle = it->second.color_srv.RawPtr()};
+        return FrameBufferColorView{
+            .native_handle = reinterpret_cast<NativeFrameBufferColorView *>(it->second.color_srv.RawPtr())
+        };
     }
 
     FrameBufferDepthView DiligentRenderBackend::GetFrameBufferDepthView(FrameBufferHandle handle) const {
@@ -1212,7 +1217,9 @@ namespace CoreEngine {
             return {};
         }
 
-        return FrameBufferDepthView{.native_handle = it->second.depth_srv.RawPtr()};
+        return FrameBufferDepthView{
+            .native_handle = reinterpret_cast<NativeFrameBufferDepthView *>(it->second.depth_srv.RawPtr())
+        };
     }
 
     void DiligentRenderBackend::CompositeFrameBuffer(FrameBufferHandle source) {
@@ -1289,9 +1296,10 @@ namespace CoreEngine {
         }
 
         const uint32_t id = impl_->next_material_id++;
+        data.generation = impl_->material_generation++;
         impl_->material_registry[id] = std::move(data);
 
-        const MaterialHandle handle{id};
+        const MaterialHandle handle{.id = id, .generation = impl_->material_registry[id].generation};
         impl_->material_hash_cache[desc.hash] = handle;
         return handle;
     }
@@ -1354,20 +1362,21 @@ namespace CoreEngine {
             return;
         }
 
-        const auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
+        auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
         if (program_it == impl_->shader_program_registry.end() ||
-            program_it->second.generation != impl_->active_shader_program.generation) {
+            program_it.value().generation != impl_->active_shader_program.generation) {
             return;
         }
+        DiligentShaderProgramData &program = program_it.value();
 
-        for (DiligentTextureBinding &texture: program_it->second.textures) {
+        for (DiligentTextureBinding &texture: program.textures) {
             if (std::string_view{texture.name} != name) {
                 continue;
             }
 
-            texture.texture_variable->Set(static_cast<Diligent::ITextureView *>(view.native_handle));
+            texture.texture_variable->Set(reinterpret_cast<Diligent::ITextureView *>(view.native_handle));
             if (texture.sampler_variable != nullptr) {
-                texture.sampler_variable->Set(program_it->second.sampler);
+                texture.sampler_variable->Set(program.sampler);
             }
             return;
         }
@@ -1378,20 +1387,21 @@ namespace CoreEngine {
             return;
         }
 
-        const auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
+        auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
         if (program_it == impl_->shader_program_registry.end() ||
-            program_it->second.generation != impl_->active_shader_program.generation) {
+            program_it.value().generation != impl_->active_shader_program.generation) {
             return;
         }
+        DiligentShaderProgramData &program = program_it.value();
 
-        for (DiligentTextureBinding &texture: program_it->second.textures) {
+        for (DiligentTextureBinding &texture: program.textures) {
             if (std::string_view{texture.name} != name) {
                 continue;
             }
 
-            texture.texture_variable->Set(static_cast<Diligent::ITextureView *>(view.native_handle));
+            texture.texture_variable->Set(reinterpret_cast<Diligent::ITextureView *>(view.native_handle));
             if (texture.sampler_variable != nullptr) {
-                texture.sampler_variable->Set(program_it->second.sampler);
+                texture.sampler_variable->Set(program.sampler);
             }
             return;
         }
@@ -1402,13 +1412,14 @@ namespace CoreEngine {
             return;
         }
 
-        const auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
+        auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
         if (program_it == impl_->shader_program_registry.end() ||
-            program_it->second.generation != impl_->active_shader_program.generation) {
+            program_it.value().generation != impl_->active_shader_program.generation) {
             return;
         }
+        DiligentShaderProgramData &program = program_it.value();
 
-        for (DiligentUniformBinding &uniform: program_it->second.uniforms) {
+        for (DiligentUniformBinding &uniform: program.uniforms) {
             if (std::string_view{uniform.name} != name || data.size() > uniform.byte_size) {
                 continue;
             }
@@ -1441,6 +1452,7 @@ namespace CoreEngine {
 
         if (mat_it == impl_->material_registry.end() ||
             msh_it == impl_->mesh_registry.end() ||
+            mat_it->second.generation != batch.material.generation ||
             msh_it->second.generation != batch.mesh.generation) {
             return;
         }
@@ -1468,7 +1480,7 @@ namespace CoreEngine {
         impl_->immediate_context->CommitShaderResources(
             mat.srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
-        for (const RenderInstance &inst: batch.instances) {
+        const auto draw_instance = [this, &msh](const RenderInstance &inst) {
             PerObjectCB object_cb{inst.transform};
             UpdateBuffer(impl_->immediate_context,
                          impl_->per_object_cb,
@@ -1479,6 +1491,14 @@ namespace CoreEngine {
             draw.NumIndices = msh.index_count;
             draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
             impl_->immediate_context->DrawIndexed(draw);
+        };
+
+        for (const RenderInstance &inst: batch.InlineInstances()) {
+            draw_instance(inst);
+        }
+
+        for (const RenderInstance &inst: batch.OverflowInstances()) {
+            draw_instance(inst);
         }
     }
 

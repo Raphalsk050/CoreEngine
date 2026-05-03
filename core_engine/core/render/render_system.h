@@ -34,7 +34,7 @@ namespace CoreEngine {
 
         void BeginImGuiFrame() const;
 
-        void RenderFrame(World &world, FrameClock frame_clock);
+        void RenderFrame(World &world, const FrameClock &frame_clock, float delta_seconds);
 
         [[nodiscard]] MeshHandle GetOrCreatePrimitive(PrimitiveType type) override;
 

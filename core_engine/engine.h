@@ -1,9 +1,8 @@
 #pragma once
 #include <memory>
+#include <string>
 
 #include "core/render/render_backend_type.h"
-
-#define CENGINE_DEBUG_BUILD 1
 
 namespace CoreEngine {
     struct EngineConfig {
@@ -18,7 +17,7 @@ namespace CoreEngine {
         bool vsync = true;
         bool enableImGui = false;
         RenderBackendType renderBackend = RenderBackendType::None;
-        const char *windowTitle = "Sample game";
+        std::string windowTitle = "Sample game";
     };
 
     class IGameApp;
