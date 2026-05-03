@@ -449,15 +449,21 @@ namespace CoreEngine {
 
             std::vector<Diligent::ShaderResourceVariableDesc> vars;
             vars.reserve(2u + uniforms.size());
-            vars.push_back({Diligent::SHADER_TYPE_VERTEX, "PerFrame",
-                            Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
-            vars.push_back({Diligent::SHADER_TYPE_VERTEX, "PerObject",
-                            Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
+            vars.push_back({
+                Diligent::SHADER_TYPE_VERTEX, "PerFrame",
+                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC
+            });
+            vars.push_back({
+                Diligent::SHADER_TYPE_VERTEX, "PerObject",
+                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC
+            });
 
             for (const ShaderUniformData &uniform: uniforms) {
                 if (uniform.IsValid()) {
-                    vars.push_back({ToDiligentShaderStages(uniform.stages), uniform.name.c_str(),
-                                    Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
+                    vars.push_back({
+                        ToDiligentShaderStages(uniform.stages), uniform.name.c_str(),
+                        Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC
+                    });
                 }
             }
 
@@ -718,12 +724,16 @@ namespace CoreEngine {
                     continue;
                 }
 
-                vars.push_back({ToDiligentShaderStages(binding.stages), binding.name.c_str(),
-                                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
+                vars.push_back({
+                    ToDiligentShaderStages(binding.stages), binding.name.c_str(),
+                    Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC
+                });
 
                 if (binding.type == ShaderBindingType::Texture && !binding.sampler_name.empty()) {
-                    vars.push_back({ToDiligentShaderStages(binding.stages), binding.sampler_name.c_str(),
-                                    Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
+                    vars.push_back({
+                        ToDiligentShaderStages(binding.stages), binding.sampler_name.c_str(),
+                        Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC
+                    });
                 }
             }
 
@@ -1012,9 +1022,9 @@ namespace CoreEngine {
         if (impl_->active_frame_buffer.IsValid()) {
             const auto it = impl_->frame_buffer_registry.find(impl_->active_frame_buffer.id);
             if (it != impl_->frame_buffer_registry.end() &&
-                it->second.generation == impl_->active_frame_buffer.generation) {
-                rtv = it->second.color_rtv;
-                dsv = it->second.depth_dsv;
+                it.value().generation == impl_->active_frame_buffer.generation) {
+                rtv = it.value().color_rtv;
+                dsv = it.value().depth_dsv;
             }
         } else {
             rtv = impl_->swap_chain->GetCurrentBackBufferRTV();
@@ -1146,7 +1156,7 @@ namespace CoreEngine {
         }
 
         const auto it = impl_->frame_buffer_registry.find(handle.id);
-        if (it == impl_->frame_buffer_registry.end() || it->second.generation != handle.generation) {
+        if (it == impl_->frame_buffer_registry.end() || it.value().generation != handle.generation) {
             return;
         }
 
@@ -1163,17 +1173,17 @@ namespace CoreEngine {
         }
 
         const auto it = impl_->frame_buffer_registry.find(handle.id);
-        if (it == impl_->frame_buffer_registry.end() || it->second.generation != handle.generation) {
+        if (it == impl_->frame_buffer_registry.end() || it.value().generation != handle.generation) {
             return;
         }
 
-        Diligent::ITextureView *rtv = it->second.color_rtv.RawPtr();
+        Diligent::ITextureView *rtv = it.value().color_rtv.RawPtr();
         Diligent::ITextureView *rtvs[] = {rtv};
         const Diligent::Uint32 render_target_count = rtv != nullptr ? 1u : 0u;
         impl_->immediate_context->SetRenderTargets(
             render_target_count,
             rtv != nullptr ? rtvs : nullptr,
-            it->second.depth_dsv,
+            it.value().depth_dsv,
             Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         impl_->active_frame_buffer = handle;
     }
@@ -1198,12 +1208,12 @@ namespace CoreEngine {
         }
 
         const auto it = impl_->frame_buffer_registry.find(handle.id);
-        if (it == impl_->frame_buffer_registry.end() || it->second.generation != handle.generation) {
+        if (it == impl_->frame_buffer_registry.end() || it.value().generation != handle.generation) {
             return {};
         }
 
         return FrameBufferColorView{
-            .native_handle = reinterpret_cast<NativeFrameBufferColorView *>(it->second.color_srv.RawPtr())
+            .native_handle = reinterpret_cast<NativeFrameBufferColorView *>(it.value().color_srv.RawPtr())
         };
     }
 
@@ -1213,12 +1223,12 @@ namespace CoreEngine {
         }
 
         const auto it = impl_->frame_buffer_registry.find(handle.id);
-        if (it == impl_->frame_buffer_registry.end() || it->second.generation != handle.generation) {
+        if (it == impl_->frame_buffer_registry.end() || it.value().generation != handle.generation) {
             return {};
         }
 
         return FrameBufferDepthView{
-            .native_handle = reinterpret_cast<NativeFrameBufferDepthView *>(it->second.depth_srv.RawPtr())
+            .native_handle = reinterpret_cast<NativeFrameBufferDepthView *>(it.value().depth_srv.RawPtr())
         };
     }
 
@@ -1229,15 +1239,15 @@ namespace CoreEngine {
         }
 
         const auto it = impl_->frame_buffer_registry.find(source.id);
-        if (it == impl_->frame_buffer_registry.end() || it->second.generation != source.generation ||
-            !it->second.color_srv) {
+        if (it == impl_->frame_buffer_registry.end() || it.value().generation != source.generation ||
+            !it.value().color_srv) {
             return;
         }
 
         SetSwapChainFrameBuffer();
 
         impl_->immediate_context->SetPipelineState(impl_->composite_pso);
-        impl_->composite_scene_color_var->Set(it->second.color_srv);
+        impl_->composite_scene_color_var->Set(it.value().color_srv);
         impl_->composite_scene_sampler_var->Set(impl_->composite_sampler);
         impl_->immediate_context->CommitShaderResources(
             impl_->composite_srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
@@ -1276,7 +1286,7 @@ namespace CoreEngine {
         }
 
         const auto it = impl_->mesh_registry.find(handle.id);
-        if (it == impl_->mesh_registry.end() || it->second.generation != handle.generation) {
+        if (it == impl_->mesh_registry.end() || it.value().generation != handle.generation) {
             return;
         }
 
@@ -1286,7 +1296,7 @@ namespace CoreEngine {
     MaterialHandle DiligentRenderBackend::ResolveMaterial(const MaterialDesc &desc) {
         const auto it = impl_->material_hash_cache.find(desc.hash);
         if (it != impl_->material_hash_cache.end()) {
-            return it->second;
+            return it.value();
         }
 
         DiligentMaterialData data = CreateMaterial(*impl_, desc);
@@ -1327,7 +1337,7 @@ namespace CoreEngine {
         }
 
         const auto it = impl_->shader_program_registry.find(handle.id);
-        if (it == impl_->shader_program_registry.end() || it->second.generation != handle.generation) {
+        if (it == impl_->shader_program_registry.end() || it.value().generation != handle.generation) {
             return;
         }
 
@@ -1346,15 +1356,15 @@ namespace CoreEngine {
 
         const auto it = impl_->shader_program_registry.find(handle.id);
         if (it == impl_->shader_program_registry.end() ||
-            it->second.generation != handle.generation ||
-            !it->second.pso ||
-            !it->second.srb) {
+            it.value().generation != handle.generation ||
+            !it.value().pso ||
+            !it.value().srb) {
             impl_->active_shader_program = {};
             return;
         }
 
         impl_->active_shader_program = handle;
-        impl_->immediate_context->SetPipelineState(it->second.pso);
+        impl_->immediate_context->SetPipelineState(it.value().pso);
     }
 
     void DiligentRenderBackend::BindShaderTexture(std::string_view name, FrameBufferColorView view) {
@@ -1452,13 +1462,13 @@ namespace CoreEngine {
 
         if (mat_it == impl_->material_registry.end() ||
             msh_it == impl_->mesh_registry.end() ||
-            mat_it->second.generation != batch.material.generation ||
-            msh_it->second.generation != batch.mesh.generation) {
+            mat_it.value().generation != batch.material.generation ||
+            msh_it.value().generation != batch.mesh.generation) {
             return;
         }
 
-        const DiligentMaterialData &mat = mat_it->second;
-        const DiligentMeshData &msh = msh_it->second;
+        const DiligentMaterialData &mat = mat_it.value();
+        const DiligentMeshData &msh = msh_it.value();
 
         if (!mat.pso || !mat.srb || !msh.vertex_buffer || !msh.index_buffer) {
             return;
@@ -1510,15 +1520,15 @@ namespace CoreEngine {
 
         const auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
         if (program_it == impl_->shader_program_registry.end() ||
-            program_it->second.generation != impl_->active_shader_program.generation ||
-            !program_it->second.pso ||
-            !program_it->second.srb) {
+            program_it.value().generation != impl_->active_shader_program.generation ||
+            !program_it.value().pso ||
+            !program_it.value().srb) {
             return;
         }
 
-        impl_->immediate_context->SetPipelineState(program_it->second.pso);
+        impl_->immediate_context->SetPipelineState(program_it.value().pso);
         impl_->immediate_context->CommitShaderResources(
-            program_it->second.srb,
+            program_it.value().srb,
             Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         Diligent::DrawAttribs draw;
