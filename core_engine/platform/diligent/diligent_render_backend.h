@@ -14,6 +14,16 @@ namespace CoreEngine {
 
     class DiligentRenderBackend final : public IRenderBackend {
     public:
+        [[nodiscard]] TextureHandle LoadTexture2D(const TextureLoadDesc &desc) override;
+
+        [[nodiscard]] TextureHandle LoadTexture2DAsync(const TextureLoadDesc &desc) override;
+
+        [[nodiscard]] TextureLoadState GetTextureLoadState(TextureHandle handle) const override;
+
+        void DestroyTexture(TextureHandle handle) override;
+
+        void BindShaderTexture(std::string_view name, TextureHandle handle) override;
+
         void RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
                                 const DepthVisualizationDesc &desc) override;
 

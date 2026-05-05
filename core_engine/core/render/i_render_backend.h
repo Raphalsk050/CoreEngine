@@ -10,6 +10,7 @@
 #include "core/render/mesh_desc.h"
 #include "core/render/render_batch.h"
 #include "core/render/render_desc.h"
+#include "core/render/texture_desc.h"
 #include "core/window/native_window_handle.h"
 #include "debug/depth_visualization.h"
 
@@ -65,9 +66,19 @@ namespace CoreEngine {
 
         [[nodiscard]] virtual ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) = 0;
 
+        [[nodiscard]] virtual TextureHandle LoadTexture2D(const TextureLoadDesc &desc) = 0;
+
+        [[nodiscard]] virtual TextureHandle LoadTexture2DAsync(const TextureLoadDesc &desc) = 0;
+
+        [[nodiscard]] virtual TextureLoadState GetTextureLoadState(TextureHandle handle) const = 0;
+
+        virtual void DestroyTexture(TextureHandle handle) = 0;
+
         virtual void DestroyShaderProgram(ShaderProgramHandle handle) = 0;
 
         virtual void UseShaderProgram(ShaderProgramHandle handle) = 0;
+
+        virtual void BindShaderTexture(std::string_view name, TextureHandle handle) = 0;
 
         virtual void BindShaderTexture(std::string_view name, FrameBufferColorView view) = 0;
 

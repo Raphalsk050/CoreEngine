@@ -11,6 +11,16 @@ namespace CoreEngine {
         [[nodiscard]] bool Initialize(const RenderDesc &desc,
                                       NativeWindowHandle native_window) override;
 
+        [[nodiscard]] TextureHandle LoadTexture2D(const TextureLoadDesc &desc) override;
+
+        [[nodiscard]] TextureHandle LoadTexture2DAsync(const TextureLoadDesc &desc) override;
+
+        [[nodiscard]] TextureLoadState GetTextureLoadState(TextureHandle handle) const override;
+
+        void DestroyTexture(TextureHandle handle) override;
+
+        void BindShaderTexture(std::string_view name, TextureHandle handle) override;
+
         void BeginFrame() override;
 
         void Clear(const RenderClearColor &clear_color) override;
@@ -71,6 +81,9 @@ namespace CoreEngine {
     private:
         tsl::robin_map<uint32_t, uint32_t> frame_buffers_;
         tsl::robin_map<uint32_t, uint32_t> shader_programs_;
+        tsl::robin_map<uint32_t, uint32_t> textures_;
+        uint32_t next_texture_id_ = 1;
+        uint32_t next_texture_generation_ = 1;
         uint32_t next_frame_buffer_id_ = 1;
         uint32_t next_frame_buffer_generation_ = 1;
         uint32_t next_shader_program_id_ = 1;

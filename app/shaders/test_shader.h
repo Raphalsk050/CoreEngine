@@ -42,6 +42,9 @@ void main(in VSInput i, out PSInput o)
 }
 )HLSL";
     inline constexpr const char *kTestPS = R"HLSL(
+Texture2D g_Albedo;
+SamplerState g_Albedo_sampler;
+
 cbuffer PerMaterial : register(b2)
 {
     float4 g_Tint;
@@ -59,11 +62,12 @@ struct PSInput
 
 float4 main(in PSInput i) : SV_TARGET
 {
+    float4 albedo_sample = g_Albedo.Sample(g_Albedo_sampler, i.uv);
     float4 new_color = float4(i.uv.x,0.0,0.0,1.0);
     float new_alpha = (sin(i.time.y) * 0.5 + 0.5);
-    float lerp = lerp(0.0,0.2, new_alpha);
-    float new_value = smoothstep(0.8 - lerp,0.9 - lerp, 1.0 - length(i.uv - 0.5)) * abs(i.norm.z);
-    return float4(i.color * abs(i.norm), alpha) * new_value;
+    float lerp_offset = lerp(0.0,0.2, new_alpha);
+    float new_value = smoothstep(0.8 - lerp_offset,0.9 - lerp_offset, 1.0 - length(i.uv - 0.5)) * abs(i.norm.z);
+    return float4(albedo_sample.xyz, alpha);
 }
 )HLSL";
 } // namespace CoreEngine::BuiltinShaders

@@ -44,6 +44,14 @@ namespace CoreEngine {
 
         [[nodiscard]] ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) override;
 
+        [[nodiscard]] TextureHandle LoadTexture2D(const TextureLoadDesc &desc);
+
+        [[nodiscard]] TextureHandle LoadTexture2DAsync(const TextureLoadDesc &desc);
+
+        [[nodiscard]] TextureLoadState GetTextureLoadState(TextureHandle handle) const;
+
+        void DestroyTexture(TextureHandle handle);
+
         void DestroyShaderProgram(ShaderProgramHandle handle) override;
 
         void DestroyMesh(MeshHandle handle);

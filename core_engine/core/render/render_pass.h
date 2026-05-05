@@ -98,6 +98,10 @@ namespace CoreEngine {
             backend_.UseShaderProgram(handle);
         }
 
+        void BindTexture(std::string_view name, TextureHandle handle) const {
+            backend_.BindShaderTexture(name, handle);
+        }
+
         void BindTexture(std::string_view name, FrameBufferColorView view) const {
             backend_.BindShaderTexture(name, view);
         }

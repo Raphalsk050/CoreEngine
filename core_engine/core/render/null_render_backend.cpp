@@ -3,6 +3,43 @@
 namespace CoreEngine {
     bool NullRenderBackend::Initialize(const RenderDesc &, NativeWindowHandle) { return true; }
 
+    TextureHandle NullRenderBackend::LoadTexture2D(const TextureLoadDesc &desc) {
+        if (!desc.IsValid()) {
+            return {};
+        }
+
+        const TextureHandle handle{
+            .id = next_texture_id_++,
+            .generation = next_texture_generation_++,
+        };
+
+        textures_[handle.id] = handle.generation;
+        return handle;
+    }
+
+    TextureHandle NullRenderBackend::LoadTexture2DAsync(const TextureLoadDesc &desc) {
+        return LoadTexture2D(desc);
+    }
+
+    TextureLoadState NullRenderBackend::GetTextureLoadState(TextureHandle handle) const {
+        const auto it = textures_.find(handle.id);
+        if (it == textures_.end() || it.value() != handle.generation) {
+            return TextureLoadState::Invalid;
+        }
+
+        return TextureLoadState::Ready;
+    }
+
+    void NullRenderBackend::DestroyTexture(TextureHandle handle) {
+        const auto it = textures_.find(handle.id);
+        if (it != textures_.end() && it.value() == handle.generation) {
+            textures_.erase(it);
+        }
+    }
+
+    void NullRenderBackend::BindShaderTexture(std::string_view, TextureHandle) {
+    }
+
     void NullRenderBackend::BeginFrame() {
     }
 

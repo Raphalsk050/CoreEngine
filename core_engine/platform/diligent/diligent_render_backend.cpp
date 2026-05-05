@@ -6,9 +6,11 @@
 #include <exception>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -25,6 +27,8 @@
 #endif
 #include "DiligentCore/Common/interface/RefCntAutoPtr.hpp"
 #include "ImGuiImplSDL3.hpp"
+#include "TextureLoader.h"
+#include "TextureUtilities.h"
 #include "platform/diligent/builtin_shaders.h"
 #include "core/render/render_batch.h"
 #include "core/render/vertex.h"
@@ -57,9 +61,11 @@ namespace CoreEngine {
         struct DiligentTextureBinding {
             std::string name;
             std::string sampler_name;
+            TextureHandle texture;
             ShaderStage stages = ShaderStage::Pixel;
             Diligent::IShaderResourceVariable *texture_variable = nullptr;
             Diligent::IShaderResourceVariable *sampler_variable = nullptr;
+            uint64_t bound_revision = 0;
         };
 
         struct DiligentMeshData {
@@ -74,7 +80,9 @@ namespace CoreEngine {
             Diligent::RefCntAutoPtr<Diligent::IPipelineState> pso;
             Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srb;
             Diligent::RefCntAutoPtr<Diligent::IBuffer> material_cbuffer;
+            Diligent::RefCntAutoPtr<Diligent::ISampler> sampler;
             std::vector<DiligentUniformBinding> uniforms;
+            std::vector<DiligentTextureBinding> textures;
             std::vector<uint8_t> properties_data;
             uint32_t generation = 0;
         };
@@ -86,6 +94,21 @@ namespace CoreEngine {
             std::vector<DiligentUniformBinding> uniforms;
             std::vector<DiligentTextureBinding> textures;
             uint32_t generation = 0;
+        };
+
+        struct DiligentTextureData {
+            Diligent::RefCntAutoPtr<Diligent::ITexture> texture;
+            Diligent::RefCntAutoPtr<Diligent::ITextureView> texture_view;
+            TextureLoadState state = TextureLoadState::Invalid;
+            std::string error_message;
+            uint64_t revision = 0;
+            uint32_t generation = 0;
+        };
+
+        struct DiligentTextureSnapshot {
+            Diligent::RefCntAutoPtr<Diligent::ITextureView> texture_view;
+            TextureLoadState state = TextureLoadState::Invalid;
+            uint64_t revision = 0;
         };
 
         struct DiligentFrameBufferData {
@@ -121,7 +144,10 @@ namespace CoreEngine {
         tsl::robin_map<uint32_t, DiligentMaterialData> material_registry;
         tsl::robin_map<uint32_t, DiligentShaderProgramData> shader_program_registry;
         tsl::robin_map<uint32_t, DiligentFrameBufferData> frame_buffer_registry;
+        tsl::robin_map<uint32_t, DiligentTextureData> texture_registry;
         tsl::robin_map<uint64_t, MaterialHandle> material_hash_cache;
+        mutable std::mutex texture_registry_mutex;
+        std::vector<std::jthread> texture_load_workers;
 
         Diligent::RefCntAutoPtr<Diligent::IPipelineState> composite_pso;
         Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> composite_srb;
@@ -132,6 +158,8 @@ namespace CoreEngine {
         ShaderProgramHandle active_shader_program{};
         ShaderProgramHandle depth_visualization_program{};
 
+        uint32_t next_texture_id_ = 1;
+        uint32_t texture_generation_ = 1;
         uint32_t next_mesh_id = 1;
         uint32_t next_material_id = 1;
         uint32_t next_shader_program_id = 1;
@@ -263,6 +291,109 @@ namespace CoreEngine {
         uint32_t AlignConstantBufferSize(uint32_t byte_size) {
             constexpr uint32_t kAlignment = 256;
             return (byte_size + kAlignment - 1u) & ~(kAlignment - 1u);
+        }
+
+        Diligent::TEXTURE_FORMAT ToDiligentTextureFormat(TextureFormat format) {
+            switch (format) {
+                case TextureFormat::Auto:
+                    return Diligent::TEX_FORMAT_UNKNOWN;
+                case TextureFormat::RGBA8Unorm:
+                    return Diligent::TEX_FORMAT_RGBA8_UNORM;
+                case TextureFormat::RGBA8UnormSrgb:
+                    return Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB;
+            }
+            return Diligent::TEX_FORMAT_UNKNOWN;
+        }
+
+        Diligent::TextureLoadInfo MakeTextureLoadInfo(const TextureLoadDesc &desc) {
+            Diligent::TextureLoadInfo info;
+            info.Name = desc.path.c_str();
+            info.Usage = Diligent::USAGE_IMMUTABLE;
+            info.BindFlags = Diligent::BIND_SHADER_RESOURCE;
+            info.Format = ToDiligentTextureFormat(desc.format);
+            info.GenerateMips = desc.generate_mipmaps;
+            info.FlipVertically = desc.flip_vertically;
+            info.PermultiplyAlpha = desc.premultiply_alpha;
+            info.IsSRGB = desc.format == TextureFormat::RGBA8UnormSrgb;
+            return info;
+        }
+
+        DiligentTextureData LoadTextureFromFile(Diligent::IRenderDevice *device, const TextureLoadDesc &desc) {
+            DiligentTextureData data;
+            const Diligent::TextureLoadInfo info = MakeTextureLoadInfo(desc);
+
+            Diligent::CreateTextureFromFile(
+                desc.path.c_str(),
+                info,
+                device,
+                &data.texture);
+
+            if (!data.texture) {
+                data.state = TextureLoadState::Failed;
+                data.error_message = "Failed to load texture from file: " + desc.path;
+                return data;
+            }
+
+            data.texture_view = data.texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+            if (!data.texture_view) {
+                data.state = TextureLoadState::Failed;
+                data.error_message = "Failed to create texture shader resource view";
+                return data;
+            }
+
+            data.state = TextureLoadState::Ready;
+            data.revision = 1;
+            return data;
+        }
+
+        DiligentTextureData CreateFallbackTexture(Diligent::IRenderDevice *device) {
+            DiligentTextureData data;
+            const std::array<std::uint8_t, 4> pixel{255u, 255u, 255u, 255u};
+
+            Diligent::TextureDesc desc;
+            desc.Name = "AsyncTextureFallback";
+            desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
+            desc.Width = 1;
+            desc.Height = 1;
+            desc.Format = Diligent::TEX_FORMAT_RGBA8_UNORM;
+            desc.MipLevels = 1;
+            desc.BindFlags = Diligent::BIND_SHADER_RESOURCE;
+            desc.Usage = Diligent::USAGE_IMMUTABLE;
+
+            Diligent::TextureSubResData sub_resource{pixel.data(), 4};
+            Diligent::TextureData initial_data{&sub_resource, 1};
+            device->CreateTexture(desc, &initial_data, &data.texture);
+
+            if (!data.texture) {
+                data.state = TextureLoadState::Failed;
+                data.error_message = "Failed to create async texture fallback";
+                return data;
+            }
+
+            data.texture_view = data.texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+            if (!data.texture_view) {
+                data.state = TextureLoadState::Failed;
+                data.error_message = "Failed to create async texture fallback view";
+                return data;
+            }
+
+            data.state = TextureLoadState::Pending;
+            data.revision = 1;
+            return data;
+        }
+
+        DiligentTextureSnapshot GetTextureSnapshot(const DiligentRenderBackend::Impl &impl, TextureHandle handle) {
+            std::lock_guard lock{impl.texture_registry_mutex};
+            const auto it = impl.texture_registry.find(handle.id);
+            if (it == impl.texture_registry.end() || it.value().generation != handle.generation) {
+                return {};
+            }
+
+            return DiligentTextureSnapshot{
+                .texture_view = it.value().texture_view,
+                .state = it.value().state,
+                .revision = it.value().revision,
+            };
         }
 
         Diligent::SHADER_TYPE ToDiligentShaderStages(ShaderStage stage) {
@@ -448,7 +579,7 @@ namespace CoreEngine {
             pci.pPS = ps;
 
             std::vector<Diligent::ShaderResourceVariableDesc> vars;
-            vars.reserve(2u + uniforms.size());
+            vars.reserve(2u + uniforms.size() + desc.bindings.size() * 2u);
             vars.push_back({
                 Diligent::SHADER_TYPE_VERTEX, "PerFrame",
                 Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC
@@ -463,6 +594,24 @@ namespace CoreEngine {
                     vars.push_back({
                         ToDiligentShaderStages(uniform.stages), uniform.name.c_str(),
                         Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC
+                    });
+                }
+            }
+
+            for (const ShaderBindingDesc &binding: desc.bindings) {
+                if (!binding.IsValid() || binding.type != ShaderBindingType::Texture) {
+                    continue;
+                }
+
+                vars.push_back({
+                    ToDiligentShaderStages(binding.stages), binding.name.c_str(),
+                    Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC
+                });
+
+                if (!binding.sampler_name.empty()) {
+                    vars.push_back({
+                        ToDiligentShaderStages(binding.stages), binding.sampler_name.c_str(),
+                        Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC
                     });
                 }
             }
@@ -510,8 +659,73 @@ namespace CoreEngine {
                 mat.uniforms.push_back(std::move(binding));
             }
 
+            bool has_material_textures = false;
+            for (const ShaderTextureData &texture: desc.textures) {
+                if (!texture.name.empty() && !texture.texture.IsValid()) {
+                    impl.last_error = "Material references an invalid texture handle";
+                    return {};
+                }
+
+                if (texture.IsValid()) {
+                    has_material_textures = true;
+                    break;
+                }
+            }
+
+            if (has_material_textures) {
+                Diligent::SamplerDesc sampler;
+                sampler.AddressU = Diligent::TEXTURE_ADDRESS_CLAMP;
+                sampler.AddressV = Diligent::TEXTURE_ADDRESS_CLAMP;
+                sampler.AddressW = Diligent::TEXTURE_ADDRESS_CLAMP;
+                impl.device->CreateSampler(sampler, &mat.sampler);
+
+                if (!mat.sampler) {
+                    impl.last_error = "Failed to create material texture sampler";
+                    return {};
+                }
+            }
+
             mat.properties_data = desc.properties_data;
             mat.pso->CreateShaderResourceBinding(&mat.srb, true);
+
+            if (!mat.srb) {
+                impl.last_error = "Failed to create material shader resource binding";
+                return {};
+            }
+
+            for (const ShaderTextureData &texture: desc.textures) {
+                if (!texture.IsValid()) {
+                    continue;
+                }
+
+                const DiligentTextureSnapshot snapshot = GetTextureSnapshot(impl, texture.texture);
+                if (!snapshot.texture_view) {
+                    impl.last_error = "Material references an invalid texture handle";
+                    return {};
+                }
+
+                DiligentTextureBinding binding;
+                binding.name = texture.name;
+                binding.sampler_name = texture.sampler_name;
+                binding.texture = texture.texture;
+                binding.stages = texture.stages;
+                binding.texture_variable = FindSrbVariable(mat.srb, texture.stages, texture.name);
+                binding.sampler_variable = FindSrbVariable(mat.srb, texture.stages, texture.sampler_name);
+
+                if (binding.texture_variable == nullptr ||
+                    (!binding.sampler_name.empty() && binding.sampler_variable == nullptr)) {
+                    impl.last_error = "Failed to resolve material texture shader variable";
+                    return {};
+                }
+
+                binding.texture_variable->Set(snapshot.texture_view);
+                if (binding.sampler_variable != nullptr) {
+                    binding.sampler_variable->Set(mat.sampler);
+                }
+                binding.bound_revision = snapshot.revision;
+
+                mat.textures.push_back(std::move(binding));
+            }
 
             return mat;
         }
@@ -839,6 +1053,144 @@ namespace CoreEngine {
         }
     }
 
+    TextureHandle DiligentRenderBackend::LoadTexture2D(const TextureLoadDesc &desc) {
+        if (!impl_ || !impl_->device || !desc.IsValid()) {
+            if (impl_) {
+                impl_->last_error = "Invalid texture load request";
+            }
+            return {};
+        }
+
+        DiligentTextureData data = LoadTextureFromFile(impl_->device, desc);
+        if (!data.texture_view) {
+            impl_->last_error = data.error_message.empty() ? "Failed to load texture" : data.error_message;
+            return {};
+        }
+
+        std::lock_guard lock{impl_->texture_registry_mutex};
+        const uint32_t id = impl_->next_texture_id_++;
+        data.generation = impl_->texture_generation_++;
+        impl_->texture_registry[id] = std::move(data);
+
+        return TextureHandle{.id = id, .generation = impl_->texture_registry[id].generation};
+    }
+
+    TextureHandle DiligentRenderBackend::LoadTexture2DAsync(const TextureLoadDesc &desc) {
+        if (!impl_ || !impl_->device || !desc.IsValid()) {
+            if (impl_) {
+                impl_->last_error = "Invalid async texture load request";
+            }
+            return {};
+        }
+
+        DiligentTextureData fallback = CreateFallbackTexture(impl_->device);
+        if (!fallback.texture_view) {
+            impl_->last_error = fallback.error_message.empty()
+                                    ? "Failed to create async texture fallback"
+                                    : fallback.error_message;
+            return {};
+        }
+
+        TextureHandle handle;
+        {
+            std::lock_guard lock{impl_->texture_registry_mutex};
+            handle = TextureHandle{
+                .id = impl_->next_texture_id_++,
+                .generation = impl_->texture_generation_++,
+            };
+            fallback.generation = handle.generation;
+            impl_->texture_registry[handle.id] = std::move(fallback);
+        }
+
+        impl_->texture_load_workers.emplace_back([impl = impl_.get(), handle, desc](std::stop_token stop_token) {
+            try {
+                DiligentTextureData loaded = LoadTextureFromFile(impl->device, desc);
+                if (stop_token.stop_requested()) {
+                    return;
+                }
+
+                std::lock_guard lock{impl->texture_registry_mutex};
+                const auto it = impl->texture_registry.find(handle.id);
+                if (it == impl->texture_registry.end() || it.value().generation != handle.generation) {
+                    return;
+                }
+
+                if (!loaded.texture_view) {
+                    it.value().state = TextureLoadState::Failed;
+                    it.value().error_message = loaded.error_message;
+                    return;
+                }
+
+                it.value().texture = std::move(loaded.texture);
+                it.value().texture_view = std::move(loaded.texture_view);
+                it.value().state = TextureLoadState::Ready;
+                ++it.value().revision;
+            } catch (const std::exception &ex) {
+                std::lock_guard lock{impl->texture_registry_mutex};
+                const auto it = impl->texture_registry.find(handle.id);
+                if (it != impl->texture_registry.end() && it.value().generation == handle.generation) {
+                    it.value().state = TextureLoadState::Failed;
+                    it.value().error_message = ex.what();
+                }
+            }
+        });
+
+        return handle;
+    }
+
+    TextureLoadState DiligentRenderBackend::GetTextureLoadState(TextureHandle handle) const {
+        if (!impl_ || !handle.IsValid()) {
+            return TextureLoadState::Invalid;
+        }
+
+        return GetTextureSnapshot(*impl_, handle).state;
+    }
+
+    void DiligentRenderBackend::DestroyTexture(TextureHandle handle) {
+        if (!impl_ || !handle.IsValid()) {
+            return;
+        }
+
+        std::lock_guard lock{impl_->texture_registry_mutex};
+        const auto it = impl_->texture_registry.find(handle.id);
+        if (it == impl_->texture_registry.end() || it.value().generation != handle.generation) {
+            return;
+        }
+
+        impl_->texture_registry.erase(it);
+    }
+
+    void DiligentRenderBackend::BindShaderTexture(std::string_view name, TextureHandle handle) {
+        if (!impl_ || !handle.IsValid() || !impl_->active_shader_program.IsValid()) {
+            return;
+        }
+
+        const DiligentTextureSnapshot snapshot = GetTextureSnapshot(*impl_, handle);
+        if (!snapshot.texture_view) {
+            return;
+        }
+
+        auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
+        if (program_it == impl_->shader_program_registry.end() ||
+            program_it.value().generation != impl_->active_shader_program.generation) {
+            return;
+        }
+
+        DiligentShaderProgramData &program = program_it.value();
+        for (DiligentTextureBinding &texture: program.textures) {
+            if (std::string_view{texture.name} != name) {
+                continue;
+            }
+
+            texture.texture_variable->Set(snapshot.texture_view);
+            if (texture.sampler_variable != nullptr) {
+                texture.sampler_variable->Set(program.sampler);
+            }
+            texture.bound_revision = snapshot.revision;
+            return;
+        }
+    }
+
     void DiligentRenderBackend::RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
                                                    const DepthVisualizationDesc &desc) {
         if (!source.IsValid() || !destination.IsValid() || !impl_->depth_visualization_program.IsValid()) {
@@ -1095,6 +1447,14 @@ namespace CoreEngine {
         if (!impl_) {
             return;
         }
+        for (std::jthread &worker: impl_->texture_load_workers) {
+            worker.request_stop();
+        }
+        impl_->texture_load_workers.clear();
+        {
+            std::lock_guard lock{impl_->texture_registry_mutex};
+            impl_->texture_registry.clear();
+        }
         impl_->imgui.reset();
         impl_->active_frame_buffer = {};
         impl_->active_shader_program = {};
@@ -1106,10 +1466,10 @@ namespace CoreEngine {
         impl_->composite_pso.Release();
         impl_->shader_program_registry.clear();
         impl_->frame_buffer_registry.clear();
-        impl_->immediate_context.Release();
         impl_->mesh_registry.clear();
         impl_->material_registry.clear();
         impl_->material_hash_cache.clear();
+        impl_->immediate_context.Release();
         impl_->per_frame_cb.Release();
         impl_->per_object_cb.Release();
         impl_->swap_chain.Release();
@@ -1301,7 +1661,9 @@ namespace CoreEngine {
 
         DiligentMaterialData data = CreateMaterial(*impl_, desc);
         if (!data.pso) {
-            impl_->last_error = "Failed to create PSO for material";
+            if (impl_->last_error.empty()) {
+                impl_->last_error = "Failed to create PSO for material";
+            }
             return {};
         }
 
@@ -1467,7 +1829,7 @@ namespace CoreEngine {
             return;
         }
 
-        const DiligentMaterialData &mat = mat_it.value();
+        DiligentMaterialData &mat = mat_it.value();
         const DiligentMeshData &msh = msh_it.value();
 
         if (!mat.pso || !mat.srb || !msh.vertex_buffer || !msh.index_buffer) {
@@ -1486,6 +1848,22 @@ namespace CoreEngine {
         impl_->immediate_context->SetIndexBuffer(
             msh.index_buffer, 0,
             Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        for (DiligentTextureBinding &texture: mat.textures) {
+            if (!texture.texture.IsValid()) {
+                continue;
+            }
+
+            const DiligentTextureSnapshot snapshot = GetTextureSnapshot(*impl_, texture.texture);
+            if (!snapshot.texture_view || snapshot.revision == texture.bound_revision) {
+                continue;
+            }
+
+            texture.texture_variable->Set(
+                snapshot.texture_view,
+                Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
+            texture.bound_revision = snapshot.revision;
+        }
 
         impl_->immediate_context->CommitShaderResources(
             mat.srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);

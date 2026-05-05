@@ -57,6 +57,11 @@ namespace CoreEngine {
                                  ShaderStage stages,
                                  std::span<const std::uint8_t> raw_data);
 
+        MaterialBuilder &Texture(std::string name,
+                                 TextureHandle texture,
+                                 ShaderStage stages = ShaderStage::Pixel,
+                                 std::string sampler_name = {});
+
         template<typename T>
         MaterialBuilder &Uniform(std::string name,
                                  const T &data,
@@ -83,5 +88,6 @@ namespace CoreEngine {
         std::vector<uint8_t> properties_data_;
         std::vector<ShaderBindingDesc> bindings_;
         std::vector<ShaderUniformData> uniforms_;
+        std::vector<ShaderTextureData> textures_;
     };
-}
+} // namespace CoreEngine

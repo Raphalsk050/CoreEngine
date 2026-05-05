@@ -144,6 +144,34 @@ namespace CoreEngine {
         return backend_->CreateShaderProgram(desc);
     }
 
+    TextureHandle RenderSystem::LoadTexture2D(const TextureLoadDesc &desc) {
+        if (!initialized_ || backend_ == nullptr || !desc.IsValid()) {
+            return {};
+        }
+        return backend_->LoadTexture2D(desc);
+    }
+
+    TextureHandle RenderSystem::LoadTexture2DAsync(const TextureLoadDesc &desc) {
+        if (!initialized_ || backend_ == nullptr || !desc.IsValid()) {
+            return {};
+        }
+        return backend_->LoadTexture2DAsync(desc);
+    }
+
+    TextureLoadState RenderSystem::GetTextureLoadState(TextureHandle handle) const {
+        if (!handle.IsValid() || backend_ == nullptr) {
+            return TextureLoadState::Invalid;
+        }
+        return backend_->GetTextureLoadState(handle);
+    }
+
+    void RenderSystem::DestroyTexture(TextureHandle handle) {
+        if (!handle.IsValid() || backend_ == nullptr) {
+            return;
+        }
+        backend_->DestroyTexture(handle);
+    }
+
     void RenderSystem::DestroyShaderProgram(ShaderProgramHandle handle) {
         if (!handle.IsValid() || backend_ == nullptr) {
             return;

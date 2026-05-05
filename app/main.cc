@@ -37,12 +37,18 @@ public:
         const CoreEngine::MeshHandle plane_mesh =
                 context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Plane);
 
+        test_texture_ = context.render_system.LoadTexture2DAsync(CoreEngine::TextureLoadDesc{
+            .path = "app/assets/textures/image.png",
+            .format = CoreEngine::TextureFormat::RGBA8Unorm,
+            .generate_mipmaps = true
+        });
+
         TestShaderProps shader_props;
         shader_props.color = {1.0, 0.0, 0.0, 1.0};
         shader_props.alpha = 0.1f;
 
-        auto custom_material = CoreEngine::Material::Custom(Game::Shaders::kTestVS, Game::Shaders::kTestPS,
-                                                            shader_props);
+        auto custom_material = CoreEngine::MaterialBuilder{}.Vertex(Game::Shaders::kTestVS).
+                Pixel(Game::Shaders::kTestPS).Texture("g_Albedo", test_texture_).Properties(shader_props).Build();
 
         const CoreEngine::MaterialHandle player_material = custom_material.Resolve(context.render_system);
 
@@ -190,6 +196,7 @@ private:
     CoreEngine::Node plane_node_;
     CoreEngine::Node camera_node_;
     CoreEngine::Node secondary_camera_node_;
+    CoreEngine::TextureHandle test_texture_;
     Game::ThirdPersonCameraController third_person_camera_controller_;
     Game::PlayerPawn player_pawn_;
     Game::PlayerController player_controller_;
@@ -215,7 +222,7 @@ int main() {
     config.decorated = true;
     config.resizable = true;
     config.windowTitle = "CoreEngine - Player Input Demo";
-    config.renderBackend = CoreEngine::RenderBackendType::DiligentVulkan;
+    config.renderBackend = CoreEngine::RenderBackendType::DiligentD3D11;
     config.vsync = false;
     config.enableImGui = true;
 

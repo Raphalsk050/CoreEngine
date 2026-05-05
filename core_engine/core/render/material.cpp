@@ -59,6 +59,15 @@ namespace CoreEngine {
             }
             HashValue(h, static_cast<uint64_t>(desc.uniforms.size()));
 
+            for (const ShaderTextureData &texture: desc.textures) {
+                HashString(h, texture.name);
+                HashValue(h, static_cast<uint64_t>(texture.stages));
+                HashString(h, texture.sampler_name);
+                HashValue(h, static_cast<uint64_t>(texture.texture.id));
+                HashValue(h, static_cast<uint64_t>(texture.texture.generation));
+            }
+            HashValue(h, static_cast<uint64_t>(desc.textures.size()));
+
             return h;
         }
     }
@@ -122,6 +131,30 @@ namespace CoreEngine {
         return *this;
     }
 
+    MaterialBuilder &MaterialBuilder::Texture(std::string name,
+                                              TextureHandle texture,
+                                              ShaderStage stages,
+                                              std::string sampler_name) {
+        if (sampler_name.empty()) {
+            sampler_name = name + "_sampler";
+        }
+
+        textures_.push_back(ShaderTextureData{
+            .name = name,
+            .texture = texture,
+            .stages = stages,
+            .sampler_name = sampler_name,
+        });
+
+        bindings_.push_back(ShaderBindingDesc::Texture(
+            std::move(name),
+            ShaderBindingScope::Material,
+            stages,
+            std::move(sampler_name)));
+
+        return *this;
+    }
+
     Material MaterialBuilder::Build() const {
         MaterialDesc desc;
         desc.vertex_shader_source = vertex_source_;
@@ -129,6 +162,7 @@ namespace CoreEngine {
         desc.properties_data = properties_data_;
         desc.bindings = bindings_;
         desc.uniforms = uniforms_;
+        desc.textures = textures_;
 
         if (!desc.properties_data.empty()) {
             const bool has_legacy_uniform = std::any_of(
@@ -149,4 +183,4 @@ namespace CoreEngine {
         desc.hash = HashDesc(desc);
         return Material{std::move(desc)};
     }
-}
+} // namespace CoreEngine
