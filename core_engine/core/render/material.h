@@ -47,9 +47,9 @@ namespace CoreEngine {
 
     class MaterialBuilder {
     public:
-        MaterialBuilder &Vertex(std::string source);
+        MaterialBuilder &Vertex(std::string source, bool is_path = false);
 
-        MaterialBuilder &Pixel(std::string source);
+        MaterialBuilder &Pixel(std::string source, bool is_path = false);
 
         MaterialBuilder &Binding(ShaderBindingDesc desc);
 

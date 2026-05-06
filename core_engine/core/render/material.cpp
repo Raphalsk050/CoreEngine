@@ -3,8 +3,12 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
+#include <ios>
 #include <span>
+#include <utility>
 
+#include "core/log/log.h"
 #include "core/render/i_render_context.h"
 #include "platform/diligent/builtin_shaders.h"
 
@@ -109,13 +113,25 @@ namespace CoreEngine {
         return render_context.ResolveMaterial(desc_);
     }
 
-    MaterialBuilder &MaterialBuilder::Vertex(std::string source) {
-        vertex_source_ = std::move(source);
+    MaterialBuilder &MaterialBuilder::Vertex(std::string source, bool is_path) {
+        std::string src = source;
+        if (is_path) {
+            std::ifstream in(src);
+            std::string contents((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            src = contents;
+        }
+        vertex_source_ = src;
         return *this;
     }
 
-    MaterialBuilder &MaterialBuilder::Pixel(std::string source) {
-        pixel_source_ = std::move(source);
+    MaterialBuilder &MaterialBuilder::Pixel(std::string source, bool is_path) {
+        std::string src = source;
+        if (is_path) {
+            std::ifstream in(src);
+            std::string contents((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            src = contents;
+        }
+        pixel_source_ = src;
         return *this;
     }
 

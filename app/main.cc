@@ -16,7 +16,6 @@
 #include "core/render/primitive_type.h"
 #include "core/render/render_system.h"
 #include "core/window/window_system.h"
-#include "shaders/test_shader.h"
 
 struct TestShaderProps {
     alignas(16) CoreEngine::Math::Vec4 color{1.f, 1.f, 1.f, 1.f};
@@ -38,7 +37,7 @@ public:
                 context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Plane);
 
         test_texture_ = context.render_system.LoadTexture2DAsync(CoreEngine::TextureLoadDesc{
-            .path = "app/assets/textures/image.png",
+            .path = "app/assets/textures/uv_mapping.png",
             .format = CoreEngine::TextureFormat::RGBA8Unorm,
             .generate_mipmaps = true
         });
@@ -47,8 +46,12 @@ public:
         shader_props.color = {1.0, 0.0, 0.0, 1.0};
         shader_props.alpha = 0.1f;
 
-        auto custom_material = CoreEngine::MaterialBuilder{}.Vertex(Game::Shaders::kTestVS).
-                Pixel(Game::Shaders::kTestPS).Texture("g_Albedo", test_texture_).Properties(shader_props).Build();
+        auto custom_material = CoreEngine::MaterialBuilder{}
+                .Vertex("app/assets/shaders/custom_shader_vertex.hlsl", true)
+                .Pixel("app/assets/shaders/custom_shader_pixel.hlsl", true)
+                .Texture("g_Albedo", test_texture_)
+                .Properties(shader_props)
+                .Build();
 
         const CoreEngine::MaterialHandle player_material = custom_material.Resolve(context.render_system);
 
