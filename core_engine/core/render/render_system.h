@@ -3,8 +3,11 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <string_view>
 
+#include "core/assets/i_model_importer.h"
+#include "core/assets/model_asset.h"
 #include "core/render/camera.h"
 #include "core/render/camera_data.h"
 #include "core/render/i_render_backend.h"
@@ -28,7 +31,10 @@ namespace CoreEngine {
 
     class RenderSystem final : public IRenderContext {
     public:
-        explicit RenderSystem(std::unique_ptr<IRenderBackend> backend);
+        explicit RenderSystem(std::unique_ptr<IRenderBackend> backend,
+                              std::unique_ptr<IModelImporter> model_importer = nullptr);
+
+        ~RenderSystem() override;
 
         [[nodiscard]] bool Initialize(const RenderDesc &desc, NativeWindowHandle native_window);
 
@@ -51,6 +57,20 @@ namespace CoreEngine {
         [[nodiscard]] TextureLoadState GetTextureLoadState(TextureHandle handle) const;
 
         void DestroyTexture(TextureHandle handle);
+
+        [[nodiscard]] ModelHandle LoadModel(const ModelLoadDesc &desc);
+
+        [[nodiscard]] ModelHandle LoadModelAsync(const ModelLoadDesc &desc);
+
+        [[nodiscard]] ModelLoadState GetModelLoadState(ModelHandle handle) const;
+
+        [[nodiscard]] std::size_t GetModelMeshCount(ModelHandle handle) const;
+
+        [[nodiscard]] MeshHandle GetModelMesh(ModelHandle handle, std::size_t mesh_index) const;
+
+        [[nodiscard]] std::string GetModelLoadError(ModelHandle handle) const;
+
+        void DestroyModel(ModelHandle handle);
 
         void DestroyShaderProgram(ShaderProgramHandle handle) override;
 
@@ -97,6 +117,10 @@ namespace CoreEngine {
 
         void ExecuteDefaultScenePass(RenderPassContext &context);
 
+        void PumpModelUploads();
+
+        void DestroyAllModels();
+
         [[nodiscard]] bool CreateSceneFrameBuffer();
 
         void DestroySceneFrameBuffer();
@@ -108,7 +132,11 @@ namespace CoreEngine {
 
         static constexpr std::size_t kPrimitiveCount = static_cast<std::size_t>(PrimitiveType::Count);
 
+        struct ModelRegistry;
+
         std::unique_ptr<IRenderBackend> backend_;
+        std::unique_ptr<IModelImporter> model_importer_;
+        std::unique_ptr<ModelRegistry> models_;
         RenderDesc desc_{};
         CameraData manual_camera_override_{};
         CameraData default_camera_{};

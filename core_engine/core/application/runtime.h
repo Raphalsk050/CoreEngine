@@ -68,6 +68,7 @@ namespace CoreEngine {
         std::unique_ptr<InputSystem> input_system_;
         std::unique_ptr<RenderSystem> render_system_;
         std::unique_ptr<PlatformServices> platform_;
+        RenderBackendType resolved_render_backend_ = RenderBackendType::None;
         std::atomic_bool shutdown_requested_{false};
     };
 } // namespace CoreEngine

@@ -1,7 +1,14 @@
 #include "core/render/render_system.h"
 
 #include <cstddef>
+#include <exception>
+#include <mutex>
+#include <string>
+#include <thread>
 #include <utility>
+#include <vector>
+
+#include <tsl/robin_map.h>
 
 #include "core/ecs/components/mesh_renderer_component.h"
 #include "core/ecs/components/transform_component.h"
@@ -13,6 +20,36 @@
 #include "core/render/render_pass/default_scene_render_pass.h"
 
 namespace CoreEngine {
+    struct RenderSystem::ModelRegistry {
+        struct Record {
+            Record() = default;
+            Record(const Record &) = delete;
+            Record &operator=(const Record &) = delete;
+            Record(Record &&) noexcept = default;
+            Record &operator=(Record &&) noexcept = default;
+
+            uint32_t generation = 0;
+            ModelLoadState state = ModelLoadState::Invalid;
+            std::vector<MeshHandle> meshes;
+            std::vector<std::string> mesh_names;
+            std::unique_ptr<ModelLoadResult> decoded_result;
+            std::string error_message;
+            std::jthread worker;
+        };
+
+        tsl::robin_map<uint32_t, Record> records;
+        mutable std::mutex mutex;
+        uint32_t next_model_id = 1;
+        uint32_t model_generation = 1;
+    };
+
+    namespace {
+        struct PendingModelUpload {
+            ModelHandle handle;
+            ModelLoadResult result;
+        };
+    }
+
     //clang-format off
     constexpr RenderPassStage kScenePassStages[] = {
         RenderPassStage::FrameSetup,            // Per-frame setup before any scene rendering.
@@ -27,8 +64,15 @@ namespace CoreEngine {
     };
     //clang-format on
 
-    RenderSystem::RenderSystem(std::unique_ptr<IRenderBackend> backend)
-        : backend_(std::move(backend)) {
+    RenderSystem::RenderSystem(std::unique_ptr<IRenderBackend> backend,
+                               std::unique_ptr<IModelImporter> model_importer)
+        : backend_(std::move(backend)),
+          model_importer_(std::move(model_importer)),
+          models_(std::make_unique<ModelRegistry>()) {
+    }
+
+    RenderSystem::~RenderSystem() {
+        DestroyAllModels();
     }
 
     bool RenderSystem::Initialize(const RenderDesc &desc, NativeWindowHandle native_window) {
@@ -66,6 +110,8 @@ namespace CoreEngine {
         if (!initialized_ || backend_ == nullptr) {
             return;
         }
+
+        PumpModelUploads();
 
         render_frame_resources_.Clear();
 
@@ -170,6 +216,208 @@ namespace CoreEngine {
             return;
         }
         backend_->DestroyTexture(handle);
+    }
+
+    ModelHandle RenderSystem::LoadModel(const ModelLoadDesc &desc) {
+        if (!initialized_ || backend_ == nullptr || model_importer_ == nullptr || models_ == nullptr ||
+            !desc.IsValid()) {
+            return {};
+        }
+
+        ModelLoadResult result;
+        try {
+            result = model_importer_->Load(desc);
+        } catch (const std::exception &ex) {
+            result.error_message = ex.what();
+        }
+        if (!result.IsSuccess()) {
+            return {};
+        }
+
+        std::string error_message;
+        std::vector<MeshHandle> uploaded_meshes;
+        uploaded_meshes.reserve(result.asset.meshes.size());
+
+        for (const ModelMeshAsset &mesh: result.asset.meshes) {
+            const MeshDesc mesh_desc{
+                .vertices = mesh.vertices,
+                .indices = mesh.indices,
+            };
+
+            MeshHandle mesh_handle = backend_->UploadMesh(mesh_desc);
+            if (!mesh_handle.IsValid()) {
+                error_message = backend_->LastError().empty()
+                                    ? "Failed to upload model mesh"
+                                    : std::string{backend_->LastError()};
+                break;
+            }
+
+            uploaded_meshes.push_back(mesh_handle);
+        }
+
+        if (!error_message.empty()) {
+            for (MeshHandle mesh: uploaded_meshes) {
+                backend_->DestroyMesh(mesh);
+            }
+            return {};
+        }
+
+        ModelRegistry::Record record;
+        record.state = ModelLoadState::Ready;
+        record.meshes = std::move(uploaded_meshes);
+        record.mesh_names.reserve(result.asset.meshes.size());
+        for (const ModelMeshAsset &mesh: result.asset.meshes) {
+            record.mesh_names.push_back(mesh.name);
+        }
+
+        std::lock_guard lock{models_->mutex};
+        const uint32_t id = models_->next_model_id++;
+        record.generation = models_->model_generation++;
+        const uint32_t generation = record.generation;
+        models_->records[id] = std::move(record);
+        return ModelHandle{.id = id, .generation = generation};
+    }
+
+    ModelHandle RenderSystem::LoadModelAsync(const ModelLoadDesc &desc) {
+        if (!initialized_ || backend_ == nullptr || model_importer_ == nullptr || models_ == nullptr ||
+            !desc.IsValid()) {
+            return {};
+        }
+
+        ModelHandle handle;
+        {
+            std::lock_guard lock{models_->mutex};
+            handle = ModelHandle{
+                .id = models_->next_model_id++,
+                .generation = models_->model_generation++,
+            };
+
+            ModelRegistry::Record record;
+            record.generation = handle.generation;
+            record.state = ModelLoadState::Pending;
+            models_->records[handle.id] = std::move(record);
+        }
+
+        ModelRegistry *registry = models_.get();
+        IModelImporter *importer = model_importer_.get();
+        std::jthread worker{[registry, importer, handle, desc](std::stop_token stop_token) {
+            ModelLoadResult result;
+            try {
+                result = importer->Load(desc);
+            } catch (const std::exception &ex) {
+                result.error_message = ex.what();
+            }
+
+            if (stop_token.stop_requested()) {
+                return;
+            }
+
+            std::lock_guard lock{registry->mutex};
+            const auto it = registry->records.find(handle.id);
+            if (it == registry->records.end() || it.value().generation != handle.generation) {
+                return;
+            }
+
+            if (!result.IsSuccess()) {
+                it.value().state = ModelLoadState::Failed;
+                it.value().error_message = std::move(result.error_message);
+                return;
+            }
+
+            it.value().decoded_result = std::make_unique<ModelLoadResult>(std::move(result));
+        }};
+
+        {
+            std::lock_guard lock{models_->mutex};
+            const auto it = models_->records.find(handle.id);
+            if (it != models_->records.end() && it.value().generation == handle.generation) {
+                it.value().worker = std::move(worker);
+            }
+        }
+
+        return handle;
+    }
+
+    ModelLoadState RenderSystem::GetModelLoadState(ModelHandle handle) const {
+        if (!handle.IsValid() || models_ == nullptr) {
+            return ModelLoadState::Invalid;
+        }
+
+        std::lock_guard lock{models_->mutex};
+        const auto it = models_->records.find(handle.id);
+        if (it == models_->records.end() || it.value().generation != handle.generation) {
+            return ModelLoadState::Invalid;
+        }
+
+        return it.value().state;
+    }
+
+    std::size_t RenderSystem::GetModelMeshCount(ModelHandle handle) const {
+        if (!handle.IsValid() || models_ == nullptr) {
+            return 0;
+        }
+
+        std::lock_guard lock{models_->mutex};
+        const auto it = models_->records.find(handle.id);
+        if (it == models_->records.end() || it.value().generation != handle.generation ||
+            it.value().state != ModelLoadState::Ready) {
+            return 0;
+        }
+
+        return it.value().meshes.size();
+    }
+
+    MeshHandle RenderSystem::GetModelMesh(ModelHandle handle, std::size_t mesh_index) const {
+        if (!handle.IsValid() || models_ == nullptr) {
+            return {};
+        }
+
+        std::lock_guard lock{models_->mutex};
+        const auto it = models_->records.find(handle.id);
+        if (it == models_->records.end() || it.value().generation != handle.generation ||
+            it.value().state != ModelLoadState::Ready || mesh_index >= it.value().meshes.size()) {
+            return {};
+        }
+
+        return it.value().meshes[mesh_index];
+    }
+
+    std::string RenderSystem::GetModelLoadError(ModelHandle handle) const {
+        if (!handle.IsValid() || models_ == nullptr) {
+            return {};
+        }
+
+        std::lock_guard lock{models_->mutex};
+        const auto it = models_->records.find(handle.id);
+        if (it == models_->records.end() || it.value().generation != handle.generation) {
+            return {};
+        }
+
+        return it.value().error_message;
+    }
+
+    void RenderSystem::DestroyModel(ModelHandle handle) {
+        if (!handle.IsValid() || models_ == nullptr) {
+            return;
+        }
+
+        ModelRegistry::Record record;
+        {
+            std::lock_guard lock{models_->mutex};
+            const auto it = models_->records.find(handle.id);
+            if (it == models_->records.end() || it.value().generation != handle.generation) {
+                return;
+            }
+
+            record = std::move(it.value());
+            models_->records.erase(it);
+        }
+
+        if (backend_ != nullptr) {
+            for (MeshHandle mesh: record.meshes) {
+                backend_->DestroyMesh(mesh);
+            }
+        }
     }
 
     void RenderSystem::DestroyShaderProgram(ShaderProgramHandle handle) {
@@ -287,6 +535,7 @@ namespace CoreEngine {
         default_scene_pass_ = {};
         render_graph_.Clear();
 
+        DestroyAllModels();
         DestroySceneFrameBuffer();
 
         if (backend_ != nullptr) {
@@ -302,7 +551,11 @@ namespace CoreEngine {
     }
 
     std::string_view RenderSystem::LastError() const {
-        return backend_ != nullptr ? backend_->LastError() : "Render backend is not available";
+        if (backend_ == nullptr) {
+            return "Render backend is not available";
+        }
+
+        return backend_->LastError();
     }
 
     IRenderContext &RenderSystem::Context() {
@@ -350,6 +603,103 @@ namespace CoreEngine {
 
         for (const RenderBatch &batch: accumulator_.Batches()) {
             context.SubmitBatch(batch);
+        }
+    }
+
+    void RenderSystem::PumpModelUploads() {
+        if (backend_ == nullptr || models_ == nullptr) {
+            return;
+        }
+
+        std::vector<PendingModelUpload> pending_uploads;
+        {
+            std::lock_guard lock{models_->mutex};
+            for (auto it = models_->records.begin(); it != models_->records.end(); ++it) {
+                ModelRegistry::Record &record = it.value();
+                if (record.state != ModelLoadState::Pending || record.decoded_result == nullptr) {
+                    continue;
+                }
+
+                pending_uploads.push_back(PendingModelUpload{
+                    .handle = ModelHandle{.id = it.key(), .generation = record.generation},
+                    .result = std::move(*record.decoded_result),
+                });
+                record.decoded_result.reset();
+            }
+        }
+
+        for (PendingModelUpload &upload: pending_uploads) {
+            std::vector<MeshHandle> uploaded_meshes;
+            std::vector<std::string> mesh_names;
+            std::string error_message;
+
+            uploaded_meshes.reserve(upload.result.asset.meshes.size());
+            mesh_names.reserve(upload.result.asset.meshes.size());
+
+            for (const ModelMeshAsset &mesh: upload.result.asset.meshes) {
+                const MeshDesc mesh_desc{
+                    .vertices = mesh.vertices,
+                    .indices = mesh.indices,
+                };
+
+                MeshHandle mesh_handle = backend_->UploadMesh(mesh_desc);
+                if (!mesh_handle.IsValid()) {
+                    error_message = backend_->LastError().empty()
+                                        ? "Failed to upload model mesh"
+                                        : std::string{backend_->LastError()};
+                    break;
+                }
+
+                uploaded_meshes.push_back(mesh_handle);
+                mesh_names.push_back(mesh.name);
+            }
+
+            bool keep_uploaded_meshes = false;
+            {
+                std::lock_guard lock{models_->mutex};
+                const auto it = models_->records.find(upload.handle.id);
+                if (it != models_->records.end() && it.value().generation == upload.handle.generation) {
+                    if (error_message.empty()) {
+                        it.value().meshes = std::move(uploaded_meshes);
+                        it.value().mesh_names = std::move(mesh_names);
+                        it.value().state = ModelLoadState::Ready;
+                        keep_uploaded_meshes = true;
+                    } else {
+                        it.value().state = ModelLoadState::Failed;
+                        it.value().error_message = error_message;
+                    }
+                }
+            }
+
+            if (!keep_uploaded_meshes) {
+                for (MeshHandle mesh: uploaded_meshes) {
+                    backend_->DestroyMesh(mesh);
+                }
+            }
+        }
+    }
+
+    void RenderSystem::DestroyAllModels() {
+        if (models_ == nullptr) {
+            return;
+        }
+
+        std::vector<ModelRegistry::Record> records;
+        {
+            std::lock_guard lock{models_->mutex};
+            records.reserve(models_->records.size());
+            for (auto it = models_->records.begin(); it != models_->records.end(); ++it) {
+                records.push_back(std::move(it.value()));
+            }
+            models_->records.clear();
+        }
+
+        if (backend_ != nullptr) {
+            for (const ModelRegistry::Record &record: records) {
+                for (MeshHandle mesh: record.meshes) {
+                    backend_->DestroyMesh(mesh);
+                }
+            }
         }
     }
 

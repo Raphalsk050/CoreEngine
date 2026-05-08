@@ -36,3 +36,16 @@ endif ()
 if (COMMAND copy_required_dlls)
     copy_required_dlls(${PROJECT_NAME})
 endif ()
+
+if (TARGET Assimp)
+    get_target_property(ASSIMP_RUNTIME_LIBRARY Assimp CORE_ENGINE_RUNTIME_LIBRARY)
+    get_target_property(ASSIMP_RUNTIME_LIBRARY_NAME Assimp CORE_ENGINE_RUNTIME_LIBRARY_NAME)
+    if (ASSIMP_RUNTIME_LIBRARY AND ASSIMP_RUNTIME_LIBRARY_NAME)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ASSIMP_RUNTIME_LIBRARY}"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/${ASSIMP_RUNTIME_LIBRARY_NAME}"
+                COMMENT "Copying Assimp runtime"
+        )
+    endif ()
+endif ()

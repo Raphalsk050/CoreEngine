@@ -18,11 +18,11 @@
 
 #include "EngineFactoryVk.h"
 
-#if PLATFORM_WIN32 && D3D11_SUPPORTED
+#if PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D11
 #include "EngineFactoryD3D11.h"
 #endif
 
-#if PLATFORM_WIN32 && D3D12_SUPPORTED
+#if PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D12
 #include "EngineFactoryD3D12.h"
 #endif
 #include "DiligentCore/Common/interface/RefCntAutoPtr.hpp"
@@ -34,6 +34,38 @@
 #include "core/render/vertex.h"
 
 #include "core/math/math.h"
+
+#ifndef PLATFORM_WIN32
+#define PLATFORM_WIN32 0
+#endif
+
+#ifndef PLATFORM_MACOS
+#define PLATFORM_MACOS 0
+#endif
+
+#ifndef D3D11_SUPPORTED
+#define D3D11_SUPPORTED 0
+#endif
+
+#ifndef D3D12_SUPPORTED
+#define D3D12_SUPPORTED 0
+#endif
+
+#ifndef VULKAN_SUPPORTED
+#define VULKAN_SUPPORTED 0
+#endif
+
+#ifndef CORE_ENGINE_HAS_DILIGENT_D3D11
+#define CORE_ENGINE_HAS_DILIGENT_D3D11 0
+#endif
+
+#ifndef CORE_ENGINE_HAS_DILIGENT_D3D12
+#define CORE_ENGINE_HAS_DILIGENT_D3D12 0
+#endif
+
+#ifndef CORE_ENGINE_HAS_DILIGENT_VULKAN
+#define CORE_ENGINE_HAS_DILIGENT_VULKAN 0
+#endif
 
 namespace CoreEngine {
     namespace {
@@ -171,6 +203,36 @@ namespace CoreEngine {
     };
 
     namespace {
+        bool IsBackendApiAvailable(DiligentRenderBackendApi api) {
+            switch (api) {
+                case DiligentRenderBackendApi::D3D11:
+                    return PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D11;
+                case DiligentRenderBackendApi::D3D12:
+                    return PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D12;
+                case DiligentRenderBackendApi::Vulkan:
+                    return CORE_ENGINE_HAS_DILIGENT_VULKAN && (PLATFORM_WIN32 || PLATFORM_MACOS);
+                case DiligentRenderBackendApi::Metal:
+                    return PLATFORM_MACOS;
+            }
+
+            return false;
+        }
+
+        const char *UnavailableBackendMessage(DiligentRenderBackendApi api) {
+            switch (api) {
+                case DiligentRenderBackendApi::D3D11:
+                    return "D3D11 backend is not available in this build";
+                case DiligentRenderBackendApi::D3D12:
+                    return "D3D12 backend is not available in this build";
+                case DiligentRenderBackendApi::Vulkan:
+                    return "Vulkan backend is not available in this build";
+                case DiligentRenderBackendApi::Metal:
+                    return "Metal backend is not available in this build";
+            }
+
+            return "Requested render backend is not available in this build";
+        }
+
         bool IsSupportedWindow(NativeWindowHandle h, DiligentRenderBackendApi api) {
             if (!h.IsValid()) {
                 return false;
@@ -178,23 +240,23 @@ namespace CoreEngine {
 
             switch (api) {
                 case DiligentRenderBackendApi::D3D11:
-#if PLATFORM_WIN32 && D3D11_SUPPORTED
+#if PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D11
                     return h.platform == NativeWindowPlatform::Win32;
 #else
                     return false;
 #endif
 
                 case DiligentRenderBackendApi::D3D12:
-#if PLATFORM_WIN32 && D3D12_SUPPORTED
+#if PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D12
                     return h.platform == NativeWindowPlatform::Win32;
 #else
                     return false;
 #endif
 
                 case DiligentRenderBackendApi::Vulkan:
-#if PLATFORM_WIN32
+#if PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_VULKAN
                     return h.platform == NativeWindowPlatform::Win32;
-#elif PLATFORM_MACOS
+#elif PLATFORM_MACOS && CORE_ENGINE_HAS_DILIGENT_VULKAN
                     return h.platform == NativeWindowPlatform::MacOS;
 #else
                     return false;
@@ -1227,6 +1289,11 @@ namespace CoreEngine {
     bool DiligentRenderBackend::Initialize(const RenderDesc &desc, NativeWindowHandle native_window) {
         impl_->desc = desc;
 
+        if (!IsBackendApiAvailable(impl_->api)) {
+            impl_->last_error = UnavailableBackendMessage(impl_->api);
+            return false;
+        }
+
         if (!IsSupportedWindow(native_window, impl_->api)) {
             impl_->last_error = UnsupportedWindowMessage(impl_->api);
             return false;
@@ -1237,7 +1304,7 @@ namespace CoreEngine {
 
         switch (impl_->api) {
             case DiligentRenderBackendApi::D3D11: {
-#if PLATFORM_WIN32 && D3D11_SUPPORTED
+#if PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D11
                 auto *factory = Diligent::LoadAndGetEngineFactoryD3D11();
                 if (!factory) {
                     impl_->last_error = "Failed to load D3D11 factory";
@@ -1262,7 +1329,7 @@ namespace CoreEngine {
             }
 
             case DiligentRenderBackendApi::D3D12: {
-#if PLATFORM_WIN32 && D3D12_SUPPORTED
+#if PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D12
                 auto *factory = Diligent::LoadAndGetEngineFactoryD3D12();
                 if (!factory) {
                     impl_->last_error = "Failed to load D3D12 factory";
@@ -1287,7 +1354,7 @@ namespace CoreEngine {
             }
 
             case DiligentRenderBackendApi::Vulkan: {
-#if PLATFORM_WIN32 || PLATFORM_MACOS
+#if CORE_ENGINE_HAS_DILIGENT_VULKAN && (PLATFORM_WIN32 || PLATFORM_MACOS)
                 auto *factory = Diligent::LoadAndGetEngineFactoryVk();
                 if (!factory) {
                     impl_->last_error = "Failed to load Vulkan factory";
@@ -1917,6 +1984,10 @@ namespace CoreEngine {
     }
 
     std::string_view DiligentRenderBackend::LastError() const {
-        return impl_ ? impl_->last_error : "backend unavailable";
+        if (!impl_) {
+            return "backend unavailable";
+        }
+
+        return impl_->last_error;
     }
 } // namespace CoreEngine

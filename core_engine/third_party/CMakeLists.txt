@@ -4,11 +4,13 @@ add_subdirectory(entt EXCLUDE_FROM_ALL)
 add_subdirectory(glm EXCLUDE_FROM_ALL)
 add_subdirectory(sdl3 EXCLUDE_FROM_ALL)
 add_subdirectory(robin-map EXCLUDE_FROM_ALL)
+add_subdirectory(Assimp EXCLUDE_FROM_ALL)
 
 set_property(DIRECTORY entt PROPERTY FOLDER "ThirdParty")
 set_property(DIRECTORY glm PROPERTY FOLDER "ThirdParty")
 set_property(DIRECTORY sdl3 PROPERTY FOLDER "ThirdParty")
 set_property(DIRECTORY robin-map PROPERTY FOLDER "ThirdParty")
+set_property(DIRECTORY Assimp PROPERTY FOLDER "ThirdParty")
 
 set(CORE_ENGINE_DEAR_IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/DiligentTools/ThirdParty/imgui")
 
@@ -60,9 +62,10 @@ target_include_directories(ThirdParty INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/glm"                 # GLM with strip prefix of glm/
         "${CMAKE_CURRENT_SOURCE_DIR}/sdl3/include"        # sdl with strip prefix of sdl3/include/
         "${CMAKE_CURRENT_SOURCE_DIR}/robin-map/include"   # robin-map with strip prefix of robin-map/include/
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assimp/include"      # Assimp with strip prefix of Assimp/include/
 )
 
-target_link_libraries(ThirdParty INTERFACE glm Entt SDL3::SDL3 imgui robin_map)
+target_link_libraries(ThirdParty INTERFACE glm Entt SDL3::SDL3 imgui robin_map Assimp)
 
 if (CORE_ENGINE_ENABLE_DILIGENT)
     target_link_libraries(ThirdParty INTERFACE Diligent-BuildSettings Diligent-Imgui Diligent-TextureLoader)

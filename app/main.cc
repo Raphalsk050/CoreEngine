@@ -36,11 +36,32 @@ public:
         const CoreEngine::MeshHandle plane_mesh =
                 context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Plane);
 
-        test_texture_ = context.render_system.LoadTexture2DAsync(CoreEngine::TextureLoadDesc{
+        player_texture_ = context.render_system.LoadTexture2DAsync(CoreEngine::TextureLoadDesc{
             .path = "app/assets/textures/uv_mapping.png",
             .format = CoreEngine::TextureFormat::RGBA8Unorm,
             .generate_mipmaps = true
         });
+
+        floor_texture_ = context.render_system.LoadTexture2DAsync(CoreEngine::TextureLoadDesc{
+            .path = "app/assets/textures/image.png",
+            .format = CoreEngine::TextureFormat::RGBA8Unorm,
+            .generate_mipmaps = true
+        });
+
+        model_material_ = CoreEngine::Material::Unlit({
+            .color = {0.2f, 0.2f, 0.2f, 0.2f}
+        }).Resolve(context.render_system);
+
+        model_ = context.render_system.LoadModelAsync(CoreEngine::ModelLoadDesc{
+            .path = "app/assets/models/rounded_cube.obj",
+            .triangulate = true,
+            .join_identical_vertices = true,
+            .generate_normals = true,
+            .calculate_tangents = false,
+            .convert_to_left_handed = true,
+            .flip_uvs = false,
+        });
+
 
         TestShaderProps shader_props;
         shader_props.color = {1.0, 0.0, 0.0, 1.0};
@@ -49,14 +70,20 @@ public:
         auto custom_material = CoreEngine::MaterialBuilder{}
                 .Vertex("app/assets/shaders/custom_shader_vertex.hlsl", true)
                 .Pixel("app/assets/shaders/custom_shader_pixel.hlsl", true)
-                .Texture("g_Albedo", test_texture_)
+                .Texture("g_Albedo", player_texture_)
+                .Properties(shader_props)
+                .Build();
+
+        auto floor_material = CoreEngine::MaterialBuilder{}
+                .Vertex("app/assets/shaders/custom_shader_vertex.hlsl", true)
+                .Pixel("app/assets/shaders/custom_shader_pixel.hlsl", true)
+                .Texture("g_Albedo", floor_texture_)
                 .Properties(shader_props)
                 .Build();
 
         const CoreEngine::MaterialHandle player_material = custom_material.Resolve(context.render_system);
 
-        const CoreEngine::MaterialHandle plane_material =
-                CoreEngine::Material::Unlit({.color = {0.5f, 0.6f, 1.0f, 1.0f}}).Resolve(context.render_system);
+        const CoreEngine::MaterialHandle plane_material = floor_material.Resolve(context.render_system);
 
         player_pawn_ = Game::PlayerPawn(
             context.world.CreateNode("Player"),
@@ -90,7 +117,7 @@ public:
         camera_node_.AddComponent<CoreEngine::MeshRendererComponent>(
             CoreEngine::MeshRendererComponent{
                 .mesh = cube_mesh,
-                .material = player_material,
+                .material = plane_material,
             });
 
         third_person_camera_controller_.Attach(camera_node_, player_pawn_.Node());
@@ -139,6 +166,41 @@ public:
                     editor_camera.priority = 10;
                     break;
             }
+        }
+
+        // TODO(rafael): change this for a Future function instead of making this in the update
+        // TODO(rafael): take off the internal for logic and implement a hierarchical component to set the parent or add
+        // an option to bring together all the models subparts
+        if (!model_spawned_ &&
+            frame.render_system.GetModelLoadState(model_) == CoreEngine::ModelLoadState::Ready) {
+            const std::size_t mesh_count = frame.render_system.GetModelMeshCount(model_);
+
+            for (std::size_t i = 0; i < mesh_count; ++i) {
+                CoreEngine::MeshHandle mesh = frame.render_system.GetModelMesh(model_, i);
+                if (!mesh.IsValid()) {
+                    continue;
+                }
+
+                CoreEngine::Node node = frame.world.CreateNode("ImportedModelMesh");
+
+                node.AddComponent<CoreEngine::MeshRendererComponent>(
+                    CoreEngine::MeshRendererComponent{
+                        .mesh = mesh,
+                        .material = model_material_,
+                        .visible = true,
+                    }
+                );
+            }
+
+            model_spawned_ = true;
+        }
+
+        if (frame.render_system.GetModelLoadState(model_) == CoreEngine::ModelLoadState::Failed) {
+            CoreEngine::Log::Error(
+                "Game",
+                frame.render_system.GetModelLoadError(model_)
+            );
+            model_spawned_ = true;
         }
     }
 
@@ -199,7 +261,8 @@ private:
     CoreEngine::Node plane_node_;
     CoreEngine::Node camera_node_;
     CoreEngine::Node secondary_camera_node_;
-    CoreEngine::TextureHandle test_texture_;
+    CoreEngine::TextureHandle player_texture_;
+    CoreEngine::TextureHandle floor_texture_;
     Game::ThirdPersonCameraController third_person_camera_controller_;
     Game::PlayerPawn player_pawn_;
     Game::PlayerController player_controller_;
@@ -213,6 +276,10 @@ private:
     int update_frame_delay_ = 500;
     int max_fps_ = 0;
     int min_fps_ = INT32_MAX;
+
+    CoreEngine::ModelHandle model_;
+    CoreEngine::MaterialHandle model_material_;
+    bool model_spawned_ = false;
 };
 
 int main() {
