@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 
+#include "core/async/future.h"
 #include "core/assets/i_model_importer.h"
 #include "core/assets/model_asset.h"
 #include "core/render/camera.h"
@@ -61,6 +62,9 @@ namespace CoreEngine {
         [[nodiscard]] ModelHandle LoadModel(const ModelLoadDesc &desc);
 
         [[nodiscard]] ModelHandle LoadModelAsync(const ModelLoadDesc &desc);
+
+        // Completes after the model import finishes and all meshes are uploaded to the render backend.
+        [[nodiscard]] Future<ModelHandle> LoadModelAsyncFuture(const ModelLoadDesc &desc);
 
         [[nodiscard]] ModelLoadState GetModelLoadState(ModelHandle handle) const;
 
@@ -132,7 +136,10 @@ namespace CoreEngine {
 
         static constexpr std::size_t kPrimitiveCount = static_cast<std::size_t>(PrimitiveType::Count);
 
+        struct AsyncModelLoadRequest;
         struct ModelRegistry;
+
+        [[nodiscard]] AsyncModelLoadRequest StartModelLoadAsync(const ModelLoadDesc &desc);
 
         std::unique_ptr<IRenderBackend> backend_;
         std::unique_ptr<IModelImporter> model_importer_;

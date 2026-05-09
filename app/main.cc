@@ -48,21 +48,6 @@ public:
             .generate_mipmaps = true
         });
 
-        model_material_ = CoreEngine::Material::Unlit({
-            .color = {0.2f, 0.2f, 0.2f, 0.2f}
-        }).Resolve(context.render_system);
-
-        model_ = context.render_system.LoadModelAsync(CoreEngine::ModelLoadDesc{
-            .path = "app/assets/models/rounded_cube.obj",
-            .triangulate = true,
-            .join_identical_vertices = true,
-            .generate_normals = true,
-            .calculate_tangents = false,
-            .convert_to_left_handed = true,
-            .flip_uvs = false,
-        });
-
-
         TestShaderProps shader_props;
         shader_props.color = {1.0, 0.0, 0.0, 1.0};
         shader_props.alpha = 0.1f;
@@ -167,41 +152,6 @@ public:
                     break;
             }
         }
-
-        // TODO(rafael): change this for a Future function instead of making this in the update
-        // TODO(rafael): take off the internal for logic and implement a hierarchical component to set the parent or add
-        // an option to bring together all the models subparts
-        if (!model_spawned_ &&
-            frame.render_system.GetModelLoadState(model_) == CoreEngine::ModelLoadState::Ready) {
-            const std::size_t mesh_count = frame.render_system.GetModelMeshCount(model_);
-
-            for (std::size_t i = 0; i < mesh_count; ++i) {
-                CoreEngine::MeshHandle mesh = frame.render_system.GetModelMesh(model_, i);
-                if (!mesh.IsValid()) {
-                    continue;
-                }
-
-                CoreEngine::Node node = frame.world.CreateNode("ImportedModelMesh");
-
-                node.AddComponent<CoreEngine::MeshRendererComponent>(
-                    CoreEngine::MeshRendererComponent{
-                        .mesh = mesh,
-                        .material = model_material_,
-                        .visible = true,
-                    }
-                );
-            }
-
-            model_spawned_ = true;
-        }
-
-        if (frame.render_system.GetModelLoadState(model_) == CoreEngine::ModelLoadState::Failed) {
-            CoreEngine::Log::Error(
-                "Game",
-                frame.render_system.GetModelLoadError(model_)
-            );
-            model_spawned_ = true;
-        }
     }
 
     void Shutdown(const CoreEngine::EngineContext &context) override {
@@ -276,10 +226,6 @@ private:
     int update_frame_delay_ = 500;
     int max_fps_ = 0;
     int min_fps_ = INT32_MAX;
-
-    CoreEngine::ModelHandle model_;
-    CoreEngine::MaterialHandle model_material_;
-    bool model_spawned_ = false;
 };
 
 int main() {

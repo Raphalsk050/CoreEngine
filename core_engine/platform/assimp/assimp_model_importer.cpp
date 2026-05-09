@@ -1,6 +1,7 @@
 #include "platform/assimp/assimp_model_importer.h"
 
 #include <cstdint>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -230,11 +231,85 @@ namespace CoreEngine {
             return target.IsValid();
         }
 
-        [[nodiscard]] ModelLoadResult ConvertScene(const aiScene &scene, const std::string &path) {
+        [[nodiscard]] bool AppendMeshToMergedMesh(const ModelMeshAsset &source,
+                                                  ModelMeshAsset &target,
+                                                  std::string &error_message) {
+            if (!source.IsValid()) {
+                error_message = "Cannot merge an invalid model mesh";
+                return false;
+            }
+
+            const auto max_index = static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max());
+            const auto base_vertex = static_cast<std::uint64_t>(target.vertices.size());
+            const auto source_vertex_count = static_cast<std::uint64_t>(source.vertices.size());
+
+            if (base_vertex + source_vertex_count > max_index + 1u) {
+                error_message = "Merged model mesh exceeds the 32-bit index limit";
+                return false;
+            }
+
+            for (const std::uint32_t index: source.indices) {
+                if (base_vertex + static_cast<std::uint64_t>(index) > max_index) {
+                    error_message = "Merged model mesh contains an out-of-range vertex index";
+                    return false;
+                }
+            }
+
+            target.vertices.insert(target.vertices.end(), source.vertices.begin(), source.vertices.end());
+
+            const auto index_offset = static_cast<std::uint32_t>(base_vertex);
+            for (const std::uint32_t index: source.indices) {
+                target.indices.push_back(index_offset + index);
+            }
+
+            return true;
+        }
+
+        [[nodiscard]] bool MergeSubmeshes(ModelAsset &asset, const std::string &path, std::string &error_message) {
+            if (asset.meshes.size() <= 1u) {
+                return asset.IsValid();
+            }
+
+            const auto max_index = static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max());
+            const auto max_container_size = static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max());
+            std::uint64_t vertex_count = 0;
+            std::uint64_t index_count = 0;
+            for (const ModelMeshAsset &mesh: asset.meshes) {
+                const auto mesh_vertex_count = static_cast<std::uint64_t>(mesh.vertices.size());
+                const auto mesh_index_count = static_cast<std::uint64_t>(mesh.indices.size());
+                if (vertex_count + mesh_vertex_count > max_index + 1u ||
+                    vertex_count + mesh_vertex_count > max_container_size ||
+                    index_count + mesh_index_count > max_container_size) {
+                    error_message = "Merged model mesh is too large: " + path;
+                    return false;
+                }
+
+                vertex_count += mesh_vertex_count;
+                index_count += mesh_index_count;
+            }
+
+            ModelMeshAsset merged;
+            merged.name = "MergedModel";
+            merged.vertices.reserve(static_cast<std::size_t>(vertex_count));
+            merged.indices.reserve(static_cast<std::size_t>(index_count));
+
+            for (const ModelMeshAsset &mesh: asset.meshes) {
+                if (!AppendMeshToMergedMesh(mesh, merged, error_message)) {
+                    error_message += ": " + path;
+                    return false;
+                }
+            }
+
+            asset.meshes.clear();
+            asset.meshes.push_back(std::move(merged));
+            return asset.IsValid();
+        }
+
+        [[nodiscard]] ModelLoadResult ConvertScene(const aiScene &scene, const ModelLoadDesc &desc) {
             ModelLoadResult result;
 
             if ((scene.mFlags & AI_SCENE_FLAGS_INCOMPLETE) != 0 || !scene.HasMeshes()) {
-                result.error_message = "Assimp imported an incomplete scene: " + path;
+                result.error_message = "Assimp imported an incomplete scene: " + desc.path;
                 return result;
             }
 
@@ -249,15 +324,20 @@ namespace CoreEngine {
 
                 ModelMeshAsset converted;
                 if (!ConvertMesh(*mesh, mesh_index, converted, result.error_message)) {
-                    result.error_message += ": " + path;
+                    result.error_message += ": " + desc.path;
                     return result;
                 }
 
                 result.asset.meshes.push_back(std::move(converted));
             }
 
+            if (desc.merge_submeshes &&
+                !MergeSubmeshes(result.asset, desc.path, result.error_message)) {
+                return result;
+            }
+
             if (!result.asset.IsValid()) {
-                result.error_message = "Assimp scene did not produce renderable meshes: " + path;
+                result.error_message = "Assimp scene did not produce renderable meshes: " + desc.path;
             }
 
             return result;
@@ -304,6 +384,6 @@ namespace CoreEngine {
             return result;
         }
 
-        return ConvertScene(*scene.scene, desc.path);
+        return ConvertScene(*scene.scene, desc);
     }
 } // namespace CoreEngine

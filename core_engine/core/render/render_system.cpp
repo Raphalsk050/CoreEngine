@@ -20,6 +20,11 @@
 #include "core/render/render_pass/default_scene_render_pass.h"
 
 namespace CoreEngine {
+    struct RenderSystem::AsyncModelLoadRequest {
+        ModelHandle handle;
+        Future<ModelHandle> future;
+    };
+
     struct RenderSystem::ModelRegistry {
         struct Record {
             Record() = default;
@@ -34,6 +39,7 @@ namespace CoreEngine {
             std::vector<std::string> mesh_names;
             std::unique_ptr<ModelLoadResult> decoded_result;
             std::string error_message;
+            FuturePromise<ModelHandle> completion;
             std::jthread worker;
         };
 
@@ -47,6 +53,7 @@ namespace CoreEngine {
         struct PendingModelUpload {
             ModelHandle handle;
             ModelLoadResult result;
+            FuturePromise<ModelHandle> completion;
         };
     }
 
@@ -279,12 +286,24 @@ namespace CoreEngine {
     }
 
     ModelHandle RenderSystem::LoadModelAsync(const ModelLoadDesc &desc) {
+        return StartModelLoadAsync(desc).handle;
+    }
+
+    Future<ModelHandle> RenderSystem::LoadModelAsyncFuture(const ModelLoadDesc &desc) {
+        return StartModelLoadAsync(desc).future;
+    }
+
+    RenderSystem::AsyncModelLoadRequest RenderSystem::StartModelLoadAsync(const ModelLoadDesc &desc) {
         if (!initialized_ || backend_ == nullptr || model_importer_ == nullptr || models_ == nullptr ||
             !desc.IsValid()) {
-            return {};
+            return AsyncModelLoadRequest{
+                .handle = {},
+                .future = Future<ModelHandle>::Failed("Invalid asynchronous model load request"),
+            };
         }
 
         ModelHandle handle;
+        Future<ModelHandle> future;
         {
             std::lock_guard lock{models_->mutex};
             handle = ModelHandle{
@@ -295,6 +314,7 @@ namespace CoreEngine {
             ModelRegistry::Record record;
             record.generation = handle.generation;
             record.state = ModelLoadState::Pending;
+            future = record.completion.GetFuture();
             models_->records[handle.id] = std::move(record);
         }
 
@@ -318,12 +338,6 @@ namespace CoreEngine {
                 return;
             }
 
-            if (!result.IsSuccess()) {
-                it.value().state = ModelLoadState::Failed;
-                it.value().error_message = std::move(result.error_message);
-                return;
-            }
-
             it.value().decoded_result = std::make_unique<ModelLoadResult>(std::move(result));
         }};
 
@@ -335,7 +349,10 @@ namespace CoreEngine {
             }
         }
 
-        return handle;
+        return AsyncModelLoadRequest{
+            .handle = handle,
+            .future = future,
+        };
     }
 
     ModelLoadState RenderSystem::GetModelLoadState(ModelHandle handle) const {
@@ -411,6 +428,10 @@ namespace CoreEngine {
 
             record = std::move(it.value());
             models_->records.erase(it);
+        }
+
+        if (record.state == ModelLoadState::Pending) {
+            record.completion.Cancel("Model load was cancelled");
         }
 
         if (backend_ != nullptr) {
@@ -623,12 +644,34 @@ namespace CoreEngine {
                 pending_uploads.push_back(PendingModelUpload{
                     .handle = ModelHandle{.id = it.key(), .generation = record.generation},
                     .result = std::move(*record.decoded_result),
+                    .completion = record.completion,
                 });
                 record.decoded_result.reset();
             }
         }
 
         for (PendingModelUpload &upload: pending_uploads) {
+            if (!upload.result.IsSuccess()) {
+                std::string error_message = upload.result.error_message.empty()
+                                                ? "Failed to import model"
+                                                : std::move(upload.result.error_message);
+                bool reject_future = false;
+                {
+                    std::lock_guard lock{models_->mutex};
+                    const auto it = models_->records.find(upload.handle.id);
+                    if (it != models_->records.end() && it.value().generation == upload.handle.generation) {
+                        it.value().state = ModelLoadState::Failed;
+                        it.value().error_message = error_message;
+                        reject_future = true;
+                    }
+                }
+
+                if (reject_future) {
+                    upload.completion.Reject(std::move(error_message));
+                }
+                continue;
+            }
+
             std::vector<MeshHandle> uploaded_meshes;
             std::vector<std::string> mesh_names;
             std::string error_message;
@@ -655,6 +698,8 @@ namespace CoreEngine {
             }
 
             bool keep_uploaded_meshes = false;
+            bool resolve_future = false;
+            bool reject_future = false;
             {
                 std::lock_guard lock{models_->mutex};
                 const auto it = models_->records.find(upload.handle.id);
@@ -664,9 +709,11 @@ namespace CoreEngine {
                         it.value().mesh_names = std::move(mesh_names);
                         it.value().state = ModelLoadState::Ready;
                         keep_uploaded_meshes = true;
+                        resolve_future = true;
                     } else {
                         it.value().state = ModelLoadState::Failed;
                         it.value().error_message = error_message;
+                        reject_future = true;
                     }
                 }
             }
@@ -675,6 +722,12 @@ namespace CoreEngine {
                 for (MeshHandle mesh: uploaded_meshes) {
                     backend_->DestroyMesh(mesh);
                 }
+            }
+
+            if (resolve_future) {
+                upload.completion.Resolve(upload.handle);
+            } else if (reject_future) {
+                upload.completion.Reject(std::move(error_message));
             }
         }
     }
@@ -692,6 +745,12 @@ namespace CoreEngine {
                 records.push_back(std::move(it.value()));
             }
             models_->records.clear();
+        }
+
+        for (const ModelRegistry::Record &record: records) {
+            if (record.state == ModelLoadState::Pending) {
+                record.completion.Cancel("Model load was cancelled");
+            }
         }
 
         if (backend_ != nullptr) {

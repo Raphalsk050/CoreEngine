@@ -22,6 +22,7 @@ namespace CoreEngine {
         bool calculate_tangents = false;
         bool convert_to_left_handed = true;
         bool flip_uvs = false;
+        bool merge_submeshes = false;
 
         [[nodiscard]] bool IsValid() const {
             return !path.empty();
