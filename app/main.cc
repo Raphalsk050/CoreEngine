@@ -31,6 +31,40 @@ public:
             CoreEngine::Log::Warn("Game", "Failed to bind one or more player input actions");
         }
 
+        auto model = context.render_system.LoadModelAsyncFuture(CoreEngine::ModelLoadDesc{
+            .path = "app/assets/models/animal-crab.obj",
+            .merge_submeshes = true
+        });
+
+        model.Then([=, this](const CoreEngine::FutureResult<CoreEngine::ModelHandle> &result) {
+            auto mesh_handle = context.render_system.GetModelMesh(result.Value(), 0);
+
+
+            TestShaderProps shader_props;
+            shader_props.color = {1.0, 0.0, 0.0, 1.0};
+            shader_props.alpha = 0.1f;
+
+
+            auto custom_material = CoreEngine::MaterialBuilder{}
+                    .Vertex("app/assets/shaders/custom_shader_vertex.hlsl", true)
+                    .Pixel("app/assets/shaders/custom_shader_pixel.hlsl", true)
+                    .Texture("g_Albedo", player_texture_)
+                    .Properties(shader_props)
+                    .Build();
+
+            const CoreEngine::MaterialHandle player_material = custom_material.Resolve(context.render_system);
+
+
+            CoreEngine::Node map_node = context.world.CreateNode("MapNode");
+            map_node.AddComponent<CoreEngine::MeshRendererComponent>(CoreEngine::MeshRendererComponent{
+                .mesh = mesh_handle,
+                .material = player_material,
+            });
+
+            // map_node.SetRotation(CoreEngine::Math::AngleAxis(90.0f, {1.0f, 0.0f, 0.0f}));
+            // map_node.SetScale({0.01f, 0.01f, 0.01f});
+        });
+
         const CoreEngine::MeshHandle cube_mesh =
                 context.render_system.GetOrCreatePrimitive(CoreEngine::PrimitiveType::Cube);
         const CoreEngine::MeshHandle plane_mesh =
@@ -43,7 +77,7 @@ public:
         });
 
         floor_texture_ = context.render_system.LoadTexture2DAsync(CoreEngine::TextureLoadDesc{
-            .path = "app/assets/textures/image.png",
+            .path = "app/assets/textures/uv_mapping.png",
             .format = CoreEngine::TextureFormat::RGBA8Unorm,
             .generate_mipmaps = true
         });
@@ -96,6 +130,7 @@ public:
                 .mesh = cube_mesh,
                 .material = player_material,
             });
+
 
         camera_node_.AddComponent<CoreEngine::CameraComponent>();
         camera_node_.SetPosition({0.0f, 1.5f, -4.0f});

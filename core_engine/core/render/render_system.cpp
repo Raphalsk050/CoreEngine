@@ -10,8 +10,10 @@
 
 #include <tsl/robin_map.h>
 
+#include "core/ecs/components/hierarchy_component.h"
 #include "core/ecs/components/mesh_renderer_component.h"
 #include "core/ecs/components/transform_component.h"
+#include "core/ecs/node.h"
 #include "core/ecs/world.h"
 #include "core/time/frame_clock.h"
 #include "core/ecs/components/camera_component.h"
@@ -594,12 +596,15 @@ namespace CoreEngine {
         accumulator_.Clear();
 
         for (const auto &[entity, transform, renderer]: group.each()) {
-            (void) entity;
             if (!renderer.visible || !renderer.material.IsValid() || !renderer.mesh.IsValid()) {
                 continue;
             }
 
-            accumulator_.Add(renderer.material, renderer.mesh, transform.WorldMatrix());
+            const HierarchyComponent *hierarchy = world.TryGetComponent<HierarchyComponent>(entity);
+            const Math::Mat4 world_matrix = hierarchy == nullptr || hierarchy->parent == entt::null
+                                                ? transform.WorldMatrix()
+                                                : Node{entity, &world}.GetWorldMatrix();
+            accumulator_.Add(renderer.material, renderer.mesh, world_matrix);
         }
 
         const CameraData active_camera = has_manual_camera_override_
@@ -789,13 +794,12 @@ namespace CoreEngine {
     }
 
     CameraData RenderSystem::ResolveWorldCamera(World &world) const {
-        const TransformComponent *best_transform = nullptr;
+        entt::entity best_entity = entt::null;
         const CameraComponent *best_camera = nullptr;
 
         auto group = world.Registry().group<CameraComponent>(entt::get<TransformComponent>);
         for (const entt::entity entity: group) {
             const CameraComponent &camera = group.get<CameraComponent>(entity);
-            const TransformComponent &transform = group.get<TransformComponent>(entity);
 
             if (!camera.enabled) {
                 continue;
@@ -803,18 +807,21 @@ namespace CoreEngine {
 
             if (best_camera == nullptr || camera.priority > best_camera->priority) {
                 best_camera = &camera;
-                best_transform = &transform;
+                best_entity = entity;
             }
         }
 
-        if (best_transform == nullptr || best_camera == nullptr) {
+        if (best_entity == entt::null || best_camera == nullptr) {
             return default_camera_;
         }
 
-        return BuildCameraData(*best_transform, *best_camera);
+        const Node camera_node{best_entity, &world};
+        return BuildCameraData(camera_node.GetWorldPosition(), camera_node.GetWorldRotation(), *best_camera);
     }
 
-    CameraData RenderSystem::BuildCameraData(const TransformComponent &transform, const CameraComponent &camera) const {
+    CameraData RenderSystem::BuildCameraData(const Math::Vec3 &position,
+                                             const Math::Quat &rotation,
+                                             const CameraComponent &camera) const {
         const int width = surface_width_ > 0 ? surface_width_ : 1;
         const int height = surface_height_ > 0 ? surface_height_ : 1;
 
@@ -822,8 +829,6 @@ namespace CoreEngine {
                                        ? camera.fixed_aspect_ratio
                                        : static_cast<float>(width) / static_cast<float>(height);
 
-        const Math::Quat &rotation = transform.Rotation();
-        const Math::Vec3 &position = transform.Position();
         const Math::Vec3 forward = rotation * Math::Vec3{0.f, 0.f, 1.f};
         const Math::Vec3 up = rotation * Math::Vec3{0.f, 1.f, 0.f};
 

@@ -131,7 +131,8 @@ namespace CoreEngine {
 
         [[nodiscard]] CameraData ResolveWorldCamera(World &world) const;
 
-        [[nodiscard]] CameraData BuildCameraData(const TransformComponent &transform,
+        [[nodiscard]] CameraData BuildCameraData(const Math::Vec3 &position,
+                                                 const Math::Quat &rotation,
                                                  const CameraComponent &camera) const;
 
         static constexpr std::size_t kPrimitiveCount = static_cast<std::size_t>(PrimitiveType::Count);
