@@ -10,23 +10,8 @@
 #include "core/ecs/components/camera_component.h"
 #include "core/log/logger.h"
 #include "core/render/primitives.h"
-#include "core/render/render_pass/default_scene_render_pass.h"
 
 namespace CoreEngine {
-    //clang-format off
-    constexpr RenderPassStage kScenePassStages[] = {
-        RenderPassStage::FrameSetup,            // Per-frame setup before any scene rendering.
-        RenderPassStage::Shadow,                // Renders shadows maps and other light-space depth resources
-        RenderPassStage::DepthPrePass,          // Fills scene depth before color rendering
-        RenderPassStage::GBuffer,               // Writes deferred rendering geometry buffers
-        RenderPassStage::Lighting,              // Computes lighting from scene/material buffers
-        RenderPassStage::ForwardOpaque,         // Renders opaque forward geometry
-        RenderPassStage::ForwardTransparent,    // Renders transparent forward geometry after opaque
-        RenderPassStage::PostProcess,           // Applies fullscreen effects after scene rendering
-        RenderPassStage::Debug,                 // Produces debug overlays or debug textures
-    };
-    //clang-format on
-
     RenderSystem::RenderSystem(std::unique_ptr<IRenderBackend> backend)
         : backend_(std::move(backend)) {
     }
@@ -48,7 +33,6 @@ namespace CoreEngine {
         initialized_ = backend_ != nullptr && backend_->Initialize(desc, native_window);
         if (initialized_) {
             initialized_ = CreateSceneFrameBuffer();
-            default_scene_pass_ = render_graph_.AddPass(std::make_unique<DefaultSceneRenderPass>(*this));
         }
 
         return initialized_;
@@ -67,35 +51,43 @@ namespace CoreEngine {
             return;
         }
 
-        render_frame_resources_.Clear();
+        auto view = world.View<TransformComponent, MeshRendererComponent>();
+        accumulator_.Clear();
+        accumulator_.Reserve(static_cast<std::size_t>(view.size_hint()));
 
+        for (const auto &[entity, transform, renderer]: view.each()) {
+            (void) entity;
+
+            if (!renderer.visible || !renderer.material.IsValid() || !renderer.mesh.IsValid()) {
+                continue;
+            }
+
+            accumulator_.Add(renderer.material, renderer.mesh, transform.WorldMatrix());
+        }
+
+        const CameraData active_camera = has_manual_camera_override_
+                                             ? manual_camera_override_
+                                             : ResolveWorldCamera(world);
+
+        PerFrameProps pros{
+            .camera = active_camera,
+            .frame_clock = Math::Vec4(frame_clock.TickSeconds(), static_cast<float>(frame_clock.TotalSeconds()), 0.0f,
+                                      0.0f)
+        };
+        backend_->SetPerFrameProps(pros);
         backend_->BeginFrame();
+        backend_->SetFrameBuffer(scene_framebuffer_);
+        backend_->Clear(desc_.clear_color);
 
-        const RenderFrameTiming timing{
-            .delta_seconds = frame_clock.TickSeconds(),
-            .total_seconds = frame_clock.TotalSeconds(),
-            .frame_index = frame_clock.FrameIndex(),
-        };
-
-        // preserves the time snapshot to pass to all the render passes equally
-        RenderPassContext pass_context{
-            *backend_, world, frame_clock, timing, render_frame_resources_, surface_width_, surface_height_
-        };
-
-        for (const RenderPassStage &stage: kScenePassStages) {
-            render_graph_.Execute(stage, pass_context);
+        for (const RenderBatch &batch: accumulator_.Batches()) {
+            backend_->SubmitBatch(batch);
         }
 
         backend_->CompositeFrameBuffer(scene_framebuffer_);
 
-        render_graph_.Execute(RenderPassStage::UI, pass_context);
-        backend_->SetSwapChainFrameBuffer();
-
         if (desc_.enable_imgui) {
             backend_->RenderImGui();
         }
-
-        render_graph_.Execute(RenderPassStage::Present, pass_context);
 
         backend_->EndFrame();
     }
@@ -136,22 +128,6 @@ namespace CoreEngine {
         return backend_->ResolveMaterial(desc);
     }
 
-    ShaderProgramHandle RenderSystem::CreateShaderProgram(const ShaderProgramDesc &desc) {
-        if (!initialized_ || backend_ == nullptr || !desc.IsValid()) {
-            return {};
-        }
-
-        return backend_->CreateShaderProgram(desc);
-    }
-
-    void RenderSystem::DestroyShaderProgram(ShaderProgramHandle handle) {
-        if (!handle.IsValid() || backend_ == nullptr) {
-            return;
-        }
-
-        backend_->DestroyShaderProgram(handle);
-    }
-
     void RenderSystem::DestroyMesh(MeshHandle handle) {
         if (!handle.IsValid() || backend_ == nullptr) {
             return;
@@ -164,70 +140,6 @@ namespace CoreEngine {
                 primitive = {};
             }
         }
-    }
-
-    FrameBufferHandle RenderSystem::CreateFrameBuffer(const FrameBufferDesc &desc) const {
-        if (!initialized_ || backend_ == nullptr || !desc.IsValid()) {
-            return {};
-        }
-
-        return backend_->CreateFrameBuffer(desc);
-    }
-
-    void RenderSystem::DestroyFrameBuffer(FrameBufferHandle handle) const {
-        if (!handle.IsValid() || backend_ == nullptr) {
-            return;
-        }
-
-        backend_->DestroyFrameBuffer(handle);
-    }
-
-    void RenderSystem::SetFrameBuffer(FrameBufferHandle handle) const {
-        if (!handle.IsValid() || backend_ == nullptr) {
-            return;
-        }
-
-        backend_->SetFrameBuffer(handle);
-    }
-
-    void RenderSystem::SetSwapChainFrameBuffer() const {
-        if (backend_ == nullptr) {
-            return;
-        }
-
-        backend_->SetSwapChainFrameBuffer();
-    }
-
-    void RenderSystem::Clear(const RenderClearColor &clear_color) const {
-        if (backend_ == nullptr) {
-            return;
-        }
-
-        backend_->Clear(clear_color);
-    }
-
-    FrameBufferColorView RenderSystem::GetFrameBufferColorView(FrameBufferHandle handle) const {
-        if (!handle.IsValid() || backend_ == nullptr) {
-            return {};
-        }
-
-        return backend_->GetFrameBufferColorView(handle);
-    }
-
-    FrameBufferDepthView RenderSystem::GetFrameBufferDepthView(FrameBufferHandle handle) const {
-        if (!handle.IsValid() || backend_ == nullptr) {
-            return {};
-        }
-
-        return backend_->GetFrameBufferDepthView(handle);
-    }
-
-    RenderPassHandle RenderSystem::AddRenderPass(std::unique_ptr<IRenderPass> pass) {
-        return render_graph_.AddPass(std::move(pass));
-    }
-
-    void RenderSystem::RemoveRenderPass(RenderPassHandle handle) {
-        render_graph_.RemovePass(handle);
     }
 
     void RenderSystem::SetCamera(const Camera &camera) {
@@ -256,9 +168,6 @@ namespace CoreEngine {
     }
 
     void RenderSystem::Shutdown() {
-        default_scene_pass_ = {};
-        render_graph_.Clear();
-
         DestroySceneFrameBuffer();
 
         if (backend_ != nullptr) {
@@ -281,50 +190,6 @@ namespace CoreEngine {
         return *this;
     }
 
-    RenderGraph &RenderSystem::Graph() {
-        return render_graph_;
-    }
-
-    void RenderSystem::ExecuteDefaultScenePass(RenderPassContext &context) {
-        World &world = context.GetWorld();
-        auto view = world.View<TransformComponent, MeshRendererComponent>();
-        accumulator_.Clear();
-        accumulator_.Reserve(static_cast<std::size_t>(view.size_hint()));
-
-        for (const auto &[entity, transform, renderer]: view.each()) {
-            (void) entity;
-            if (!renderer.visible || !renderer.material.IsValid() || !renderer.mesh.IsValid()) {
-                continue;
-            }
-
-            accumulator_.Add(renderer.material, renderer.mesh, transform.WorldMatrix());
-        }
-
-        const CameraData active_camera = has_manual_camera_override_
-                                             ? manual_camera_override_
-                                             : ResolveWorldCamera(world);
-
-        PerFrameProps props{
-            .camera = active_camera,
-            .frame_clock = Math::Vec4(
-                context.DeltaSeconds(),
-                static_cast<float>(context.TotalSeconds()), 0.0f, 0.0f)
-        };
-
-        context.SetPerFrameProps(props);
-        context.SetFrameBuffer(scene_framebuffer_);
-        context.Clear(desc_.clear_color);
-
-        context.SetGlobalColorTexture(GlobalTextureSlot::SceneColor,
-                                      context.GetFrameBufferColorView(scene_framebuffer_));
-        context.SetGlobalDepthTexture(GlobalTextureSlot::SceneDepth,
-                                      context.GetFrameBufferDepthView(scene_framebuffer_));
-
-        for (const RenderBatch &batch: accumulator_.Batches()) {
-            context.SubmitBatch(batch);
-        }
-    }
-
     bool RenderSystem::CreateSceneFrameBuffer() {
         if (backend_ == nullptr) {
             return false;
@@ -334,9 +199,6 @@ namespace CoreEngine {
         desc.width = surface_width_;
         desc.height = surface_height_;
         desc.sample_color = true;
-        desc.has_depth = true;
-        desc.sample_depth = true;
-        desc.depth_format = FrameBufferFormat::Depth32Float;
 
         scene_framebuffer_ = backend_->CreateFrameBuffer(desc);
         return scene_framebuffer_.IsValid();
@@ -357,7 +219,7 @@ namespace CoreEngine {
 
         // TODO(rafael): searches through all entities for now that have the best camera, find a better solution in the future
         auto view = world.View<TransformComponent, CameraComponent>();
-        for (const auto &[entity, transform, camera]: view.each()) {
+        for (auto [entity, transform, camera]: view.each()) {
             (void) entity;
 
             if (!camera.enabled) {

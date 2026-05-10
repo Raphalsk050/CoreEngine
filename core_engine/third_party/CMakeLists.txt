@@ -62,12 +62,11 @@ target_link_libraries(ThirdParty INTERFACE glm Entt SDL3::SDL3 imgui)
 if (CORE_ENGINE_ENABLE_DILIGENT)
     target_link_libraries(ThirdParty INTERFACE Diligent-BuildSettings Diligent-Imgui)
 
-    if (TARGET Diligent-GraphicsEngineD3D11-shared)
-        target_link_libraries(ThirdParty INTERFACE Diligent-GraphicsEngineD3D11-shared)
-    endif ()
-
-    if (TARGET Diligent-GraphicsEngineD3D12-shared)
-        target_link_libraries(ThirdParty INTERFACE Diligent-GraphicsEngineD3D12-shared)
+    if (WIN32)
+        target_link_libraries(ThirdParty INTERFACE
+                Diligent-GraphicsEngineD3D11-shared
+                Diligent-GraphicsEngineD3D12-shared
+        )
     endif ()
 
     if (TARGET Diligent-GraphicsEngineVk-shared)
