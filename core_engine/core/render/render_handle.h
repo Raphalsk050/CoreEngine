@@ -3,25 +3,31 @@
 #include <cstdint>
 
 namespace CoreEngine {
-    struct MeshHandle {
+    template<typename Tag>
+    struct GeneratedHandle {
         uint32_t id = 0;
         uint32_t generation = 0;
 
         [[nodiscard]] bool IsValid() const { return id != 0 && generation != 0; }
-        bool operator==(const MeshHandle &other) const = default;
+
+        bool operator==(const GeneratedHandle &other) const = default;
     };
 
-    struct MaterialHandle {
-        uint32_t id = 0;
-        [[nodiscard]] bool IsValid() const { return id != 0; }
-        bool operator==(const MaterialHandle &other) const = default;
-    };
+    // clang-format off
+    struct MeshHandleTag {};
+    struct MaterialHandleTag {};
+    struct ShaderProgramHandleTag {};
+    struct FrameBufferHandleTag {};
+    struct RenderPassHandleTag {};
+    struct TextureHandleTag {};
+    struct ModelHandleTag {};
+    // clang-format on
 
-    struct FrameBufferHandle {
-        uint32_t id = 0;
-        uint32_t generation = 0;
-
-        [[nodiscard]] bool IsValid() const { return id != 0 && generation != 0; }
-        bool operator==(const FrameBufferHandle &other) const = default;
-    };
+    using MeshHandle = GeneratedHandle<MeshHandleTag>;
+    using TextureHandle = GeneratedHandle<TextureHandleTag>;
+    using MaterialHandle = GeneratedHandle<MaterialHandleTag>;
+    using ShaderProgramHandle = GeneratedHandle<ShaderProgramHandleTag>;
+    using FrameBufferHandle = GeneratedHandle<FrameBufferHandleTag>;
+    using RenderPassHandle = GeneratedHandle<RenderPassHandleTag>;
+    using ModelHandle = GeneratedHandle<ModelHandleTag>;
 }

@@ -82,7 +82,7 @@ namespace CoreEngine {
     inline const entt::registry &World::Registry() const { return registry_; }
 
     inline std::size_t World::GetNodeCount() const {
-        return registry_.storage<entt::entity>()->free_list();
+        return registry_.view<entt::entity>().size();
     }
 
     inline void World::Clear() { registry_.clear(); }

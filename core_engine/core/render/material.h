@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <span>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "core/math/math.h"
@@ -35,6 +38,8 @@ namespace CoreEngine {
         [[nodiscard]] MaterialHandle Resolve(IRenderContext &render_context) const;
 
     private:
+        friend class MaterialBuilder;
+
         explicit Material(MaterialDesc desc);
 
         MaterialDesc desc_;
@@ -42,9 +47,31 @@ namespace CoreEngine {
 
     class MaterialBuilder {
     public:
-        MaterialBuilder &Vertex(std::string source);
+        MaterialBuilder &Vertex(std::string source, bool is_path = false);
 
-        MaterialBuilder &Pixel(std::string source);
+        MaterialBuilder &Pixel(std::string source, bool is_path = false);
+
+        MaterialBuilder &Binding(ShaderBindingDesc desc);
+
+        MaterialBuilder &Uniform(std::string name,
+                                 ShaderStage stages,
+                                 std::span<const std::uint8_t> raw_data);
+
+        MaterialBuilder &Texture(std::string name,
+                                 TextureHandle texture,
+                                 ShaderStage stages = ShaderStage::Pixel,
+                                 std::string sampler_name = {});
+
+        template<typename T>
+        MaterialBuilder &Uniform(std::string name,
+                                 const T &data,
+                                 ShaderStage stages = ShaderStage::Pixel) {
+            return Uniform(std::move(name),
+                           stages,
+                           std::span<const std::uint8_t>(
+                               reinterpret_cast<const std::uint8_t *>(&data),
+                               sizeof(T)));
+        }
 
         template<typename T>
         MaterialBuilder &Properties(const T &props) {
@@ -59,5 +86,8 @@ namespace CoreEngine {
         std::string vertex_source_;
         std::string pixel_source_;
         std::vector<uint8_t> properties_data_;
+        std::vector<ShaderBindingDesc> bindings_;
+        std::vector<ShaderUniformData> uniforms_;
+        std::vector<ShaderTextureData> textures_;
     };
-}
+} // namespace CoreEngine

@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <tsl/robin_map.h>
+
 #include "core/render/i_render_backend.h"
 
 namespace CoreEngine {
@@ -7,6 +10,16 @@ namespace CoreEngine {
     public:
         [[nodiscard]] bool Initialize(const RenderDesc &desc,
                                       NativeWindowHandle native_window) override;
+
+        [[nodiscard]] TextureHandle LoadTexture2D(const TextureLoadDesc &desc) override;
+
+        [[nodiscard]] TextureHandle LoadTexture2DAsync(const TextureLoadDesc &desc) override;
+
+        [[nodiscard]] TextureLoadState GetTextureLoadState(TextureHandle handle) const override;
+
+        void DestroyTexture(TextureHandle handle) override;
+
+        void BindShaderTexture(std::string_view name, TextureHandle handle) override;
 
         void BeginFrame() override;
 
@@ -30,6 +43,13 @@ namespace CoreEngine {
 
         void SetSwapChainFrameBuffer() override;
 
+        [[nodiscard]] FrameBufferColorView GetFrameBufferColorView(FrameBufferHandle handle) const override;
+
+        [[nodiscard]] FrameBufferDepthView GetFrameBufferDepthView(FrameBufferHandle handle) const override;
+
+        void RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
+                                const DepthVisualizationDesc &desc) override;
+
         void CompositeFrameBuffer(FrameBufferHandle source) override;
 
         [[nodiscard]] MeshHandle UploadMesh(const MeshDesc &desc) override;
@@ -38,10 +58,35 @@ namespace CoreEngine {
 
         [[nodiscard]] MaterialHandle ResolveMaterial(const MaterialDesc &desc) override;
 
+        [[nodiscard]] ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) override;
+
+        void DestroyShaderProgram(ShaderProgramHandle handle) override;
+
+        void UseShaderProgram(ShaderProgramHandle handle) override;
+
+        void BindShaderTexture(std::string_view name, FrameBufferColorView view) override;
+
+        void BindShaderTexture(std::string_view name, FrameBufferDepthView view) override;
+
+        void BindShaderUniform(std::string_view name, std::span<const std::uint8_t> data) override;
+
         void SetPerFrameProps(PerFrameProps props) override;
 
         void SubmitBatch(const RenderBatch &batch) override;
 
+        void Draw(std::uint32_t vertex_count, std::uint32_t instance_count) override;
+
         [[nodiscard]] std::string_view LastError() const override;
+
+    private:
+        tsl::robin_map<uint32_t, uint32_t> frame_buffers_;
+        tsl::robin_map<uint32_t, uint32_t> shader_programs_;
+        tsl::robin_map<uint32_t, uint32_t> textures_;
+        uint32_t next_texture_id_ = 1;
+        uint32_t next_texture_generation_ = 1;
+        uint32_t next_frame_buffer_id_ = 1;
+        uint32_t next_frame_buffer_generation_ = 1;
+        uint32_t next_shader_program_id_ = 1;
+        uint32_t next_shader_program_generation_ = 1;
     };
 } // namespace CoreEngine

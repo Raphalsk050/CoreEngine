@@ -32,6 +32,10 @@ namespace CoreEngine {
     }
 
     std::string_view AudioSystem::LastError() const {
-        return backend_ != nullptr ? backend_->LastError() : "Audio backend is not available";
+        if (backend_ == nullptr) {
+            return "Audio backend is not available";
+        }
+
+        return backend_->LastError();
     }
 } // namespace CoreEngine

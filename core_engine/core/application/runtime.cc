@@ -4,6 +4,7 @@
 
 #include "core/render/render_desc.h"
 #include "core/window/window_event.h"
+#include "platform/model_importer_factory.h"
 #include "platform/render_backend_factory.h"
 #include "platform/sdl/sdl_audio_backend.h"
 #include "platform/sdl/sdl_context.h"
@@ -12,6 +13,21 @@
 #include "platform/sdl/sdl_window_backend.h"
 
 namespace {
+    const char *RenderBackendName(CoreEngine::RenderBackendType backend) {
+        switch (backend) {
+            case CoreEngine::RenderBackendType::None:
+                return "None";
+            case CoreEngine::RenderBackendType::DiligentD3D11:
+                return "DiligentD3D11";
+            case CoreEngine::RenderBackendType::DiligentD3D12:
+                return "DiligentD3D12";
+            case CoreEngine::RenderBackendType::DiligentVulkan:
+                return "DiligentVulkan";
+        }
+
+        return "Unknown";
+    }
+
     CoreEngine::WindowSurfaceType SelectWindowSurfaceType(CoreEngine::RenderBackendType backend) {
 #if defined(__APPLE__)
         if (backend == CoreEngine::RenderBackendType::DiligentVulkan) {
@@ -72,18 +88,20 @@ namespace CoreEngine {
         while (!IsShutdownRequested()) {
             const float deltaTime = frame_clock_.TickSeconds();
             FrameContext frameContext{
-                .delta_time = deltaTime,
-                .world = *world_,
-                .audio_system = *audio_system_,
-                .input_system = *input_system_,
-                .window_system = *window_system_,
-                .render_system = *render_system_,
+                EngineContext{
+                    .world = *world_,
+                    .audio_system = *audio_system_,
+                    .input_system = *input_system_,
+                    .window_system = *window_system_,
+                    .render_system = *render_system_,
+                },
+                deltaTime,
             };
 
             Tick(frameContext);
             render_system_->BeginImGuiFrame();
             app.Update(frameContext);
-            render_system_->RenderFrame(*world_, frame_clock_);
+            render_system_->RenderFrame(*world_, frame_clock_, deltaTime);
         }
 
         app.Shutdown(engineContext);
@@ -103,6 +121,14 @@ namespace CoreEngine {
 
         InitializeSink();
         InitializeWorld();
+        resolved_render_backend_ = SelectAvailableRenderBackend(config_.renderBackend);
+        if (resolved_render_backend_ != config_.renderBackend) {
+            Log::Warn("Render",
+                      "Requested render backend '{}' is unavailable in this build; using '{}'.",
+                      RenderBackendName(config_.renderBackend),
+                      RenderBackendName(resolved_render_backend_));
+        }
+
         InitializeWindowBackend();
         InitializeInputSystem();
         InitializeAudioBackend();
@@ -136,7 +162,7 @@ namespace CoreEngine {
         desc.highDpi = config_.highDPI;
         desc.decorated = config_.decorated;
         desc.fullscreen = config_.fullscreen;
-        desc.surface_type = SelectWindowSurfaceType(config_.renderBackend);
+        desc.surface_type = SelectWindowSurfaceType(resolved_render_backend_);
 
         if (!window_system_->Initialize(desc)) {
             Log::Error("Window", window_system_->LastError());
@@ -167,17 +193,17 @@ namespace CoreEngine {
     }
 
     void Runtime::InitializeRenderBackend() {
-        std::unique_ptr<IRenderBackend> backend = CreateRenderBackend(config_.renderBackend);
+        std::unique_ptr<IRenderBackend> backend = CreateRenderBackend(resolved_render_backend_);
         if (backend == nullptr) {
             Log::Error("Render",
                        "Requested render backend is not available. Enable CORE_ENGINE_ENABLE_DILIGENT or choose RenderBackendType::None.");
             backend = CreateRenderBackend(RenderBackendType::None);
         }
 
-        render_system_ = std::make_unique<RenderSystem>(std::move(backend));
+        render_system_ = std::make_unique<RenderSystem>(std::move(backend), CreateModelImporter());
 
         RenderDesc desc;
-        desc.backend = config_.renderBackend;
+        desc.backend = resolved_render_backend_;
         desc.vsync = config_.vsync;
         desc.enable_imgui = config_.enableImGui;
         desc.width = config_.windowWidth;

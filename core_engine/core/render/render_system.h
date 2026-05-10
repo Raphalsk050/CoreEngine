@@ -3,8 +3,12 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <string_view>
 
+#include "core/async/future.h"
+#include "core/assets/i_model_importer.h"
+#include "core/assets/model_asset.h"
 #include "core/render/camera.h"
 #include "core/render/camera_data.h"
 #include "core/render/i_render_backend.h"
@@ -12,6 +16,8 @@
 #include "core/render/mesh_desc.h"
 #include "core/render/primitive_type.h"
 #include "core/render/render_batch.h"
+#include "core/render/render_clear_color.h"
+#include "core/render/render_graph.h"
 
 namespace CoreEngine {
     class FrameClock;
@@ -21,16 +27,21 @@ namespace CoreEngine {
     class World;
     struct CameraComponent;
     struct TransformComponent;
+    class DefaultSceneRenderPass;
+
 
     class RenderSystem final : public IRenderContext {
     public:
-        explicit RenderSystem(std::unique_ptr<IRenderBackend> backend);
+        explicit RenderSystem(std::unique_ptr<IRenderBackend> backend,
+                              std::unique_ptr<IModelImporter> model_importer = nullptr);
+
+        ~RenderSystem() override;
 
         [[nodiscard]] bool Initialize(const RenderDesc &desc, NativeWindowHandle native_window);
 
         void BeginImGuiFrame() const;
 
-        void RenderFrame(World &world, FrameClock frame_clock);
+        void RenderFrame(World &world, const FrameClock &frame_clock, float delta_seconds);
 
         [[nodiscard]] MeshHandle GetOrCreatePrimitive(PrimitiveType type) override;
 
@@ -38,7 +49,54 @@ namespace CoreEngine {
 
         [[nodiscard]] MaterialHandle ResolveMaterial(const MaterialDesc &desc) override;
 
+        [[nodiscard]] ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) override;
+
+        [[nodiscard]] TextureHandle LoadTexture2D(const TextureLoadDesc &desc);
+
+        [[nodiscard]] TextureHandle LoadTexture2DAsync(const TextureLoadDesc &desc);
+
+        [[nodiscard]] TextureLoadState GetTextureLoadState(TextureHandle handle) const;
+
+        void DestroyTexture(TextureHandle handle);
+
+        [[nodiscard]] ModelHandle LoadModel(const ModelLoadDesc &desc);
+
+        [[nodiscard]] ModelHandle LoadModelAsync(const ModelLoadDesc &desc);
+
+        // Completes after the model import finishes and all meshes are uploaded to the render backend.
+        [[nodiscard]] Future<ModelHandle> LoadModelAsyncFuture(const ModelLoadDesc &desc);
+
+        [[nodiscard]] ModelLoadState GetModelLoadState(ModelHandle handle) const;
+
+        [[nodiscard]] std::size_t GetModelMeshCount(ModelHandle handle) const;
+
+        [[nodiscard]] MeshHandle GetModelMesh(ModelHandle handle, std::size_t mesh_index) const;
+
+        [[nodiscard]] std::string GetModelLoadError(ModelHandle handle) const;
+
+        void DestroyModel(ModelHandle handle);
+
+        void DestroyShaderProgram(ShaderProgramHandle handle) override;
+
         void DestroyMesh(MeshHandle handle);
+
+        [[nodiscard]] FrameBufferHandle CreateFrameBuffer(const FrameBufferDesc &desc) const;
+
+        void DestroyFrameBuffer(FrameBufferHandle handle) const;
+
+        void SetFrameBuffer(FrameBufferHandle handle) const;
+
+        void SetSwapChainFrameBuffer() const;
+
+        void Clear(const RenderClearColor &clear_color) const;
+
+        [[nodiscard]] FrameBufferColorView GetFrameBufferColorView(FrameBufferHandle handle) const;
+
+        [[nodiscard]] FrameBufferDepthView GetFrameBufferDepthView(FrameBufferHandle handle) const;
+
+        [[nodiscard]] RenderPassHandle AddRenderPass(std::unique_ptr<IRenderPass> pass);
+
+        void RemoveRenderPass(RenderPassHandle handle);
 
         void SetCamera(const Camera &camera);
 
@@ -56,19 +114,37 @@ namespace CoreEngine {
 
         [[nodiscard]] IRenderContext &Context();
 
+        [[nodiscard]] RenderGraph &Graph();
+
     private:
+        friend class DefaultSceneRenderPass;
+
+        void ExecuteDefaultScenePass(RenderPassContext &context);
+
+        void PumpModelUploads();
+
+        void DestroyAllModels();
+
         [[nodiscard]] bool CreateSceneFrameBuffer();
 
         void DestroySceneFrameBuffer();
 
         [[nodiscard]] CameraData ResolveWorldCamera(World &world) const;
 
-        [[nodiscard]] CameraData BuildCameraData(const TransformComponent &transform,
+        [[nodiscard]] CameraData BuildCameraData(const Math::Vec3 &position,
+                                                 const Math::Quat &rotation,
                                                  const CameraComponent &camera) const;
 
         static constexpr std::size_t kPrimitiveCount = static_cast<std::size_t>(PrimitiveType::Count);
 
+        struct AsyncModelLoadRequest;
+        struct ModelRegistry;
+
+        [[nodiscard]] AsyncModelLoadRequest StartModelLoadAsync(const ModelLoadDesc &desc);
+
         std::unique_ptr<IRenderBackend> backend_;
+        std::unique_ptr<IModelImporter> model_importer_;
+        std::unique_ptr<ModelRegistry> models_;
         RenderDesc desc_{};
         CameraData manual_camera_override_{};
         CameraData default_camera_{};
@@ -78,6 +154,9 @@ namespace CoreEngine {
         int surface_height_ = 1;
 
         BatchAccumulator accumulator_;
+        RenderGraph render_graph_;
+        RenderPassHandle default_scene_pass_;
+        RenderFrameResources render_frame_resources_;
         std::array<MeshHandle, kPrimitiveCount> primitive_cache_{};
         FrameBufferHandle scene_framebuffer_{};
         bool initialized_ = false;
