@@ -14,6 +14,9 @@ namespace CoreEngine {
 
     class DiligentRenderBackend final : public IRenderBackend {
     public:
+        void RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
+                                const DepthVisualizationDesc &desc) override;
+
         struct Impl;
 
         explicit DiligentRenderBackend(DiligentRenderBackendApi api);
@@ -45,6 +48,10 @@ namespace CoreEngine {
 
         void SetSwapChainFrameBuffer() override;
 
+        [[nodiscard]] FrameBufferColorView GetFrameBufferColorView(FrameBufferHandle handle) const override;
+
+        [[nodiscard]] FrameBufferDepthView GetFrameBufferDepthView(FrameBufferHandle handle) const override;
+
         void CompositeFrameBuffer(FrameBufferHandle source) override;
 
         [[nodiscard]] MeshHandle UploadMesh(const MeshDesc &desc) override;
@@ -53,9 +60,23 @@ namespace CoreEngine {
 
         [[nodiscard]] MaterialHandle ResolveMaterial(const MaterialDesc &desc) override;
 
+        [[nodiscard]] ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) override;
+
+        void DestroyShaderProgram(ShaderProgramHandle handle) override;
+
+        void UseShaderProgram(ShaderProgramHandle handle) override;
+
+        void BindShaderTexture(std::string_view name, FrameBufferColorView view) override;
+
+        void BindShaderTexture(std::string_view name, FrameBufferDepthView view) override;
+
+        void BindShaderUniform(std::string_view name, std::span<const std::uint8_t> data) override;
+
         void SetPerFrameProps(PerFrameProps props) override;
 
         void SubmitBatch(const RenderBatch &batch) override;
+
+        void Draw(std::uint32_t vertex_count, std::uint32_t instance_count) override;
 
         [[nodiscard]] std::string_view LastError() const override;
 

@@ -12,6 +12,8 @@
 #include "core/render/mesh_desc.h"
 #include "core/render/primitive_type.h"
 #include "core/render/render_batch.h"
+#include "core/render/render_clear_color.h"
+#include "core/render/render_graph.h"
 
 namespace CoreEngine {
     class FrameClock;
@@ -21,6 +23,8 @@ namespace CoreEngine {
     class World;
     struct CameraComponent;
     struct TransformComponent;
+    class DefaultSceneRenderPass;
+
 
     class RenderSystem final : public IRenderContext {
     public:
@@ -38,7 +42,29 @@ namespace CoreEngine {
 
         [[nodiscard]] MaterialHandle ResolveMaterial(const MaterialDesc &desc) override;
 
+        [[nodiscard]] ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) override;
+
+        void DestroyShaderProgram(ShaderProgramHandle handle) override;
+
         void DestroyMesh(MeshHandle handle);
+
+        [[nodiscard]] FrameBufferHandle CreateFrameBuffer(const FrameBufferDesc &desc) const;
+
+        void DestroyFrameBuffer(FrameBufferHandle handle) const;
+
+        void SetFrameBuffer(FrameBufferHandle handle) const;
+
+        void SetSwapChainFrameBuffer() const;
+
+        void Clear(const RenderClearColor &clear_color) const;
+
+        [[nodiscard]] FrameBufferColorView GetFrameBufferColorView(FrameBufferHandle handle) const;
+
+        [[nodiscard]] FrameBufferDepthView GetFrameBufferDepthView(FrameBufferHandle handle) const;
+
+        [[nodiscard]] RenderPassHandle AddRenderPass(std::unique_ptr<IRenderPass> pass);
+
+        void RemoveRenderPass(RenderPassHandle handle);
 
         void SetCamera(const Camera &camera);
 
@@ -56,7 +82,13 @@ namespace CoreEngine {
 
         [[nodiscard]] IRenderContext &Context();
 
+        [[nodiscard]] RenderGraph &Graph();
+
     private:
+        friend class DefaultSceneRenderPass;
+
+        void ExecuteDefaultScenePass(RenderPassContext &context);
+
         [[nodiscard]] bool CreateSceneFrameBuffer();
 
         void DestroySceneFrameBuffer();
@@ -78,6 +110,9 @@ namespace CoreEngine {
         int surface_height_ = 1;
 
         BatchAccumulator accumulator_;
+        RenderGraph render_graph_;
+        RenderPassHandle default_scene_pass_;
+        RenderFrameResources render_frame_resources_;
         std::array<MeshHandle, kPrimitiveCount> primitive_cache_{};
         FrameBufferHandle scene_framebuffer_{};
         bool initialized_ = false;

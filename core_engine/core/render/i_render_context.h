@@ -4,6 +4,7 @@
 #include "core/render/mesh_desc.h"
 #include "core/render/primitive_type.h"
 #include "core/render/render_handle.h"
+#include "core/render/shader_binding.h"
 
 namespace CoreEngine {
     class IRenderContext {
@@ -15,5 +16,9 @@ namespace CoreEngine {
         [[nodiscard]] virtual MeshHandle CreateMesh(const MeshDesc &desc) = 0;
 
         [[nodiscard]] virtual MaterialHandle ResolveMaterial(const MaterialDesc &desc) = 0;
+
+        [[nodiscard]] virtual ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) = 0;
+
+        virtual void DestroyShaderProgram(ShaderProgramHandle handle) = 0;
     };
 }
