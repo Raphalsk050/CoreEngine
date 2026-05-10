@@ -54,8 +54,8 @@ namespace CoreEngine {
                           int surface_width,
                           int surface_height)
             : backend_(backend), world_(world), frame_clock_(frame_clock), timing_(timing),
-              surface_width_(surface_width), surface_height_(surface_height),
-              frame_resources_(frame_resources) {
+              frame_resources_(frame_resources), surface_width_(surface_width),
+              surface_height_(surface_height) {
         }
 
         [[nodiscard]] World &GetWorld() const { return world_; }

@@ -50,6 +50,7 @@ namespace CoreEngine {
                 .scope = scope,
                 .stages = stages,
                 .byte_size = byte_size,
+                .sampler_name = {},
             };
         }
 

@@ -1,4 +1,7 @@
 #include "core/ecs/world_access.h"
+
+#include <atomic>
+
 #include "core/assert/assert.h"
 
 namespace CoreEngine {

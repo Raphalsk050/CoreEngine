@@ -179,7 +179,7 @@ int main() {
     config.decorated = true;
     config.resizable = true;
     config.windowTitle = "CoreEngine - Player Input Demo";
-    config.renderBackend = CoreEngine::RenderBackendType::DiligentD3D11;
+    config.renderBackend = CoreEngine::RenderBackendType::DiligentVulkan;
     config.vsync = false;
     config.enableImGui = true;
 
