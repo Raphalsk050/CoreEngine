@@ -73,6 +73,8 @@ namespace Game {
         player_renderer_node_.SetParent(player_pawn_.Node());
         player_renderer_node_.SetRotation(
             CoreEngine::Math::AngleAxis(CoreEngine::Math::Deg2Rad(180.0f), {0.0, 1.0, 0.0}));
+        player_renderer_node_.
+                SetPosition(player_renderer_node_.GetPosition() + CoreEngine::Math::Vec3(0.0f, -0.75f, 0.0f));
     }
 
     void Player::CreateCamera(CoreEngine::World &world) {
