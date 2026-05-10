@@ -27,21 +27,13 @@ namespace Game {
 
         void CreateCamera(CoreEngine::World &world);
 
-        void LoadPlayerTexture(CoreEngine::RenderSystem &render_system);
-
-        [[nodiscard]] CoreEngine::MaterialHandle LoadPlayerMaterial(CoreEngine::RenderSystem &render_system) const;
-
-        void LoadPlayerModel(const CoreEngine::EngineContext &context,
-                             CoreEngine::MaterialHandle player_material);
-
-        void AddPlayerComponents(CoreEngine::MeshHandle mesh,
-                                 CoreEngine::MaterialHandle material);
+        void LoadPlayerModel(const CoreEngine::EngineContext &context);
 
         void AttachController();
 
-        CoreEngine::TextureHandle player_texture_;
         CoreEngine::Node camera_node_;
         CoreEngine::Node player_renderer_node_;
+        CoreEngine::Node player_model_root_;
         PlayerPawn player_pawn_;
         ThirdPersonCameraController third_person_camera_controller_;
         PlayerController player_controller_;

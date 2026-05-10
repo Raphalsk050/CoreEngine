@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace CoreEngine {
     enum class TextureFormat {
@@ -18,13 +19,14 @@ namespace CoreEngine {
 
     struct TextureLoadDesc {
         std::string path;
+        std::vector<unsigned char> data;
         TextureFormat format = TextureFormat::Auto;
         bool generate_mipmaps = true;
         bool flip_vertically = false;
         bool premultiply_alpha = false;
 
         [[nodiscard]] bool IsValid() const {
-            return !path.empty();
+            return !path.empty() || !data.empty();
         }
     };
 } // namespace CoreEngine

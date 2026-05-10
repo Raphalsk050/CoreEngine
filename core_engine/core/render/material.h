@@ -17,9 +17,16 @@ namespace CoreEngine {
         alignas(16) Math::Vec4 color{1.f, 1.f, 1.f, 1.f};
     };
 
+    struct TexturedUnlitProps {
+        alignas(16) Math::Vec4 color{1.f, 1.f, 1.f, 1.f};
+    };
+
     class Material {
     public:
         [[nodiscard]] static Material Unlit(const UnlitProps &props = {});
+
+        [[nodiscard]] static Material TexturedUnlit(TextureHandle albedo,
+                                                    const TexturedUnlitProps &props = {});
 
         [[nodiscard]] static Material Custom(const std::string &vs_source,
                                              const std::string &ps_source,

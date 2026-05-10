@@ -76,6 +76,14 @@ namespace CoreEngine {
 
         void SetScale(const Math::Vec3 &scale);
 
+        void Rotate(const Math::Quat &delta_rotation);
+
+        void Rotate(float angle_radians, const Math::Vec3 &axis);
+
+        void RotateEuler(const Math::Vec3 &euler_angles);
+
+        void SetLocalMatrix(const Math::Mat4 &matrix);
+
         Math::Vec3 GetPosition() const;
 
         Math::Quat GetRotation() const;

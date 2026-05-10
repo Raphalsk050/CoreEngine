@@ -369,7 +369,7 @@ namespace CoreEngine {
 
         Diligent::TextureLoadInfo MakeTextureLoadInfo(const TextureLoadDesc &desc) {
             Diligent::TextureLoadInfo info;
-            info.Name = desc.path.c_str();
+            info.Name = desc.path.empty() ? "MemoryTexture" : desc.path.c_str();
             info.Usage = Diligent::USAGE_IMMUTABLE;
             info.BindFlags = Diligent::BIND_SHADER_RESOURCE;
             info.Format = ToDiligentTextureFormat(desc.format);
@@ -378,6 +378,22 @@ namespace CoreEngine {
             info.PermultiplyAlpha = desc.premultiply_alpha;
             info.IsSRGB = desc.format == TextureFormat::RGBA8UnormSrgb;
             return info;
+        }
+
+        void FinalizeTextureLoad(DiligentTextureData &data) {
+            if (!data.texture) {
+                return;
+            }
+
+            data.texture_view = data.texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+            if (!data.texture_view) {
+                data.state = TextureLoadState::Failed;
+                data.error_message = "Failed to create texture shader resource view";
+                return;
+            }
+
+            data.state = TextureLoadState::Ready;
+            data.revision = 1;
         }
 
         DiligentTextureData LoadTextureFromFile(Diligent::IRenderDevice *device, const TextureLoadDesc &desc) {
@@ -396,16 +412,50 @@ namespace CoreEngine {
                 return data;
             }
 
-            data.texture_view = data.texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
-            if (!data.texture_view) {
+            FinalizeTextureLoad(data);
+            return data;
+        }
+
+        DiligentTextureData LoadTextureFromMemory(Diligent::IRenderDevice *device, const TextureLoadDesc &desc) {
+            DiligentTextureData data;
+            if (desc.data.empty()) {
                 data.state = TextureLoadState::Failed;
-                data.error_message = "Failed to create texture shader resource view";
+                data.error_message = "Texture memory payload is empty";
                 return data;
             }
 
-            data.state = TextureLoadState::Ready;
-            data.revision = 1;
+            const Diligent::TextureLoadInfo info = MakeTextureLoadInfo(desc);
+            Diligent::RefCntAutoPtr<Diligent::ITextureLoader> loader;
+            Diligent::CreateTextureLoaderFromMemory(
+                desc.data.data(),
+                desc.data.size(),
+                true,
+                info,
+                &loader);
+
+            if (!loader) {
+                data.state = TextureLoadState::Failed;
+                data.error_message = "Failed to create texture loader from memory: " + desc.path;
+                return data;
+            }
+
+            loader->CreateTexture(device, &data.texture);
+            if (!data.texture) {
+                data.state = TextureLoadState::Failed;
+                data.error_message = "Failed to create texture from memory: " + desc.path;
+                return data;
+            }
+
+            FinalizeTextureLoad(data);
             return data;
+        }
+
+        DiligentTextureData LoadTextureData(Diligent::IRenderDevice *device, const TextureLoadDesc &desc) {
+            if (!desc.data.empty()) {
+                return LoadTextureFromMemory(device, desc);
+            }
+
+            return LoadTextureFromFile(device, desc);
         }
 
         DiligentTextureData CreateFallbackTexture(Diligent::IRenderDevice *device) {
@@ -1123,7 +1173,7 @@ namespace CoreEngine {
             return {};
         }
 
-        DiligentTextureData data = LoadTextureFromFile(impl_->device, desc);
+        DiligentTextureData data = LoadTextureData(impl_->device, desc);
         if (!data.texture_view) {
             impl_->last_error = data.error_message.empty() ? "Failed to load texture" : data.error_message;
             return {};
@@ -1166,7 +1216,7 @@ namespace CoreEngine {
 
         impl_->texture_load_workers.emplace_back([impl = impl_.get(), handle, desc](std::stop_token stop_token) {
             try {
-                DiligentTextureData loaded = LoadTextureFromFile(impl->device, desc);
+                DiligentTextureData loaded = LoadTextureData(impl->device, desc);
                 if (stop_token.stop_requested()) {
                     return;
                 }

@@ -737,6 +737,57 @@ namespace CoreEngine::Math {
         return {std::cos(half_angle), n.x * s, n.y * s, n.z * s};
     }
 
+    [[nodiscard]] constexpr Quat operator*(const Quat &lhs, const Quat &rhs) noexcept {
+        return {
+            lhs.w * rhs.w - lhs.x * rhs.x - lhs.y * rhs.y - lhs.z * rhs.z,
+            lhs.w * rhs.x + lhs.x * rhs.w + lhs.y * rhs.z - lhs.z * rhs.y,
+            lhs.w * rhs.y - lhs.x * rhs.z + lhs.y * rhs.w + lhs.z * rhs.x,
+            lhs.w * rhs.z + lhs.x * rhs.y - lhs.y * rhs.x + lhs.z * rhs.w,
+        };
+    }
+
+    constexpr Quat &operator*=(Quat &lhs, const Quat &rhs) noexcept {
+        lhs = lhs * rhs;
+        return lhs;
+    }
+
+    [[nodiscard]] constexpr Quat operator*(const Quat &q, float scalar) noexcept {
+        return {q.w * scalar, q.x * scalar, q.y * scalar, q.z * scalar};
+    }
+
+    [[nodiscard]] constexpr Quat operator*(float scalar, const Quat &q) noexcept {
+        return q * scalar;
+    }
+
+    [[nodiscard]] constexpr Quat operator-(const Quat &q) noexcept {
+        return {-q.w, -q.x, -q.y, -q.z};
+    }
+
+    [[nodiscard]] constexpr float Dot(const Quat &a, const Quat &b) noexcept {
+        return a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z;
+    }
+
+    [[nodiscard]] constexpr Quat Conjugate(const Quat &q) noexcept {
+        return {q.w, -q.x, -q.y, -q.z};
+    }
+
+    [[nodiscard]] inline Quat Inverse(const Quat &q) noexcept {
+        const float length_squared = q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z;
+        if (length_squared <= Epsilon) {
+            return {};
+        }
+        const float inv_len_sq = 1.f / length_squared;
+        return {q.w * inv_len_sq, -q.x * inv_len_sq, -q.y * inv_len_sq, -q.z * inv_len_sq};
+    }
+
+    [[nodiscard]] constexpr bool operator==(const Quat &a, const Quat &b) noexcept {
+        return a.w == b.w && a.x == b.x && a.y == b.y && a.z == b.z;
+    }
+
+    [[nodiscard]] constexpr bool operator!=(const Quat &a, const Quat &b) noexcept {
+        return !(a == b);
+    }
+
     [[nodiscard]] constexpr Mat3 QuatToMat3(const Quat &q) noexcept {
         const float xx = q.x * q.x;
         const float yy = q.y * q.y;

@@ -113,15 +113,27 @@ namespace CoreEngine {
             HierarchyComponent &parent_hierarchy = GetOrCreateHierarchy(*parent.OwnerWorld(), parent.Handle());
 
             child_hierarchy.parent = parent.Handle();
-            child_hierarchy.previous_sibling = entt::null;
-            child_hierarchy.next_sibling = parent_hierarchy.first_child;
+            child_hierarchy.next_sibling = entt::null;
 
-            if (IsValidEntity(child.OwnerWorld(), parent_hierarchy.first_child)) {
-                HierarchyComponent &old_first_child = GetOrCreateHierarchy(*child.OwnerWorld(), parent_hierarchy.first_child);
-                old_first_child.previous_sibling = child.Handle();
+            if (!IsValidEntity(child.OwnerWorld(), parent_hierarchy.first_child)) {
+                child_hierarchy.previous_sibling = entt::null;
+                parent_hierarchy.first_child = child.Handle();
+                ++parent_hierarchy.child_count;
+                return;
             }
 
-            parent_hierarchy.first_child = child.Handle();
+            entt::entity last_child = parent_hierarchy.first_child;
+            while (IsValidEntity(child.OwnerWorld(), last_child)) {
+                HierarchyComponent &last_hierarchy = GetOrCreateHierarchy(*child.OwnerWorld(), last_child);
+                if (last_hierarchy.next_sibling == entt::null) {
+                    last_hierarchy.next_sibling = child.Handle();
+                    child_hierarchy.previous_sibling = last_child;
+                    break;
+                }
+
+                last_child = last_hierarchy.next_sibling;
+            }
+
             ++parent_hierarchy.child_count;
         }
     } // namespace
@@ -287,6 +299,26 @@ namespace CoreEngine {
 
     void Node::SetScale(const Math::Vec3 &scale) {
         GetComponent<TransformComponent>().SetScale(scale);
+    }
+
+    void Node::Rotate(const Math::Quat &delta_rotation) {
+        TransformComponent &transform = GetComponent<TransformComponent>();
+        transform.SetRotation(Math::Normalize(transform.Rotation() * delta_rotation));
+    }
+
+    void Node::Rotate(float angle_radians, const Math::Vec3 &axis) {
+        Rotate(Math::AngleAxis(angle_radians, axis));
+    }
+
+    void Node::RotateEuler(const Math::Vec3 &euler_angles) {
+        const Math::Quat yaw = Math::AngleAxis(Math::Deg2Rad(euler_angles.y), {0.f, 1.f, 0.f});
+        const Math::Quat pitch = Math::AngleAxis(Math::Deg2Rad(euler_angles.x), {1.f, 0.f, 0.f});
+        const Math::Quat roll = Math::AngleAxis(Math::Deg2Rad(euler_angles.z), {0.f, 0.f, 1.f});
+        Rotate(yaw * pitch * roll);
+    }
+
+    void Node::SetLocalMatrix(const Math::Mat4 &matrix) {
+        ApplyLocalTransform(*this, matrix);
     }
 
     Math::Vec3 Node::GetPosition() const {

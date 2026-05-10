@@ -6,6 +6,7 @@
 #include <fstream>
 #include <ios>
 #include <span>
+#include <string_view>
 #include <utility>
 
 #include "core/log/log.h"
@@ -92,6 +93,39 @@ namespace CoreEngine {
             std::span<const uint8_t>(bytes, sizeof(UnlitProps))));
         desc.hash = HashDesc(desc);
 
+        return Material{std::move(desc)};
+    }
+
+    Material Material::TexturedUnlit(TextureHandle albedo, const TexturedUnlitProps &props) {
+        MaterialDesc desc;
+        desc.vertex_shader_source = BuiltinShaders::kUnlitVS;
+        desc.pixel_shader_source = BuiltinShaders::kTexturedUnlitPS;
+
+        const auto *bytes = reinterpret_cast<const uint8_t *>(&props);
+        desc.properties_data.assign(bytes, bytes + sizeof(TexturedUnlitProps));
+        desc.uniforms.push_back(MakeShaderUniformData(
+            "PerMaterial",
+            ShaderStage::Pixel,
+            std::span<const uint8_t>(bytes, sizeof(TexturedUnlitProps))));
+
+        if (albedo.IsValid()) {
+            constexpr std::string_view kTextureName = "g_Albedo";
+            constexpr std::string_view kSamplerName = "g_Albedo_sampler";
+
+            desc.textures.push_back(ShaderTextureData{
+                .name = std::string{kTextureName},
+                .texture = albedo,
+                .stages = ShaderStage::Pixel,
+                .sampler_name = std::string{kSamplerName},
+            });
+            desc.bindings.push_back(ShaderBindingDesc::Texture(
+                std::string{kTextureName},
+                ShaderBindingScope::Material,
+                ShaderStage::Pixel,
+                std::string{kSamplerName}));
+        }
+
+        desc.hash = HashDesc(desc);
         return Material{std::move(desc)};
     }
 

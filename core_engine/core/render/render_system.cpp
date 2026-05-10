@@ -5,6 +5,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -18,6 +19,7 @@
 #include "core/time/frame_clock.h"
 #include "core/ecs/components/camera_component.h"
 #include "core/log/logger.h"
+#include "core/render/material.h"
 #include "core/render/primitives.h"
 #include "core/render/render_pass/default_scene_render_pass.h"
 
@@ -25,6 +27,19 @@ namespace CoreEngine {
     struct RenderSystem::AsyncModelLoadRequest {
         ModelHandle handle;
         Future<ModelHandle> future;
+    };
+
+    struct RenderSystem::UploadedModelResources {
+        std::vector<MeshHandle> meshes;
+        std::vector<std::string> mesh_names;
+        std::vector<MaterialHandle> materials;
+        std::vector<std::uint32_t> mesh_material_indices;
+        std::vector<ModelNodeAsset> nodes;
+        std::string error_message;
+
+        [[nodiscard]] bool IsSuccess() const {
+            return error_message.empty() && !meshes.empty() && !materials.empty();
+        }
     };
 
     struct RenderSystem::ModelRegistry {
@@ -39,6 +54,9 @@ namespace CoreEngine {
             ModelLoadState state = ModelLoadState::Invalid;
             std::vector<MeshHandle> meshes;
             std::vector<std::string> mesh_names;
+            std::vector<MaterialHandle> materials;
+            std::vector<std::uint32_t> mesh_material_indices;
+            std::vector<ModelNodeAsset> nodes;
             std::unique_ptr<ModelLoadResult> decoded_result;
             std::string error_message;
             FuturePromise<ModelHandle> completion;
@@ -46,6 +64,7 @@ namespace CoreEngine {
         };
 
         tsl::robin_map<uint32_t, Record> records;
+        std::unordered_map<std::string, TextureHandle> texture_cache;
         mutable std::mutex mutex;
         uint32_t next_model_id = 1;
         uint32_t model_generation = 1;
@@ -57,6 +76,53 @@ namespace CoreEngine {
             ModelLoadResult result;
             FuturePromise<ModelHandle> completion;
         };
+
+        [[nodiscard]] const ModelTextureAsset *FindModelTexture(const ModelMaterialAsset &material,
+                                                                ModelTextureSemantic semantic) {
+            for (const ModelTextureAsset &texture: material.textures) {
+                if (texture.semantic == semantic && texture.IsValid()) {
+                    return &texture;
+                }
+            }
+
+            return nullptr;
+        }
+
+        [[nodiscard]] std::uint32_t NormalizeModelMaterialIndex(std::uint32_t material_index,
+                                                                std::size_t material_count) {
+            if (material_count == 0u) {
+                return 0u;
+            }
+
+            return material_index < material_count ? material_index : 0u;
+        }
+
+        [[nodiscard]] std::string ModelTextureCacheKey(const ModelTextureAsset &texture) {
+            return texture.path + (texture.srgb ? "|srgb" : "|linear");
+        }
+
+        void DestroyUploadedMeshes(IRenderBackend &backend, std::vector<MeshHandle> &meshes) {
+            for (MeshHandle mesh: meshes) {
+                backend.DestroyMesh(mesh);
+            }
+            meshes.clear();
+        }
+
+        [[nodiscard]] std::string MakeModelNodeName(const ModelNodeAsset &node, std::size_t index) {
+            if (!node.name.empty()) {
+                return node.name;
+            }
+
+            return "ModelNode_" + std::to_string(index);
+        }
+
+        [[nodiscard]] std::string MakeModelMeshNodeName(const std::string &mesh_name, std::size_t mesh_index) {
+            if (!mesh_name.empty()) {
+                return mesh_name;
+            }
+
+            return "ModelMesh_" + std::to_string(mesh_index);
+        }
     }
 
     //clang-format off
@@ -243,41 +309,18 @@ namespace CoreEngine {
             return {};
         }
 
-        std::string error_message;
-        std::vector<MeshHandle> uploaded_meshes;
-        uploaded_meshes.reserve(result.asset.meshes.size());
-
-        for (const ModelMeshAsset &mesh: result.asset.meshes) {
-            const MeshDesc mesh_desc{
-                .vertices = mesh.vertices,
-                .indices = mesh.indices,
-            };
-
-            MeshHandle mesh_handle = backend_->UploadMesh(mesh_desc);
-            if (!mesh_handle.IsValid()) {
-                error_message = backend_->LastError().empty()
-                                    ? "Failed to upload model mesh"
-                                    : std::string{backend_->LastError()};
-                break;
-            }
-
-            uploaded_meshes.push_back(mesh_handle);
-        }
-
-        if (!error_message.empty()) {
-            for (MeshHandle mesh: uploaded_meshes) {
-                backend_->DestroyMesh(mesh);
-            }
+        UploadedModelResources resources = BuildModelResources(result.asset);
+        if (!resources.IsSuccess()) {
             return {};
         }
 
         ModelRegistry::Record record;
         record.state = ModelLoadState::Ready;
-        record.meshes = std::move(uploaded_meshes);
-        record.mesh_names.reserve(result.asset.meshes.size());
-        for (const ModelMeshAsset &mesh: result.asset.meshes) {
-            record.mesh_names.push_back(mesh.name);
-        }
+        record.meshes = std::move(resources.meshes);
+        record.mesh_names = std::move(resources.mesh_names);
+        record.materials = std::move(resources.materials);
+        record.mesh_material_indices = std::move(resources.mesh_material_indices);
+        record.nodes = std::move(resources.nodes);
 
         std::lock_guard lock{models_->mutex};
         const uint32_t id = models_->next_model_id++;
@@ -399,6 +442,164 @@ namespace CoreEngine {
         }
 
         return it.value().meshes[mesh_index];
+    }
+
+    std::size_t RenderSystem::GetModelMaterialCount(ModelHandle handle) const {
+        if (!handle.IsValid() || models_ == nullptr) {
+            return 0;
+        }
+
+        std::lock_guard lock{models_->mutex};
+        const auto it = models_->records.find(handle.id);
+        if (it == models_->records.end() || it.value().generation != handle.generation ||
+            it.value().state != ModelLoadState::Ready) {
+            return 0;
+        }
+
+        return it.value().materials.size();
+    }
+
+    MaterialHandle RenderSystem::GetModelMaterial(ModelHandle handle, std::size_t material_index) const {
+        if (!handle.IsValid() || models_ == nullptr) {
+            return {};
+        }
+
+        std::lock_guard lock{models_->mutex};
+        const auto it = models_->records.find(handle.id);
+        if (it == models_->records.end() || it.value().generation != handle.generation ||
+            it.value().state != ModelLoadState::Ready || material_index >= it.value().materials.size()) {
+            return {};
+        }
+
+        return it.value().materials[material_index];
+    }
+
+    MaterialHandle RenderSystem::GetModelMeshMaterial(ModelHandle handle, std::size_t mesh_index) const {
+        if (!handle.IsValid() || models_ == nullptr) {
+            return {};
+        }
+
+        std::lock_guard lock{models_->mutex};
+        const auto it = models_->records.find(handle.id);
+        if (it == models_->records.end() || it.value().generation != handle.generation ||
+            it.value().state != ModelLoadState::Ready || mesh_index >= it.value().mesh_material_indices.size()) {
+            return {};
+        }
+
+        const std::uint32_t material_index = it.value().mesh_material_indices[mesh_index];
+        if (material_index >= it.value().materials.size()) {
+            return {};
+        }
+
+        return it.value().materials[material_index];
+    }
+
+    ModelInstance RenderSystem::InstantiateModel(World &world,
+                                                 ModelHandle handle,
+                                                 Node parent,
+                                                 const ModelInstantiationDesc &desc) const {
+        ModelInstance instance;
+        if (!handle.IsValid() || models_ == nullptr ||
+            (parent.IsValid() && parent.OwnerWorld() != &world)) {
+            return instance;
+        }
+
+        std::vector<MeshHandle> meshes;
+        std::vector<std::string> mesh_names;
+        std::vector<MaterialHandle> materials;
+        std::vector<std::uint32_t> mesh_material_indices;
+        std::vector<ModelNodeAsset> nodes;
+        {
+            std::lock_guard lock{models_->mutex};
+            const auto it = models_->records.find(handle.id);
+            if (it == models_->records.end() || it.value().generation != handle.generation ||
+                it.value().state != ModelLoadState::Ready) {
+                return instance;
+            }
+
+            meshes = it.value().meshes;
+            mesh_names = it.value().mesh_names;
+            materials = it.value().materials;
+            mesh_material_indices = it.value().mesh_material_indices;
+            nodes = it.value().nodes;
+        }
+
+        const std::string root_name = desc.root_name.empty() ? "Model" : desc.root_name;
+        instance.root = world.CreateNode(root_name);
+        if (parent.IsValid() && !instance.root.SetParent(parent)) {
+            instance.root.Destroy();
+            instance = {};
+            return instance;
+        }
+
+        std::vector<Node> created_nodes;
+        created_nodes.resize(nodes.size());
+        instance.nodes.reserve(nodes.size());
+        instance.mesh_nodes.reserve(meshes.size());
+
+        for (std::size_t node_index = 0; node_index < nodes.size(); ++node_index) {
+            const ModelNodeAsset &node_asset = nodes[node_index];
+            Node node = world.CreateNode(MakeModelNodeName(node_asset, node_index));
+            node.SetLocalMatrix(node_asset.local_transform);
+
+            const bool has_valid_parent = node_asset.parent_index < created_nodes.size() &&
+                                          created_nodes[node_asset.parent_index].IsValid();
+            node.SetParent(has_valid_parent ? created_nodes[node_asset.parent_index] : instance.root);
+
+            created_nodes[node_index] = node;
+            instance.nodes.push_back(node);
+        }
+
+        if (created_nodes.empty()) {
+            created_nodes.push_back(instance.root);
+        }
+
+        for (std::size_t node_index = 0; node_index < nodes.size(); ++node_index) {
+            const Node parent_node = created_nodes[node_index].IsValid() ? created_nodes[node_index] : instance.root;
+            for (const std::uint32_t mesh_index: nodes[node_index].mesh_indices) {
+                if (mesh_index >= meshes.size() || mesh_index >= mesh_material_indices.size()) {
+                    continue;
+                }
+
+                const std::uint32_t material_index = mesh_material_indices[mesh_index];
+                if (material_index >= materials.size()) {
+                    continue;
+                }
+
+                Node mesh_node = world.CreateNode(MakeModelMeshNodeName(mesh_names[mesh_index], mesh_index));
+                mesh_node.SetParent(parent_node);
+                mesh_node.AddComponent<MeshRendererComponent>(MeshRendererComponent{
+                    .mesh = meshes[mesh_index],
+                    .material = materials[material_index],
+                    .visible = desc.visible,
+                });
+                instance.mesh_nodes.push_back(mesh_node);
+            }
+        }
+
+        if (nodes.empty()) {
+            for (std::size_t mesh_index = 0; mesh_index < meshes.size(); ++mesh_index) {
+                if (mesh_index >= mesh_material_indices.size()) {
+                    continue;
+                }
+
+                const std::uint32_t material_index = mesh_material_indices[mesh_index];
+                if (material_index >= materials.size()) {
+                    continue;
+                }
+
+                Node mesh_node = world.CreateNode(MakeModelMeshNodeName(mesh_names[mesh_index], mesh_index));
+                mesh_node.SetParent(instance.root);
+                mesh_node.AddComponent<MeshRendererComponent>(MeshRendererComponent{
+                    .mesh = meshes[mesh_index],
+                    .material = materials[material_index],
+                    .visible = desc.visible,
+                });
+                instance.mesh_nodes.push_back(mesh_node);
+            }
+        }
+
+        return instance;
     }
 
     std::string RenderSystem::GetModelLoadError(ModelHandle handle) const {
@@ -677,30 +878,8 @@ namespace CoreEngine {
                 continue;
             }
 
-            std::vector<MeshHandle> uploaded_meshes;
-            std::vector<std::string> mesh_names;
-            std::string error_message;
-
-            uploaded_meshes.reserve(upload.result.asset.meshes.size());
-            mesh_names.reserve(upload.result.asset.meshes.size());
-
-            for (const ModelMeshAsset &mesh: upload.result.asset.meshes) {
-                const MeshDesc mesh_desc{
-                    .vertices = mesh.vertices,
-                    .indices = mesh.indices,
-                };
-
-                MeshHandle mesh_handle = backend_->UploadMesh(mesh_desc);
-                if (!mesh_handle.IsValid()) {
-                    error_message = backend_->LastError().empty()
-                                        ? "Failed to upload model mesh"
-                                        : std::string{backend_->LastError()};
-                    break;
-                }
-
-                uploaded_meshes.push_back(mesh_handle);
-                mesh_names.push_back(mesh.name);
-            }
+            UploadedModelResources resources = BuildModelResources(upload.result.asset);
+            std::string error_message = resources.error_message;
 
             bool keep_uploaded_meshes = false;
             bool resolve_future = false;
@@ -710,8 +889,11 @@ namespace CoreEngine {
                 const auto it = models_->records.find(upload.handle.id);
                 if (it != models_->records.end() && it.value().generation == upload.handle.generation) {
                     if (error_message.empty()) {
-                        it.value().meshes = std::move(uploaded_meshes);
-                        it.value().mesh_names = std::move(mesh_names);
+                        it.value().meshes = std::move(resources.meshes);
+                        it.value().mesh_names = std::move(resources.mesh_names);
+                        it.value().materials = std::move(resources.materials);
+                        it.value().mesh_material_indices = std::move(resources.mesh_material_indices);
+                        it.value().nodes = std::move(resources.nodes);
                         it.value().state = ModelLoadState::Ready;
                         keep_uploaded_meshes = true;
                         resolve_future = true;
@@ -724,9 +906,7 @@ namespace CoreEngine {
             }
 
             if (!keep_uploaded_meshes) {
-                for (MeshHandle mesh: uploaded_meshes) {
-                    backend_->DestroyMesh(mesh);
-                }
+                DestroyUploadedMeshes(*backend_, resources.meshes);
             }
 
             if (resolve_future) {
@@ -750,6 +930,7 @@ namespace CoreEngine {
                 records.push_back(std::move(it.value()));
             }
             models_->records.clear();
+            models_->texture_cache.clear();
         }
 
         for (const ModelRegistry::Record &record: records) {
@@ -765,6 +946,130 @@ namespace CoreEngine {
                 }
             }
         }
+    }
+
+    TextureHandle RenderSystem::LoadModelTexture(const ModelTextureAsset &texture) {
+        if (!texture.IsValid() || models_ == nullptr) {
+            return {};
+        }
+
+        const std::string cache_key = ModelTextureCacheKey(texture);
+        {
+            std::lock_guard lock{models_->mutex};
+            const auto it = models_->texture_cache.find(cache_key);
+            if (it != models_->texture_cache.end()) {
+                return it->second;
+            }
+        }
+
+        const TextureLoadDesc desc{
+            .path = texture.path,
+            .data = texture.data,
+            .format = texture.srgb ? TextureFormat::RGBA8UnormSrgb : TextureFormat::RGBA8Unorm,
+            .generate_mipmaps = true,
+            .flip_vertically = false,
+            .premultiply_alpha = false,
+        };
+
+        TextureHandle loaded_texture = LoadTexture2DAsync(desc);
+        if (!loaded_texture.IsValid()) {
+            return {};
+        }
+
+        std::lock_guard lock{models_->mutex};
+        const auto existing = models_->texture_cache.find(cache_key);
+        if (existing != models_->texture_cache.end()) {
+            return existing->second;
+        }
+
+        models_->texture_cache[cache_key] = loaded_texture;
+        return loaded_texture;
+    }
+
+    MaterialHandle RenderSystem::ResolveModelMaterial(const ModelMaterialAsset &material) {
+        const ModelTextureAsset *base_color_texture = FindModelTexture(material, ModelTextureSemantic::BaseColor);
+        if (base_color_texture != nullptr) {
+            const TextureHandle albedo = LoadModelTexture(*base_color_texture);
+            if (albedo.IsValid()) {
+                return Material::TexturedUnlit(
+                    albedo,
+                    TexturedUnlitProps{.color = material.base_color}).Resolve(*this);
+            }
+        }
+
+        return Material::Unlit(UnlitProps{.color = material.base_color}).Resolve(*this);
+    }
+
+    RenderSystem::UploadedModelResources RenderSystem::BuildModelResources(const ModelAsset &asset) {
+        UploadedModelResources resources;
+        if (backend_ == nullptr || !asset.IsValid()) {
+            resources.error_message = "Invalid model asset";
+            return resources;
+        }
+
+        resources.meshes.reserve(asset.meshes.size());
+        resources.mesh_names.reserve(asset.meshes.size());
+        resources.mesh_material_indices.reserve(asset.meshes.size());
+        resources.materials.reserve(asset.materials.empty() ? 1u : asset.materials.size());
+        resources.nodes = asset.nodes;
+
+        if (asset.materials.empty()) {
+            const MaterialHandle material = Material::Unlit().Resolve(*this);
+            if (!material.IsValid()) {
+                resources.error_message = backend_->LastError().empty()
+                                              ? "Failed to resolve default model material"
+                                              : std::string{backend_->LastError()};
+                return resources;
+            }
+            resources.materials.push_back(material);
+        } else {
+            for (const ModelMaterialAsset &material_asset: asset.materials) {
+                const MaterialHandle material = ResolveModelMaterial(material_asset);
+                if (!material.IsValid()) {
+                    resources.error_message = backend_->LastError().empty()
+                                                  ? "Failed to resolve model material"
+                                                  : std::string{backend_->LastError()};
+                    return resources;
+                }
+                resources.materials.push_back(material);
+            }
+        }
+
+        for (const ModelMeshAsset &mesh: asset.meshes) {
+            const MeshDesc mesh_desc{
+                .vertices = mesh.vertices,
+                .indices = mesh.indices,
+            };
+
+            MeshHandle mesh_handle = backend_->UploadMesh(mesh_desc);
+            if (!mesh_handle.IsValid()) {
+                resources.error_message = backend_->LastError().empty()
+                                              ? "Failed to upload model mesh"
+                                              : std::string{backend_->LastError()};
+                DestroyUploadedMeshes(*backend_, resources.meshes);
+                return resources;
+            }
+
+            resources.meshes.push_back(mesh_handle);
+            resources.mesh_names.push_back(mesh.name);
+            resources.mesh_material_indices.push_back(NormalizeModelMaterialIndex(
+                mesh.material_index,
+                resources.materials.size()));
+        }
+
+        if (resources.nodes.empty()) {
+            resources.nodes.reserve(resources.meshes.size());
+            for (std::uint32_t mesh_index = 0; mesh_index < resources.meshes.size(); ++mesh_index) {
+                resources.nodes.push_back(ModelNodeAsset{
+                    .name = MakeModelMeshNodeName(resources.mesh_names[mesh_index], mesh_index),
+                    .parent_index = kInvalidModelNodeIndex,
+                    .local_transform = Math::Identity(),
+                    .mesh_indices = {mesh_index},
+                });
+            }
+        }
+
+        return resources;
     }
 
     bool RenderSystem::CreateSceneFrameBuffer() {

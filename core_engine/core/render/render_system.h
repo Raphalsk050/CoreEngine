@@ -5,10 +5,12 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core/async/future.h"
 #include "core/assets/i_model_importer.h"
 #include "core/assets/model_asset.h"
+#include "core/ecs/node.h"
 #include "core/render/camera.h"
 #include "core/render/camera_data.h"
 #include "core/render/i_render_backend.h"
@@ -29,6 +31,20 @@ namespace CoreEngine {
     struct TransformComponent;
     class DefaultSceneRenderPass;
 
+    struct ModelInstantiationDesc {
+        std::string root_name = "Model";
+        bool visible = true;
+    };
+
+    struct ModelInstance {
+        Node root;
+        std::vector<Node> nodes;
+        std::vector<Node> mesh_nodes;
+
+        [[nodiscard]] bool IsValid() const {
+            return root.IsValid();
+        }
+    };
 
     class RenderSystem final : public IRenderContext {
     public:
@@ -71,6 +87,17 @@ namespace CoreEngine {
         [[nodiscard]] std::size_t GetModelMeshCount(ModelHandle handle) const;
 
         [[nodiscard]] MeshHandle GetModelMesh(ModelHandle handle, std::size_t mesh_index) const;
+
+        [[nodiscard]] std::size_t GetModelMaterialCount(ModelHandle handle) const;
+
+        [[nodiscard]] MaterialHandle GetModelMaterial(ModelHandle handle, std::size_t material_index) const;
+
+        [[nodiscard]] MaterialHandle GetModelMeshMaterial(ModelHandle handle, std::size_t mesh_index) const;
+
+        [[nodiscard]] ModelInstance InstantiateModel(World &world,
+                                                     ModelHandle handle,
+                                                     Node parent = {},
+                                                     const ModelInstantiationDesc &desc = {}) const;
 
         [[nodiscard]] std::string GetModelLoadError(ModelHandle handle) const;
 
@@ -119,11 +146,21 @@ namespace CoreEngine {
     private:
         friend class DefaultSceneRenderPass;
 
+        struct AsyncModelLoadRequest;
+        struct ModelRegistry;
+        struct UploadedModelResources;
+
         void ExecuteDefaultScenePass(RenderPassContext &context);
 
         void PumpModelUploads();
 
         void DestroyAllModels();
+
+        [[nodiscard]] TextureHandle LoadModelTexture(const ModelTextureAsset &texture);
+
+        [[nodiscard]] MaterialHandle ResolveModelMaterial(const ModelMaterialAsset &material);
+
+        [[nodiscard]] UploadedModelResources BuildModelResources(const ModelAsset &asset);
 
         [[nodiscard]] bool CreateSceneFrameBuffer();
 
@@ -136,9 +173,6 @@ namespace CoreEngine {
                                                  const CameraComponent &camera) const;
 
         static constexpr std::size_t kPrimitiveCount = static_cast<std::size_t>(PrimitiveType::Count);
-
-        struct AsyncModelLoadRequest;
-        struct ModelRegistry;
 
         [[nodiscard]] AsyncModelLoadRequest StartModelLoadAsync(const ModelLoadDesc &desc);
 
