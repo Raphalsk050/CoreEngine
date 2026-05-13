@@ -11,7 +11,7 @@
 
 #include "core/log/log.h"
 #include "core/render/i_render_context.h"
-#include "platform/diligent/builtin_shaders.h"
+#include "core/render/builtin_shaders.h"
 
 namespace CoreEngine {
     namespace {

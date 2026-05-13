@@ -1,8 +1,10 @@
 #include "platform/diligent/diligent_render_backend.h"
 
 #include <array>
+#include <condition_variable>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -29,7 +31,7 @@
 #include "ImGuiImplSDL3.hpp"
 #include "TextureLoader.h"
 #include "TextureUtilities.h"
-#include "platform/diligent/builtin_shaders.h"
+#include "core/render/builtin_shaders.h"
 #include "core/render/render_batch.h"
 #include "core/render/vertex.h"
 
@@ -143,6 +145,17 @@ namespace CoreEngine {
             uint64_t revision = 0;
         };
 
+        struct DiligentTextureLoadTask {
+            TextureHandle handle;
+            TextureLoadDesc desc;
+        };
+
+        struct DiligentTextureUploadTask {
+            TextureHandle handle;
+            Diligent::RefCntAutoPtr<Diligent::ITextureLoader> loader;
+            std::string error_message;
+        };
+
         struct DiligentFrameBufferData {
             Diligent::RefCntAutoPtr<Diligent::ITexture> color_texture;
             Diligent::RefCntAutoPtr<Diligent::ITexture> depth_texture;
@@ -179,7 +192,13 @@ namespace CoreEngine {
         tsl::robin_map<uint32_t, DiligentTextureData> texture_registry;
         tsl::robin_map<uint64_t, MaterialHandle> material_hash_cache;
         mutable std::mutex texture_registry_mutex;
+        std::mutex texture_load_queue_mutex;
+        std::condition_variable_any texture_load_event;
+        std::deque<DiligentTextureLoadTask> texture_load_queue;
+        std::mutex texture_upload_queue_mutex;
+        std::deque<DiligentTextureUploadTask> texture_upload_queue;
         std::vector<std::jthread> texture_load_workers;
+        bool texture_load_workers_started = false;
 
         Diligent::RefCntAutoPtr<Diligent::IPipelineState> composite_pso;
         Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> composite_srb;
@@ -396,53 +415,52 @@ namespace CoreEngine {
             data.revision = 1;
         }
 
-        DiligentTextureData LoadTextureFromFile(Diligent::IRenderDevice *device, const TextureLoadDesc &desc) {
-            DiligentTextureData data;
-            const Diligent::TextureLoadInfo info = MakeTextureLoadInfo(desc);
-
-            Diligent::CreateTextureFromFile(
-                desc.path.c_str(),
-                info,
-                device,
-                &data.texture);
-
-            if (!data.texture) {
-                data.state = TextureLoadState::Failed;
-                data.error_message = "Failed to load texture from file: " + desc.path;
-                return data;
-            }
-
-            FinalizeTextureLoad(data);
-            return data;
-        }
-
-        DiligentTextureData LoadTextureFromMemory(Diligent::IRenderDevice *device, const TextureLoadDesc &desc) {
-            DiligentTextureData data;
-            if (desc.data.empty()) {
-                data.state = TextureLoadState::Failed;
-                data.error_message = "Texture memory payload is empty";
-                return data;
-            }
-
+        Diligent::RefCntAutoPtr<Diligent::ITextureLoader> CreateTextureLoader(const TextureLoadDesc &desc,
+                                                                              std::string &error_message) {
             const Diligent::TextureLoadInfo info = MakeTextureLoadInfo(desc);
             Diligent::RefCntAutoPtr<Diligent::ITextureLoader> loader;
-            Diligent::CreateTextureLoaderFromMemory(
-                desc.data.data(),
-                desc.data.size(),
-                true,
+
+            if (!desc.data.empty()) {
+                Diligent::CreateTextureLoaderFromMemory(
+                    desc.data.data(),
+                    desc.data.size(),
+                    true,
+                    info,
+                    &loader);
+
+                if (!loader) {
+                    error_message = "Failed to create texture loader from memory: " + desc.path;
+                }
+                return loader;
+            }
+
+            Diligent::CreateTextureLoaderFromFile(
+                desc.path.c_str(),
+                Diligent::IMAGE_FILE_FORMAT_UNKNOWN,
                 info,
                 &loader);
 
             if (!loader) {
+                error_message = "Failed to create texture loader from file: " + desc.path;
+            }
+
+            return loader;
+        }
+
+        DiligentTextureData CreateTextureFromLoader(Diligent::IRenderDevice *device,
+                                                    Diligent::ITextureLoader *loader,
+                                                    std::string_view debug_name) {
+            DiligentTextureData data;
+            if (!loader) {
                 data.state = TextureLoadState::Failed;
-                data.error_message = "Failed to create texture loader from memory: " + desc.path;
+                data.error_message = "Texture loader is not available";
                 return data;
             }
 
             loader->CreateTexture(device, &data.texture);
             if (!data.texture) {
                 data.state = TextureLoadState::Failed;
-                data.error_message = "Failed to create texture from memory: " + desc.path;
+                data.error_message = "Failed to create texture: " + std::string{debug_name};
                 return data;
             }
 
@@ -451,11 +469,16 @@ namespace CoreEngine {
         }
 
         DiligentTextureData LoadTextureData(Diligent::IRenderDevice *device, const TextureLoadDesc &desc) {
-            if (!desc.data.empty()) {
-                return LoadTextureFromMemory(device, desc);
+            std::string error_message;
+            Diligent::RefCntAutoPtr<Diligent::ITextureLoader> loader = CreateTextureLoader(desc, error_message);
+            if (!loader) {
+                DiligentTextureData data;
+                data.state = TextureLoadState::Failed;
+                data.error_message = std::move(error_message);
+                return data;
             }
 
-            return LoadTextureFromFile(device, desc);
+            return CreateTextureFromLoader(device, loader, desc.path);
         }
 
         DiligentTextureData CreateFallbackTexture(Diligent::IRenderDevice *device) {
@@ -508,6 +531,126 @@ namespace CoreEngine {
             };
         }
 
+        void MarkTextureLoadFailed(DiligentRenderBackend::Impl &impl,
+                                   TextureHandle handle,
+                                   std::string error_message) {
+            std::lock_guard lock{impl.texture_registry_mutex};
+            const auto it = impl.texture_registry.find(handle.id);
+            if (it == impl.texture_registry.end() || it.value().generation != handle.generation) {
+                return;
+            }
+
+            it.value().state = TextureLoadState::Failed;
+            it.value().error_message = std::move(error_message);
+        }
+
+        void PublishLoadedTexture(DiligentRenderBackend::Impl &impl,
+                                  TextureHandle handle,
+                                  DiligentTextureData loaded) {
+            std::lock_guard lock{impl.texture_registry_mutex};
+            const auto it = impl.texture_registry.find(handle.id);
+            if (it == impl.texture_registry.end() || it.value().generation != handle.generation) {
+                return;
+            }
+
+            if (!loaded.texture_view) {
+                it.value().state = TextureLoadState::Failed;
+                it.value().error_message = loaded.error_message;
+                return;
+            }
+
+            it.value().texture = std::move(loaded.texture);
+            it.value().texture_view = std::move(loaded.texture_view);
+            it.value().state = TextureLoadState::Ready;
+            ++it.value().revision;
+        }
+
+        void ProcessTextureLoadTask(DiligentRenderBackend::Impl &impl,
+                                    const DiligentTextureLoadTask &task,
+                                    const std::stop_token &stop_token) {
+            try {
+                std::string error_message;
+                Diligent::RefCntAutoPtr<Diligent::ITextureLoader> loader =
+                        CreateTextureLoader(task.desc, error_message);
+                if (stop_token.stop_requested()) {
+                    return;
+                }
+
+                if (!loader) {
+                    MarkTextureLoadFailed(impl, task.handle, std::move(error_message));
+                    return;
+                }
+
+                std::lock_guard lock{impl.texture_upload_queue_mutex};
+                impl.texture_upload_queue.push_back(DiligentTextureUploadTask{
+                    .handle = task.handle,
+                    .loader = std::move(loader),
+                    .error_message = {},
+                });
+            } catch (const std::exception &ex) {
+                MarkTextureLoadFailed(impl, task.handle, ex.what());
+            }
+        }
+
+        void TextureLoadWorker(DiligentRenderBackend::Impl &impl, std::stop_token stop_token) {
+            while (!stop_token.stop_requested()) {
+                DiligentTextureLoadTask task;
+                {
+                    std::unique_lock lock{impl.texture_load_queue_mutex};
+                    const bool has_task = impl.texture_load_event.wait(
+                        lock,
+                        stop_token,
+                        [&impl] {
+                            return !impl.texture_load_queue.empty();
+                        });
+
+                    if (!has_task || stop_token.stop_requested()) {
+                        return;
+                    }
+
+                    task = std::move(impl.texture_load_queue.front());
+                    impl.texture_load_queue.pop_front();
+                }
+
+                ProcessTextureLoadTask(impl, task, stop_token);
+            }
+        }
+
+        void EnsureTextureLoadWorkers(DiligentRenderBackend::Impl &impl) {
+            std::lock_guard lock{impl.texture_load_queue_mutex};
+            if (impl.texture_load_workers_started) {
+                return;
+            }
+
+            impl.texture_load_workers_started = true;
+            impl.texture_load_workers.emplace_back(
+                [&impl](std::stop_token stop_token) {
+                    TextureLoadWorker(impl, stop_token);
+                });
+        }
+
+        void PumpTextureUploads(DiligentRenderBackend::Impl &impl) {
+            if (!impl.device) {
+                return;
+            }
+
+            std::deque<DiligentTextureUploadTask> uploads;
+            {
+                std::lock_guard lock{impl.texture_upload_queue_mutex};
+                uploads.swap(impl.texture_upload_queue);
+            }
+
+            for (DiligentTextureUploadTask &upload: uploads) {
+                if (!upload.error_message.empty()) {
+                    MarkTextureLoadFailed(impl, upload.handle, std::move(upload.error_message));
+                    continue;
+                }
+
+                DiligentTextureData loaded = CreateTextureFromLoader(impl.device, upload.loader, "AsyncTexture");
+                PublishLoadedTexture(impl, upload.handle, std::move(loaded));
+            }
+        }
+
         Diligent::SHADER_TYPE ToDiligentShaderStages(ShaderStage stage) {
             int result = Diligent::SHADER_TYPE_UNKNOWN;
             if (HasShaderStage(stage, ShaderStage::Vertex)) {
@@ -517,14 +660,6 @@ namespace CoreEngine {
                 result |= Diligent::SHADER_TYPE_PIXEL;
             }
             return static_cast<Diligent::SHADER_TYPE>(result);
-        }
-
-        Diligent::SHADER_TYPE PrimaryShaderStage(ShaderStage stage) {
-            if (HasShaderStage(stage, ShaderStage::Pixel)) {
-                return Diligent::SHADER_TYPE_PIXEL;
-            }
-
-            return Diligent::SHADER_TYPE_VERTEX;
         }
 
         Diligent::IShaderResourceVariable *FindSrbVariable(Diligent::IShaderResourceBinding *srb,
@@ -1214,38 +1349,15 @@ namespace CoreEngine {
             impl_->texture_registry[handle.id] = std::move(fallback);
         }
 
-        impl_->texture_load_workers.emplace_back([impl = impl_.get(), handle, desc](std::stop_token stop_token) {
-            try {
-                DiligentTextureData loaded = LoadTextureData(impl->device, desc);
-                if (stop_token.stop_requested()) {
-                    return;
-                }
-
-                std::lock_guard lock{impl->texture_registry_mutex};
-                const auto it = impl->texture_registry.find(handle.id);
-                if (it == impl->texture_registry.end() || it.value().generation != handle.generation) {
-                    return;
-                }
-
-                if (!loaded.texture_view) {
-                    it.value().state = TextureLoadState::Failed;
-                    it.value().error_message = loaded.error_message;
-                    return;
-                }
-
-                it.value().texture = std::move(loaded.texture);
-                it.value().texture_view = std::move(loaded.texture_view);
-                it.value().state = TextureLoadState::Ready;
-                ++it.value().revision;
-            } catch (const std::exception &ex) {
-                std::lock_guard lock{impl->texture_registry_mutex};
-                const auto it = impl->texture_registry.find(handle.id);
-                if (it != impl->texture_registry.end() && it.value().generation == handle.generation) {
-                    it.value().state = TextureLoadState::Failed;
-                    it.value().error_message = ex.what();
-                }
-            }
-        });
+        EnsureTextureLoadWorkers(*impl_);
+        {
+            std::lock_guard lock{impl_->texture_load_queue_mutex};
+            impl_->texture_load_queue.push_back(DiligentTextureLoadTask{
+                .handle = handle,
+                .desc = desc,
+            });
+        }
+        impl_->texture_load_event.notify_one();
 
         return handle;
     }
@@ -1478,6 +1590,9 @@ namespace CoreEngine {
     }
 
     void DiligentRenderBackend::BeginFrame() {
+        if (impl_) {
+            PumpTextureUploads(*impl_);
+        }
     }
 
     void DiligentRenderBackend::Clear(const RenderClearColor &clear_color) {
@@ -1564,10 +1679,22 @@ namespace CoreEngine {
         if (!impl_) {
             return;
         }
-        for (std::jthread &worker: impl_->texture_load_workers) {
-            worker.request_stop();
+        std::vector<std::jthread> texture_workers;
+        {
+            std::lock_guard lock{impl_->texture_load_queue_mutex};
+            for (std::jthread &worker: impl_->texture_load_workers) {
+                worker.request_stop();
+            }
+            texture_workers = std::move(impl_->texture_load_workers);
+            impl_->texture_load_queue.clear();
+            impl_->texture_load_workers_started = false;
         }
-        impl_->texture_load_workers.clear();
+        impl_->texture_load_event.notify_all();
+        texture_workers.clear();
+        {
+            std::lock_guard lock{impl_->texture_upload_queue_mutex};
+            impl_->texture_upload_queue.clear();
+        }
         {
             std::lock_guard lock{impl_->texture_registry_mutex};
             impl_->texture_registry.clear();

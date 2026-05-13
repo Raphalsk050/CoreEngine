@@ -12,9 +12,9 @@ namespace CoreEngine {
     public:
         [[nodiscard]] RenderPassHandle AddPass(std::unique_ptr<IRenderPass> pass);
 
-        void RemovePass(RenderPassHandle handle);
+        void RemovePass(RenderPassHandle handle, IRenderBackend *backend = nullptr);
 
-        void Clear();
+        void Clear(IRenderBackend *backend = nullptr);
 
         void Execute(RenderPassStage stage, RenderPassContext &context);
 

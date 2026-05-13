@@ -5,12 +5,8 @@
 #include "core/render/render_desc.h"
 #include "core/window/window_event.h"
 #include "platform/model_importer_factory.h"
+#include "platform/platform_services_factory.h"
 #include "platform/render_backend_factory.h"
-#include "platform/sdl/sdl_audio_backend.h"
-#include "platform/sdl/sdl_context.h"
-#include "platform/sdl/sdl_input_backend.h"
-#include "platform/sdl/sdl_platform_event_pump.h"
-#include "platform/sdl/sdl_window_backend.h"
 
 namespace {
     const char *RenderBackendName(CoreEngine::RenderBackendType backend) {
@@ -40,13 +36,6 @@ namespace {
 }
 
 namespace CoreEngine {
-    struct Runtime::PlatformServices {
-        SdlContext sdl_context;
-        std::unique_ptr<SdlInputBackend> sdl_input_backend;
-        std::unique_ptr<SdlPlatformEventPump> sdl_event_pump;
-        SdlWindowBackend *sdl_window_backend = nullptr;
-    };
-
     int RunEngine(std::unique_ptr<IGameApp> app, const EngineConfig &config) {
         if (!app)
             return 1;
@@ -65,13 +54,16 @@ namespace CoreEngine {
     }
 
     Runtime::Runtime(const EngineConfig &config)
-        : config_(config), platform_(std::make_unique<PlatformServices>()) {
+        : config_(config), platform_services_(CreatePlatformServices()) {
     }
 
     Runtime::~Runtime() = default;
 
     int Runtime::Run(IGameApp &app) {
-        Initialize();
+        if (!Initialize()) {
+            Shutdown();
+            return 1;
+        }
 
         EngineContext engineContext{
             .world = *world_,
@@ -129,10 +121,19 @@ namespace CoreEngine {
                       RenderBackendName(resolved_render_backend_));
         }
 
-        InitializeWindowBackend();
+        if (!InitializeWindowBackend()) {
+            return false;
+        }
+
         InitializeInputSystem();
-        InitializeAudioBackend();
-        InitializeRenderBackend();
+        if (!InitializeAudioBackend()) {
+            return false;
+        }
+
+        if (!InitializeRenderBackend()) {
+            return false;
+        }
+
         return true;
     }
 
@@ -148,11 +149,17 @@ namespace CoreEngine {
         WorldAccess::Bind(*this);
     }
 
-    void Runtime::InitializeWindowBackend() {
-        // TODO(rafael): improve this in the future to take off the SDL specification from here
-        auto backend = std::make_unique<SdlWindowBackend>(platform_->sdl_context);
-        platform_->sdl_window_backend = backend.get();
-        window_system_ = std::make_unique<WindowSystem>(std::move(backend));
+    bool Runtime::InitializeWindowBackend() {
+        if (platform_services_ == nullptr) {
+            Log::Error("Window", "Platform services are not available");
+            return false;
+        }
+
+        window_system_ = platform_services_->CreateWindowSystem();
+        if (window_system_ == nullptr) {
+            Log::Error("Window", "Window system could not be created");
+            return false;
+        }
 
         WindowDesc desc;
         desc.width = config_.windowWidth;
@@ -166,38 +173,55 @@ namespace CoreEngine {
 
         if (!window_system_->Initialize(desc)) {
             Log::Error("Window", window_system_->LastError());
+            return false;
         }
+
+        return true;
     }
 
     void Runtime::InitializeInputSystem() {
-        input_system_ = std::make_unique<InputSystem>();
-        platform_->sdl_input_backend = std::make_unique<SdlInputBackend>(*input_system_);
+        if (platform_services_ != nullptr) {
+            input_system_ = platform_services_->CreateInputSystem();
+        }
 
-        if (platform_->sdl_window_backend != nullptr && platform_->sdl_input_backend != nullptr) {
-            platform_->sdl_event_pump = std::make_unique<SdlPlatformEventPump>(
-                *platform_->sdl_window_backend,
-                *platform_->sdl_input_backend);
+        if (input_system_ == nullptr) {
+            input_system_ = std::make_unique<InputSystem>();
         }
     }
 
-    void Runtime::InitializeAudioBackend() {
-        auto backend = std::make_unique<SdlAudioBackend>(platform_->sdl_context);
-        audio_system_ = std::make_unique<AudioSystem>(std::move(backend));
+    bool Runtime::InitializeAudioBackend() {
+        if (platform_services_ == nullptr) {
+            Log::Error("Audio", "Platform services are not available");
+            return false;
+        }
+
+        audio_system_ = platform_services_->CreateAudioSystem();
+        if (audio_system_ == nullptr) {
+            Log::Error("Audio", "Audio system could not be created");
+            return false;
+        }
 
         AudioDesc desc;
 
         if (!audio_system_->Initialize(desc)) {
             Log::Error("Audio", audio_system_->LastError());
-            return;
+            return false;
         }
+
+        return true;
     }
 
-    void Runtime::InitializeRenderBackend() {
+    bool Runtime::InitializeRenderBackend() {
         std::unique_ptr<IRenderBackend> backend = CreateRenderBackend(resolved_render_backend_);
         if (backend == nullptr) {
             Log::Error("Render",
                        "Requested render backend is not available. Enable CORE_ENGINE_ENABLE_DILIGENT or choose RenderBackendType::None.");
             backend = CreateRenderBackend(RenderBackendType::None);
+        }
+
+        if (backend == nullptr) {
+            Log::Error("Render", "No render backend could be created");
+            return false;
         }
 
         render_system_ = std::make_unique<RenderSystem>(std::move(backend), CreateModelImporter());
@@ -211,7 +235,10 @@ namespace CoreEngine {
 
         if (!render_system_->Initialize(desc, window_system_->GetNativeHandle())) {
             Log::Error("Render", render_system_->LastError());
+            return false;
         }
+
+        return true;
     }
 
     void Runtime::Tick(const FrameContext &frame) {
@@ -220,8 +247,8 @@ namespace CoreEngine {
         input_system_->BeginFrame();
         window_system_->BeginFrame();
 
-        if (platform_->sdl_event_pump != nullptr) {
-            platform_->sdl_event_pump->PumpEvents(*window_system_);
+        if (platform_services_ != nullptr) {
+            platform_services_->PumpEvents(*window_system_);
         } else {
             window_system_->PollEvents();
         }
@@ -248,8 +275,9 @@ namespace CoreEngine {
             render_system_.reset();
         }
 
-        platform_->sdl_event_pump.reset();
-        platform_->sdl_input_backend.reset();
+        if (platform_services_ != nullptr) {
+            platform_services_->ReleaseInputResources();
+        }
         input_system_.reset();
 
         if (audio_system_ != nullptr) {
@@ -260,7 +288,10 @@ namespace CoreEngine {
         if (window_system_ != nullptr) {
             window_system_->Shutdown();
             window_system_.reset();
-            platform_->sdl_window_backend = nullptr;
+        }
+
+        if (platform_services_ != nullptr) {
+            platform_services_->Shutdown();
         }
 
         world_.reset();

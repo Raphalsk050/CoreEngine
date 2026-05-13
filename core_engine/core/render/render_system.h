@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "core/async/future.h"
@@ -156,6 +157,12 @@ namespace CoreEngine {
 
         void DestroyAllModels();
 
+        void EnsureModelLoadWorker();
+
+        void StopModelLoadWorker();
+
+        void RemoveQueuedModelLoad(ModelHandle handle);
+
         [[nodiscard]] TextureHandle LoadModelTexture(const ModelTextureAsset &texture);
 
         [[nodiscard]] MaterialHandle ResolveModelMaterial(const ModelMaterialAsset &material);
@@ -188,6 +195,7 @@ namespace CoreEngine {
         int surface_height_ = 1;
 
         BatchAccumulator accumulator_;
+        std::unordered_map<entt::entity, Math::Mat4> world_transform_cache_;
         RenderGraph render_graph_;
         RenderPassHandle default_scene_pass_;
         RenderFrameResources render_frame_resources_;

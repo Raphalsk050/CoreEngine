@@ -73,7 +73,6 @@ namespace CoreEngine {
             return;
         }
 
-        batches_.reserve(expected_instances);
         batch_indices_.reserve(expected_instances);
     }
 

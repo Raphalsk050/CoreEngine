@@ -34,6 +34,7 @@ public:
 
         floor_texture_ = context.render_system.LoadTexture2DAsync(CoreEngine::TextureLoadDesc{
             .path = "app/assets/textures/uv_mapping.png",
+            .data = {},
             .format = CoreEngine::TextureFormat::RGBA8Unorm,
             .generate_mipmaps = true
         });

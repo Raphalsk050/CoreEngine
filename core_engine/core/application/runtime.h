@@ -11,6 +11,7 @@
 #include "engine.h"
 #include "core/audio/audio_system.h"
 #include "core/input/input_system.h"
+#include "core/platform/i_platform_services.h"
 #include "core/render/render_system.h"
 #include "core/time/frame_clock.h"
 #include "core/window/window_system.h"
@@ -35,21 +36,19 @@ namespace CoreEngine {
         const World &GetWorld() const override;
 
     private:
-        struct PlatformServices;
-
         bool Initialize();
 
         void InitializeSink();
 
         void InitializeWorld();
 
-        void InitializeWindowBackend();
+        [[nodiscard]] bool InitializeWindowBackend();
 
         void InitializeInputSystem();
 
-        void InitializeAudioBackend();
+        [[nodiscard]] bool InitializeAudioBackend();
 
-        void InitializeRenderBackend();
+        [[nodiscard]] bool InitializeRenderBackend();
 
         void Tick(const FrameContext &frame);
 
@@ -67,7 +66,7 @@ namespace CoreEngine {
         std::unique_ptr<AudioSystem> audio_system_;
         std::unique_ptr<InputSystem> input_system_;
         std::unique_ptr<RenderSystem> render_system_;
-        std::unique_ptr<PlatformServices> platform_;
+        std::unique_ptr<IPlatformServices> platform_services_;
         RenderBackendType resolved_render_backend_ = RenderBackendType::None;
         std::atomic_bool shutdown_requested_{false};
     };

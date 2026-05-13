@@ -64,7 +64,7 @@ namespace CoreEngine {
     };
 
     inline bool World::IsValid(Node node) const {
-        return registry_.valid(node.Handle());
+        return node.OwnerWorld() == this && registry_.valid(node.Handle());
     }
 
     template<typename... Components>

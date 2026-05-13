@@ -878,33 +878,59 @@ namespace CoreEngine::Math {
 
     [[nodiscard]] inline Mat4 PerspectiveLH(float fov_y_radians, float aspect,
                                             float near_z, float far_z) noexcept {
-        const float tan_half_fovy = std::tan(fov_y_radians * 0.5f);
+        constexpr float kProjectionEpsilon = 1.0e-5f;
+        const float safe_fovy = std::clamp(fov_y_radians, Deg2Rad(1.0f), Deg2Rad(179.0f));
+        const float safe_aspect = std::fabs(aspect) > kProjectionEpsilon ? aspect : 1.0f;
+        const float safe_near = std::max(near_z, kProjectionEpsilon);
+        const float safe_far = far_z > safe_near + kProjectionEpsilon ? far_z : safe_near + 1.0f;
+        const float tan_half_fovy = std::tan(safe_fovy * 0.5f);
         Mat4 result{0.f};
-        result.At(0, 0) = 1.f / (aspect * tan_half_fovy);
+        result.At(0, 0) = 1.f / (safe_aspect * tan_half_fovy);
         result.At(1, 1) = 1.f / tan_half_fovy;
-        result.At(2, 2) = far_z / (far_z - near_z);
+        result.At(2, 2) = safe_far / (safe_far - safe_near);
         result.At(3, 2) = 1.f;
-        result.At(2, 3) = -(far_z * near_z) / (far_z - near_z);
+        result.At(2, 3) = -(safe_far * safe_near) / (safe_far - safe_near);
         return result;
     }
 
-    [[nodiscard]] constexpr Mat4 OrthoLH(float left, float right,
-                                         float bottom, float top,
-                                         float near_z, float far_z) noexcept {
+    [[nodiscard]] inline Mat4 OrthoLH(float left, float right,
+                                      float bottom, float top,
+                                      float near_z, float far_z) noexcept {
+        constexpr float kProjectionEpsilon = 1.0e-5f;
+        const float width = std::fabs(right - left) > kProjectionEpsilon ? right - left : 1.0f;
+        const float height = std::fabs(top - bottom) > kProjectionEpsilon ? top - bottom : 1.0f;
+        const float depth = std::fabs(far_z - near_z) > kProjectionEpsilon ? far_z - near_z : 1.0f;
+        const float center_x = right + left;
+        const float center_y = top + bottom;
+
         Mat4 result{1.f};
-        result.At(0, 0) = 2.f / (right - left);
-        result.At(1, 1) = 2.f / (top - bottom);
-        result.At(2, 2) = 1.f / (far_z - near_z);
-        result.At(0, 3) = -(right + left) / (right - left);
-        result.At(1, 3) = -(top + bottom) / (top - bottom);
-        result.At(2, 3) = -near_z / (far_z - near_z);
+        result.At(0, 0) = 2.f / width;
+        result.At(1, 1) = 2.f / height;
+        result.At(2, 2) = 1.f / depth;
+        result.At(0, 3) = -center_x / width;
+        result.At(1, 3) = -center_y / height;
+        result.At(2, 3) = -near_z / depth;
         return result;
     }
 
     [[nodiscard]] inline Mat4 LookAtLH(const Vec3 &eye, const Vec3 &target,
                                        const Vec3 &up) noexcept {
-        const Vec3 forward = Normalize(target - eye);
-        const Vec3 right = Normalize(Cross(up, forward));
+        constexpr float kDirectionEpsilon = 1.0e-8f;
+        Vec3 forward = target - eye;
+        if (LengthSquared(forward) <= kDirectionEpsilon) {
+            forward = {0.f, 0.f, 1.f};
+        } else {
+            forward = Normalize(forward);
+        }
+
+        Vec3 safe_up = LengthSquared(up) <= kDirectionEpsilon ? Vec3{0.f, 1.f, 0.f} : Normalize(up);
+        Vec3 right = Cross(safe_up, forward);
+        if (LengthSquared(right) <= kDirectionEpsilon) {
+            safe_up = std::fabs(forward.y) < 0.999f ? Vec3{0.f, 1.f, 0.f} : Vec3{1.f, 0.f, 0.f};
+            right = Cross(safe_up, forward);
+        }
+
+        right = Normalize(right);
         const Vec3 camera_up = Cross(forward, right);
 
         Mat4 result{1.f};

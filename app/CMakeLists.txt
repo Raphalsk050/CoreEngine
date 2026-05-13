@@ -15,7 +15,7 @@ file(GLOB_RECURSE APP_HEADERS CONFIGURE_DEPENDS
 list(FILTER APP_SOURCES EXCLUDE REGEX ".*/(build|cmake-build|out|third_party)/.*")
 list(FILTER APP_HEADERS EXCLUDE REGEX ".*/(build|cmake-build|out|third_party)/.*")
 
-add_executable(${PROJECT_NAME} ${APP_SOURCES})
+add_executable(${PROJECT_NAME})
 target_sources(${PROJECT_NAME} PRIVATE ${APP_SOURCES} ${APP_HEADERS})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE CoreEngine)

@@ -25,22 +25,30 @@ namespace CoreEngine {
         return handle;
     }
 
-    void RenderGraph::RemovePass(RenderPassHandle handle) {
+    void RenderGraph::RemovePass(RenderPassHandle handle, IRenderBackend *backend) {
         if (!handle.IsValid()) {
             return;
         }
 
-        const auto it = std::remove_if(
-            passes_.begin(),
-            passes_.end(),
-            [handle](const PassEntry &entry) {
-                return entry.handle == handle;
-            });
+        for (auto it = passes_.begin(); it != passes_.end();) {
+            if (it->handle == handle) {
+                if (backend != nullptr && it->pass != nullptr) {
+                    it->pass->ReleaseResources(*backend);
+                }
+                it = passes_.erase(it);
+                continue;
+            }
 
-        passes_.erase(it, passes_.end());
+            ++it;
+        }
     }
 
-    void RenderGraph::Clear() {
+    void RenderGraph::Clear(IRenderBackend *backend) {
+        for (PassEntry &entry: passes_) {
+            if (backend != nullptr && entry.pass != nullptr) {
+                entry.pass->ReleaseResources(*backend);
+            }
+        }
         passes_.clear();
     }
 

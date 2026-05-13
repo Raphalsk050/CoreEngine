@@ -1,6 +1,8 @@
 #include "core/render/render_system.h"
 
+#include <condition_variable>
 #include <cstddef>
+#include <deque>
 #include <exception>
 #include <mutex>
 #include <string>
@@ -60,12 +62,21 @@ namespace CoreEngine {
             std::unique_ptr<ModelLoadResult> decoded_result;
             std::string error_message;
             FuturePromise<ModelHandle> completion;
-            std::jthread worker;
+        };
+
+        struct LoadTask {
+            ModelHandle handle;
+            ModelLoadDesc desc;
         };
 
         tsl::robin_map<uint32_t, Record> records;
         std::unordered_map<std::string, TextureHandle> texture_cache;
         mutable std::mutex mutex;
+        std::mutex load_queue_mutex;
+        std::condition_variable_any load_event;
+        std::deque<LoadTask> load_queue;
+        std::jthread load_worker;
+        bool load_worker_started = false;
         uint32_t next_model_id = 1;
         uint32_t model_generation = 1;
     };
@@ -123,6 +134,36 @@ namespace CoreEngine {
 
             return "ModelMesh_" + std::to_string(mesh_index);
         }
+
+        [[nodiscard]] Math::Mat4 ResolveCachedWorldMatrix(
+            World &world,
+            entt::entity entity,
+            std::unordered_map<entt::entity, Math::Mat4> &cache,
+            std::uint32_t depth = 0) {
+            constexpr std::uint32_t kMaxHierarchyDepth = 1024u;
+            if (entity == entt::null || !world.Registry().valid(entity) || depth >= kMaxHierarchyDepth) {
+                return Math::Identity();
+            }
+
+            if (const auto it = cache.find(entity); it != cache.end()) {
+                return it->second;
+            }
+
+            const TransformComponent *transform = world.TryGetComponent<TransformComponent>(entity);
+            if (transform == nullptr) {
+                return Math::Identity();
+            }
+
+            Math::Mat4 world_matrix = transform->WorldMatrix();
+            const HierarchyComponent *hierarchy = world.TryGetComponent<HierarchyComponent>(entity);
+            if (hierarchy != nullptr && hierarchy->parent != entt::null &&
+                hierarchy->parent != entity && world.Registry().valid(hierarchy->parent)) {
+                world_matrix = ResolveCachedWorldMatrix(world, hierarchy->parent, cache, depth + 1u) * world_matrix;
+            }
+
+            cache.emplace(entity, world_matrix);
+            return world_matrix;
+        }
     }
 
     //clang-format off
@@ -147,6 +188,9 @@ namespace CoreEngine {
     }
 
     RenderSystem::~RenderSystem() {
+        if (initialized_ && backend_ != nullptr) {
+            render_graph_.Clear(backend_.get());
+        }
         DestroyAllModels();
     }
 
@@ -363,41 +407,107 @@ namespace CoreEngine {
             models_->records[handle.id] = std::move(record);
         }
 
-        ModelRegistry *registry = models_.get();
-        IModelImporter *importer = model_importer_.get();
-        std::jthread worker{[registry, importer, handle, desc](std::stop_token stop_token) {
-            ModelLoadResult result;
-            try {
-                result = importer->Load(desc);
-            } catch (const std::exception &ex) {
-                result.error_message = ex.what();
-            }
-
-            if (stop_token.stop_requested()) {
-                return;
-            }
-
-            std::lock_guard lock{registry->mutex};
-            const auto it = registry->records.find(handle.id);
-            if (it == registry->records.end() || it.value().generation != handle.generation) {
-                return;
-            }
-
-            it.value().decoded_result = std::make_unique<ModelLoadResult>(std::move(result));
-        }};
-
+        EnsureModelLoadWorker();
         {
-            std::lock_guard lock{models_->mutex};
-            const auto it = models_->records.find(handle.id);
-            if (it != models_->records.end() && it.value().generation == handle.generation) {
-                it.value().worker = std::move(worker);
-            }
+            std::lock_guard lock{models_->load_queue_mutex};
+            models_->load_queue.push_back(ModelRegistry::LoadTask{
+                .handle = handle,
+                .desc = desc,
+            });
         }
+        models_->load_event.notify_one();
 
         return AsyncModelLoadRequest{
             .handle = handle,
             .future = future,
         };
+    }
+
+    void RenderSystem::EnsureModelLoadWorker() {
+        if (models_ == nullptr || model_importer_ == nullptr) {
+            return;
+        }
+
+        std::lock_guard lock{models_->load_queue_mutex};
+        if (models_->load_worker_started) {
+            return;
+        }
+
+        ModelRegistry *registry = models_.get();
+        IModelImporter *importer = model_importer_.get();
+        models_->load_worker_started = true;
+        models_->load_worker = std::jthread{[registry, importer](std::stop_token stop_token) {
+            while (!stop_token.stop_requested()) {
+                ModelRegistry::LoadTask task;
+                {
+                    std::unique_lock queue_lock{registry->load_queue_mutex};
+                    const bool has_task = registry->load_event.wait(
+                        queue_lock,
+                        stop_token,
+                        [registry] {
+                            return !registry->load_queue.empty();
+                        });
+
+                    if (!has_task || stop_token.stop_requested()) {
+                        return;
+                    }
+
+                    task = std::move(registry->load_queue.front());
+                    registry->load_queue.pop_front();
+                }
+
+                ModelLoadResult result;
+                try {
+                    result = importer->Load(task.desc);
+                } catch (const std::exception &ex) {
+                    result.error_message = ex.what();
+                }
+
+                if (stop_token.stop_requested()) {
+                    return;
+                }
+
+                std::lock_guard record_lock{registry->mutex};
+                const auto it = registry->records.find(task.handle.id);
+                if (it == registry->records.end() || it.value().generation != task.handle.generation) {
+                    continue;
+                }
+
+                it.value().decoded_result = std::make_unique<ModelLoadResult>(std::move(result));
+            }
+        }};
+    }
+
+    void RenderSystem::StopModelLoadWorker() {
+        if (models_ == nullptr || !models_->load_worker_started) {
+            return;
+        }
+
+        std::jthread worker;
+        {
+            std::lock_guard lock{models_->load_queue_mutex};
+            models_->load_worker.request_stop();
+            worker = std::move(models_->load_worker);
+            models_->load_queue.clear();
+            models_->load_worker_started = false;
+        }
+        models_->load_event.notify_all();
+    }
+
+    void RenderSystem::RemoveQueuedModelLoad(ModelHandle handle) {
+        if (models_ == nullptr || !handle.IsValid()) {
+            return;
+        }
+
+        std::lock_guard lock{models_->load_queue_mutex};
+        for (auto it = models_->load_queue.begin(); it != models_->load_queue.end();) {
+            if (it->handle == handle) {
+                it = models_->load_queue.erase(it);
+                continue;
+            }
+
+            ++it;
+        }
     }
 
     ModelLoadState RenderSystem::GetModelLoadState(ModelHandle handle) const {
@@ -634,6 +744,7 @@ namespace CoreEngine {
         }
 
         if (record.state == ModelLoadState::Pending) {
+            RemoveQueuedModelLoad(handle);
             record.completion.Cancel("Model load was cancelled");
         }
 
@@ -727,7 +838,7 @@ namespace CoreEngine {
     }
 
     void RenderSystem::RemoveRenderPass(RenderPassHandle handle) {
-        render_graph_.RemovePass(handle);
+        render_graph_.RemovePass(handle, backend_.get());
     }
 
     void RenderSystem::SetCamera(const Camera &camera) {
@@ -757,7 +868,7 @@ namespace CoreEngine {
 
     void RenderSystem::Shutdown() {
         default_scene_pass_ = {};
-        render_graph_.Clear();
+        render_graph_.Clear(backend_.get());
 
         DestroyAllModels();
         DestroySceneFrameBuffer();
@@ -795,8 +906,10 @@ namespace CoreEngine {
         auto group = world.Registry().group<TransformComponent, MeshRendererComponent>();
         accumulator_.Reserve(group.size());
         accumulator_.Clear();
+        world_transform_cache_.clear();
+        world_transform_cache_.reserve(group.size());
 
-        for (const auto &[entity, transform, renderer]: group.each()) {
+        for (auto [entity, transform, renderer]: group.each()) {
             if (!renderer.visible || !renderer.material.IsValid() || !renderer.mesh.IsValid()) {
                 continue;
             }
@@ -804,7 +917,7 @@ namespace CoreEngine {
             const HierarchyComponent *hierarchy = world.TryGetComponent<HierarchyComponent>(entity);
             const Math::Mat4 world_matrix = hierarchy == nullptr || hierarchy->parent == entt::null
                                                 ? transform.WorldMatrix()
-                                                : Node{entity, &world}.GetWorldMatrix();
+                                                : ResolveCachedWorldMatrix(world, entity, world_transform_cache_);
             accumulator_.Add(renderer.material, renderer.mesh, world_matrix);
         }
 
@@ -921,6 +1034,8 @@ namespace CoreEngine {
         if (models_ == nullptr) {
             return;
         }
+
+        StopModelLoadWorker();
 
         std::vector<ModelRegistry::Record> records;
         {

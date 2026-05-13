@@ -1,5 +1,7 @@
 #include "core/render/camera.h"
 
+#include <cmath>
+
 namespace CoreEngine {
     Camera &Camera::LookAt(const Math::Vec3 &position,
                            const Math::Vec3 &target,
@@ -15,7 +17,13 @@ namespace CoreEngine {
                                 float height,
                                 float near_z,
                                 float far_z) {
-        return Perspective(fov_y_degrees, width / height, near_z, far_z);
+        constexpr float kDimensionEpsilon = 1.0e-5f;
+        const bool valid_dimensions = std::isfinite(width) &&
+                                      std::isfinite(height) &&
+                                      std::fabs(width) > kDimensionEpsilon &&
+                                      std::fabs(height) > kDimensionEpsilon;
+        const float aspect_ratio = valid_dimensions ? width / height : 1.0f;
+        return Perspective(fov_y_degrees, aspect_ratio, near_z, far_z);
     }
 
     Camera &Camera::Perspective(float fov_y_degrees,

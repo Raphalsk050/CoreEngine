@@ -11,7 +11,6 @@ namespace Game {
         constexpr CoreEngine::InputActionId Move = CoreEngine::MakeInputActionId(1);
         constexpr CoreEngine::InputActionId Jump = CoreEngine::MakeInputActionId(2);
         constexpr CoreEngine::InputActionId Run = CoreEngine::MakeInputActionId(3);
-        constexpr CoreEngine::InputActionId Crouch = CoreEngine::MakeInputActionId(4);
     }
 
     bool PlayerController::Init(const CoreEngine::EngineContext &context) {
