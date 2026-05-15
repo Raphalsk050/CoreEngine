@@ -8,6 +8,7 @@
 
 #include "core/network/network_message.h"
 #include "core/network/prediction/player_input_command.h"
+#include "core/network/replication/snapshot_writer.h"
 #include "core/network/network_session.h"
 #include "core/network/network_stats.h"
 #include "core/online/steam/steam_types.h"
@@ -56,6 +57,12 @@ namespace CoreEngine {
 
         bool SendPlayerInputCommands(std::span<const PlayerInputCommand> commands);
 
+        bool SendWorldSnapshot(PeerId peer,
+                               std::span<const NetworkTransformSnapshot> transforms,
+                               std::uint32_t server_tick,
+                               std::uint32_t snapshot_sequence,
+                               std::uint32_t last_processed_input_sequence);
+
         void DumpConnectionStatus() const;
 
         [[nodiscard]] const NetworkEventQueue &Events() const noexcept {
@@ -77,6 +84,8 @@ namespace CoreEngine {
         [[nodiscard]] std::span<const QueuedPlayerInputCommand> InputCommands() const noexcept {
             return input_commands_;
         }
+
+        [[nodiscard]] std::uint32_t LastProcessedInputSequence(PeerId peer) const noexcept;
 
         [[nodiscard]] std::span<const SteamLobbyMember> LobbyMembers() const noexcept;
 

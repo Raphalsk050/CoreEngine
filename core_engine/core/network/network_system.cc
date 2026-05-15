@@ -3,6 +3,7 @@
 #include "core/log/log.h"
 #include "core/network/message_reader.h"
 #include "core/network/message_writer.h"
+#include "core/network/replication/network_snapshot_builder.h"
 #include "core/network/transport/steam_p2p_transport_adapter.h"
 #include "core/online/steam/steam_auth_service.h"
 #include "core/online/steam/steam_lobby_service.h"
@@ -182,6 +183,50 @@ namespace CoreEngine {
         return Send(kHostPeerId, writer.Bytes(), SendMode::UnreliableNoDelay);
     }
 
+    bool NetworkSystem::SendWorldSnapshot(PeerId peer,
+                                          std::span<const NetworkTransformSnapshot> transforms,
+                                          std::uint32_t server_tick,
+                                          std::uint32_t snapshot_sequence,
+                                          std::uint32_t last_processed_input_sequence) {
+        if (!initialized_ || transforms.empty()) {
+            return false;
+        }
+
+        MessageWriter writer(2048);
+        NetworkSnapshotBuilder builder;
+        NetworkSnapshotBuildResult build_result;
+        if (!writer.Begin(NetMessageType::WorldSnapshot, NextSequence(), 0, server_tick) ||
+            !builder.BuildTransformSnapshot(
+                NetworkSnapshotBuildDesc{
+                    .server_tick = server_tick,
+                    .snapshot_sequence = snapshot_sequence,
+                    .last_processed_input_sequence = last_processed_input_sequence,
+                },
+                transforms,
+                writer,
+                build_result) ||
+            !writer.Finalize()) {
+            ++stats_.snapshots_dropped;
+            return false;
+        }
+
+        const bool sent = Send(peer, writer.Bytes(), SendMode::UnreliableNoDelay);
+        if (sent) {
+            ++stats_.snapshots_sent;
+            const std::uint64_t previous_count = stats_.snapshots_sent - 1u;
+            const auto packet_size = static_cast<float>(writer.Bytes().size());
+            const float average =
+                previous_count == 0u
+                    ? packet_size
+                    : ((stats_.avg_snapshot_size_bytes * static_cast<float>(previous_count)) + packet_size) /
+                          static_cast<float>(stats_.snapshots_sent);
+            stats_.avg_snapshot_size_bytes = static_cast<std::uint32_t>(average + 0.5f);
+            stats_.last_snapshot_tick = server_tick;
+        }
+
+        return sent;
+    }
+
     void NetworkSystem::DumpConnectionStatus() const {
         if (transport_ == nullptr) {
             return;
@@ -197,6 +242,11 @@ namespace CoreEngine {
 
     std::span<const SteamLobbyMember> NetworkSystem::LobbyMembers() const noexcept {
         return lobby_service_ != nullptr ? lobby_service_->Members() : std::span<const SteamLobbyMember>{};
+    }
+
+    std::uint32_t NetworkSystem::LastProcessedInputSequence(PeerId peer) const noexcept {
+        const auto it = last_input_sequence_by_peer_.find(peer);
+        return it != last_input_sequence_by_peer_.end() ? it->second : 0u;
     }
 
     std::string NetworkSystem::DetailedConnectionStatus(PeerId peer) const {

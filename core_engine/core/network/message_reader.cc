@@ -128,6 +128,7 @@ namespace CoreEngine {
 
         if (out_header.magic != kNetworkMagic ||
             out_header.protocol_version != kNetworkProtocolVersion ||
+            !IsValidNetMessageType(message_type) ||
             out_header.payload_size > kMaxPacketPayloadBytes ||
             bytes.size() != kPacketHeaderWireSize + out_header.payload_size) {
             return false;

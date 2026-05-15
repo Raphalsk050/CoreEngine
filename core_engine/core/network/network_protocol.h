@@ -25,6 +25,26 @@ namespace CoreEngine {
         Disconnect = 12,
     };
 
+    [[nodiscard]] constexpr bool IsValidNetMessageType(std::uint16_t value) noexcept {
+        switch (static_cast<NetMessageType>(value)) {
+            case NetMessageType::ClientHello:
+            case NetMessageType::ServerHello:
+            case NetMessageType::AuthTicket:
+            case NetMessageType::AuthAccepted:
+            case NetMessageType::AuthRejected:
+            case NetMessageType::InputCommand:
+            case NetMessageType::WorldSnapshot:
+            case NetMessageType::EntitySpawn:
+            case NetMessageType::EntityDespawn:
+            case NetMessageType::Ping:
+            case NetMessageType::Pong:
+            case NetMessageType::Disconnect:
+                return true;
+        }
+
+        return false;
+    }
+
     struct PacketHeader {
         std::uint32_t magic = kNetworkMagic;
         std::uint16_t protocol_version = kNetworkProtocolVersion;

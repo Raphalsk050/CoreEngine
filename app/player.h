@@ -2,6 +2,7 @@
 #include "player_controller.h"
 #include "player_pawn.h"
 #include "third_person_camera_controller.h"
+#include "core/network/replication/network_identity_component.h"
 #include "core/render/render_handle.h"
 
 namespace CoreEngine {
@@ -44,6 +45,7 @@ namespace Game {
         PlayerController player_controller_;
         CoreEngine::NetworkPredictionSystem *prediction_system_ = nullptr;
         CoreEngine::NetworkSystem *network_system_ = nullptr;
+        CoreEngine::NetworkEntityId network_entity_id_ = 0;
         bool initialized_ = false;
     };
 } // namespace Game

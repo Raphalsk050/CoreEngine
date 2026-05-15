@@ -246,7 +246,7 @@ namespace CoreEngine {
 
         prediction_system_ = std::make_unique<NetworkPredictionSystem>();
         network_replicator_ = std::make_unique<NetworkReplicator>();
-        network_replicator_->Initialize(online_system_->Network());
+        network_replicator_->Initialize(online_system_->Network(), *world_);
     }
 
     bool Runtime::InitializeRenderBackend() {

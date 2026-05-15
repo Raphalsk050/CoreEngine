@@ -8,6 +8,7 @@
 #include "core/log/log.h"
 #include "core/network/network_system.h"
 #include "core/network/prediction/network_prediction_system.h"
+#include "core/network/replication/network_replicator.h"
 #include "core/render/render_system.h"
 #include "core/simulation/simulation_frame.h"
 
@@ -39,6 +40,12 @@ namespace Game {
 
         prediction_system_ = &context.prediction_system;
         network_system_ = &context.network_system;
+        const std::uint64_t local_user_id = context.online_system.Status().local_user_id;
+        network_entity_id_ = context.network_replicator.RegisterEntity(
+            player_pawn_.Node(),
+            local_user_id != 0u ? local_user_id : 1u,
+            CoreEngine::kInvalidPeerId,
+            true);
         initialized_ = true;
         return input_bound;
     }
@@ -64,6 +71,7 @@ namespace Game {
         player_controller_.Unpossess();
         prediction_system_ = nullptr;
         network_system_ = nullptr;
+        network_entity_id_ = 0;
         initialized_ = false;
     }
 
