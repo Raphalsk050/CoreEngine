@@ -11,6 +11,7 @@
 #include "gameplay/systems/extraction_system.h"
 #include "gameplay/systems/inventory_system.h"
 #include "gameplay/systems/match_session_system.h"
+#include "gameplay/systems/network_player_system.h"
 #include "gameplay/systems/pve_ai_system.h"
 #include "gameplay/systems/target_chain_system.h"
 #include "player.h"
@@ -89,6 +90,7 @@ public:
         plane_node_.SetRotation(
             CoreEngine::Math::AngleAxis(CoreEngine::Math::Deg2Rad(180.0f), CoreEngine::Math::Vec3(0.0f, 0.f, 1.f)));
 
+        network_player_system_.Initialize(context.render_system);
         ApplyCursorMode(context.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
     }
 
@@ -106,6 +108,7 @@ public:
             .frame = frame,
         };
 
+        network_player_system_.FixedUpdate(context);
         match_session_system_.FixedUpdate(context);
         combat_system_.FixedUpdate(context);
         armor_system_.FixedUpdate(context);
@@ -148,6 +151,7 @@ public:
 
     void Shutdown(const CoreEngine::EngineContext &context) override {
         (void) context;
+        network_player_system_.Shutdown();
         player_.Shutdown();
         world_ = nullptr;
         network_system_ = nullptr;
@@ -205,6 +209,7 @@ private:
     }
 
     Game::Player player_;
+    Game::NetworkPlayerSystem network_player_system_;
     Game::MatchSessionSystem match_session_system_;
     Game::TargetChainSystem target_chain_system_;
     Game::BountyBeaconSystem bounty_beacon_system_;

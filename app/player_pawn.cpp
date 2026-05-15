@@ -1,5 +1,6 @@
 #include "player_pawn.h"
 
+#include "player_movement_simulation.h"
 #include "core/math/math.h"
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/world.h"
@@ -49,29 +50,12 @@ namespace Game {
             return;
         }
 
-        CoreEngine::Math::Vec3 move{
-            std::sin(command.look_yaw) * command.move_y + std::cos(command.look_yaw) * command.move_x,
-            0.0f,
-            std::cos(command.look_yaw) * command.move_y - std::sin(command.look_yaw) * command.move_x,
-        };
-
-        const float length_squared = CoreEngine::Math::Dot(move, move);
-        if (length_squared <= 0.0f) {
-            return;
-        }
-
-        if (length_squared > 1.0f) {
-            move = CoreEngine::Math::Normalize(move);
-        }
-
         auto *transform = node_.TryGetComponent<CoreEngine::TransformComponent>();
         if (transform == nullptr) {
             return;
         }
 
-        const float speed = ResolveSpeed(command);
-        transform->SetPosition(transform->Position() + move * speed * fixed_delta_time);
-        RotateThroughMovement(fixed_delta_time, transform, move);
+        PlayerMovementSimulation::ApplyInputCommand(*transform, movement_, command, fixed_delta_time);
     }
 
     CoreEngine::PredictedMovementState PlayerPawn::BuildMovementState() const noexcept {
@@ -84,12 +68,7 @@ namespace Game {
             return {};
         }
 
-        return CoreEngine::PredictedMovementState{
-            .position = transform->Position(),
-            .rotation = transform->Rotation(),
-            .velocity = {},
-            .movement_flags = 0,
-        };
+        return PlayerMovementSimulation::BuildMovementState(*transform);
     }
 
     CoreEngine::Node &PlayerPawn::Node() noexcept {
@@ -106,23 +85,6 @@ namespace Game {
 
     float PlayerPawn::ResolveSpeed(const PlayerCommand &command) const noexcept {
         if (command.run_held) {
-            return movement_.run_speed;
-        }
-
-        switch (movement_.default_movement_type) {
-            case MovementType::Crouch:
-                return movement_.crouch_speed;
-            case MovementType::Walk:
-                return movement_.walk_speed;
-            case MovementType::Run:
-                return movement_.run_speed;
-        }
-
-        return movement_.walk_speed;
-    }
-
-    float PlayerPawn::ResolveSpeed(const CoreEngine::PlayerInputCommand &command) const noexcept {
-        if (command.IsButtonDown(CoreEngine::PlayerInputButton::Sprint)) {
             return movement_.run_speed;
         }
 

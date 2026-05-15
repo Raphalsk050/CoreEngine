@@ -38,8 +38,6 @@ namespace Game {
     private:
         [[nodiscard]] float ResolveSpeed(const PlayerCommand &command) const noexcept;
 
-        [[nodiscard]] float ResolveSpeed(const CoreEngine::PlayerInputCommand &command) const noexcept;
-
         void RotateThroughMovement(float delta_time,
                                    CoreEngine::TransformComponent *transform,
                                    CoreEngine::Math::Vec3 move) noexcept;

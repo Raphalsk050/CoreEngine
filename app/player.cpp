@@ -9,6 +9,7 @@
 #include "core/network/network_system.h"
 #include "core/network/prediction/network_prediction_system.h"
 #include "core/network/replication/network_replicator.h"
+#include "core/network/replication/replicated_state_types.h"
 #include "core/render/render_system.h"
 #include "core/simulation/simulation_frame.h"
 
@@ -46,6 +47,21 @@ namespace Game {
             local_user_id != 0u ? local_user_id : 1u,
             CoreEngine::kInvalidPeerId,
             true);
+        if (player_pawn_.Node().TryGetComponent<CoreEngine::PlayerMovementStateComponent>() == nullptr) {
+            player_pawn_.Node().AddComponent<CoreEngine::PlayerMovementStateComponent>();
+        }
+        if (player_pawn_.Node().TryGetComponent<CoreEngine::HealthComponent>() == nullptr) {
+            player_pawn_.Node().AddComponent<CoreEngine::HealthComponent>();
+        }
+        if (player_pawn_.Node().TryGetComponent<CoreEngine::ArmorSegmentsComponent>() == nullptr) {
+            player_pawn_.Node().AddComponent<CoreEngine::ArmorSegmentsComponent>();
+        }
+        if (player_pawn_.Node().TryGetComponent<CoreEngine::InventoryComponent>() == nullptr) {
+            player_pawn_.Node().AddComponent<CoreEngine::InventoryComponent>();
+        }
+        if (player_pawn_.Node().TryGetComponent<CoreEngine::EquipmentComponent>() == nullptr) {
+            player_pawn_.Node().AddComponent<CoreEngine::EquipmentComponent>();
+        }
         initialized_ = true;
         return input_bound;
     }
