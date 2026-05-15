@@ -63,6 +63,10 @@ namespace CoreEngine {
 
         void DumpConnectionStatus() const override;
 
+        [[nodiscard]] NetworkSystem &Network() noexcept;
+
+        [[nodiscard]] const NetworkSystem &Network() const noexcept;
+
     private:
         void RefreshStatus();
 

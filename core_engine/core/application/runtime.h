@@ -13,6 +13,9 @@
 #include "core/input/input_system.h"
 #include "core/platform/i_platform_services.h"
 #include "core/render/render_system.h"
+#include "core/network/prediction/network_prediction_system.h"
+#include "core/network/replication/network_replicator.h"
+#include "core/simulation/simulation_scheduler.h"
 #include "core/time/frame_clock.h"
 #include "core/window/window_system.h"
 
@@ -69,6 +72,9 @@ namespace CoreEngine {
         std::unique_ptr<AudioSystem> audio_system_;
         std::unique_ptr<InputSystem> input_system_;
         std::unique_ptr<OnlineSystem> online_system_;
+        std::unique_ptr<SimulationScheduler> simulation_scheduler_;
+        std::unique_ptr<NetworkReplicator> network_replicator_;
+        std::unique_ptr<NetworkPredictionSystem> prediction_system_;
         std::unique_ptr<RenderSystem> render_system_;
         std::unique_ptr<IPlatformServices> platform_services_;
         RenderBackendType resolved_render_backend_ = RenderBackendType::None;

@@ -2,6 +2,7 @@
 #include "core/i_game_app.h"
 #include <memory>
 
+#include "core/network/network_system.h"
 #include "core/online/online_system.h"
 #include "core/online/steam/steam_config.h"
 #include "core/render/render_desc.h"
@@ -72,6 +73,10 @@ namespace CoreEngine {
             .audio_system = *audio_system_,
             .input_system = *input_system_,
             .online_system = *online_system_,
+            .network_system = online_system_->Network(),
+            .simulation_scheduler = *simulation_scheduler_,
+            .network_replicator = *network_replicator_,
+            .prediction_system = *prediction_system_,
             .window_system = *window_system_,
             .render_system = *render_system_,
         };
@@ -88,6 +93,10 @@ namespace CoreEngine {
                     .audio_system = *audio_system_,
                     .input_system = *input_system_,
                     .online_system = *online_system_,
+                    .network_system = online_system_->Network(),
+                    .simulation_scheduler = *simulation_scheduler_,
+                    .network_replicator = *network_replicator_,
+                    .prediction_system = *prediction_system_,
                     .window_system = *window_system_,
                     .render_system = *render_system_,
                 },
@@ -96,6 +105,13 @@ namespace CoreEngine {
 
             Tick(frameContext);
             online_system_->BeginFrame();
+            simulation_scheduler_->BeginFrame(deltaTime);
+            SimulationFrame simulation_frame;
+            while (simulation_scheduler_->ConsumeFixedFrame(simulation_frame)) {
+                network_replicator_->BeginSimulationTick(simulation_frame);
+                app.FixedUpdate(simulation_frame);
+                network_replicator_->EndSimulationTick(simulation_frame);
+            }
             render_system_->BeginImGuiFrame();
             app.Update(frameContext);
             online_system_->EndFrame();
@@ -224,6 +240,13 @@ namespace CoreEngine {
         if (!online_system_->Initialize()) {
             Log::Warn("Online", "Online system failed to initialize.");
         }
+
+        simulation_scheduler_ = std::make_unique<SimulationScheduler>();
+        simulation_scheduler_->Configure(FixedTickClockDesc{});
+
+        prediction_system_ = std::make_unique<NetworkPredictionSystem>();
+        network_replicator_ = std::make_unique<NetworkReplicator>();
+        network_replicator_->Initialize(online_system_->Network());
     }
 
     bool Runtime::InitializeRenderBackend() {
@@ -291,6 +314,12 @@ namespace CoreEngine {
         }
 
         if (online_system_ != nullptr) {
+            if (network_replicator_ != nullptr) {
+                network_replicator_->Shutdown();
+                network_replicator_.reset();
+            }
+            prediction_system_.reset();
+            simulation_scheduler_.reset();
             online_system_->Shutdown();
             online_system_.reset();
         }

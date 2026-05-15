@@ -108,6 +108,14 @@ namespace CoreEngine {
         }
     }
 
+    NetworkSystem &OnlineSystem::Network() noexcept {
+        return *network_;
+    }
+
+    const NetworkSystem &OnlineSystem::Network() const noexcept {
+        return *network_;
+    }
+
     void OnlineSystem::RefreshStatus() {
         status_.initialized = initialized_;
         status_.steam_available = steam_.IsAvailable();
