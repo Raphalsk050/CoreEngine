@@ -2,6 +2,8 @@
 #include "core/i_game_app.h"
 #include <memory>
 
+#include "core/online/online_system.h"
+#include "core/online/steam/steam_config.h"
 #include "core/render/render_desc.h"
 #include "core/window/window_event.h"
 #include "platform/model_importer_factory.h"
@@ -69,6 +71,7 @@ namespace CoreEngine {
             .world = *world_,
             .audio_system = *audio_system_,
             .input_system = *input_system_,
+            .online_system = *online_system_,
             .window_system = *window_system_,
             .render_system = *render_system_,
         };
@@ -84,6 +87,7 @@ namespace CoreEngine {
                     .world = *world_,
                     .audio_system = *audio_system_,
                     .input_system = *input_system_,
+                    .online_system = *online_system_,
                     .window_system = *window_system_,
                     .render_system = *render_system_,
                 },
@@ -91,8 +95,10 @@ namespace CoreEngine {
             };
 
             Tick(frameContext);
+            online_system_->BeginFrame();
             render_system_->BeginImGuiFrame();
             app.Update(frameContext);
+            online_system_->EndFrame();
             render_system_->RenderFrame(*world_, frame_clock_, deltaTime);
         }
 
@@ -113,6 +119,8 @@ namespace CoreEngine {
 
         InitializeSink();
         InitializeWorld();
+        InitializeOnlineSystem();
+
         resolved_render_backend_ = SelectAvailableRenderBackend(config_.renderBackend);
         if (resolved_render_backend_ != config_.renderBackend) {
             Log::Warn("Render",
@@ -211,6 +219,13 @@ namespace CoreEngine {
         return true;
     }
 
+    void Runtime::InitializeOnlineSystem() {
+        online_system_ = std::make_unique<OnlineSystem>(kDefaultSteamAppId);
+        if (!online_system_->Initialize()) {
+            Log::Warn("Online", "Online system failed to initialize.");
+        }
+    }
+
     bool Runtime::InitializeRenderBackend() {
         std::unique_ptr<IRenderBackend> backend = CreateRenderBackend(resolved_render_backend_);
         if (backend == nullptr) {
@@ -273,6 +288,11 @@ namespace CoreEngine {
         if (render_system_ != nullptr) {
             render_system_->Shutdown();
             render_system_.reset();
+        }
+
+        if (online_system_ != nullptr) {
+            online_system_->Shutdown();
+            online_system_.reset();
         }
 
         if (platform_services_ != nullptr) {

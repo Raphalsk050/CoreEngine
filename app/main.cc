@@ -10,6 +10,7 @@
 #include "core/ecs/components/camera_component.h"
 #include "core/input/input_codes.h"
 #include "core/input/input_system.h"
+#include "core/online/steam/steam_multiplayer_debug_panel.h"
 #include "core/render/material.h"
 #include "core/render/primitive_type.h"
 #include "core/render/render_system.h"
@@ -118,6 +119,7 @@ private:
         ImGui::SetNextWindowSize(ImVec2{360.0f, 0.0f}, ImGuiCond_FirstUseEver);
 
         UpdateFpsCounter(frame);
+        steam_multiplayer_debug_panel_.Render(frame.online_system);
     }
 
     void ApplyCursorMode(CoreEngine::WindowSystem &window_system, CoreEngine::WindowCursorMode cursor_mode) {
@@ -158,6 +160,7 @@ private:
     }
 
     Game::Player player_;
+    CoreEngine::SteamMultiplayerDebugPanel steam_multiplayer_debug_panel_;
     CoreEngine::Node plane_node_;
     CoreEngine::Node secondary_camera_node_;
     CoreEngine::TextureHandle floor_texture_;

@@ -18,6 +18,7 @@
 
 namespace CoreEngine {
     class IGameApp;
+    class OnlineSystem;
 
     class Runtime : public IApplicationService, public IWorldService {
     public:
@@ -48,6 +49,8 @@ namespace CoreEngine {
 
         [[nodiscard]] bool InitializeAudioBackend();
 
+        void InitializeOnlineSystem();
+
         [[nodiscard]] bool InitializeRenderBackend();
 
         void Tick(const FrameContext &frame);
@@ -65,6 +68,7 @@ namespace CoreEngine {
         std::unique_ptr<WindowSystem> window_system_;
         std::unique_ptr<AudioSystem> audio_system_;
         std::unique_ptr<InputSystem> input_system_;
+        std::unique_ptr<OnlineSystem> online_system_;
         std::unique_ptr<RenderSystem> render_system_;
         std::unique_ptr<IPlatformServices> platform_services_;
         RenderBackendType resolved_render_backend_ = RenderBackendType::None;
