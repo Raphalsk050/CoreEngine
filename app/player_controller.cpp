@@ -1,10 +1,15 @@
 #include "player_controller.h"
 
+#include "player_pawn.h"
+
 #include "core/application/engine_context.h"
 #include "core/application/frame_context.h"
 #include "core/debug/debug.h"
 #include "core/input/input_system.h"
 #include "core/log/log.h"
+#include "core/network/network_system.h"
+#include "core/network/prediction/network_prediction_system.h"
+#include "core/simulation/simulation_frame.h"
 
 namespace Game {
     namespace Actions {
@@ -34,13 +39,31 @@ namespace Game {
             BuildCameraDistance(frame);
         }
 
-        if (possessable_ != nullptr) {
-            possessable_->ApplyPlayerCommand(BuildCommand(frame), frame.delta_time);
-        }
+        latest_command_ = BuildCommand(frame);
 
         if (camera_controller_ != nullptr) {
             camera_controller_->Update(frame.delta_time);
         }
+    }
+
+    void PlayerController::FixedUpdate(const CoreEngine::SimulationFrame &frame,
+                                       CoreEngine::NetworkPredictionSystem &prediction_system,
+                                       CoreEngine::NetworkSystem &network_system) {
+        if (player_pawn_ == nullptr) {
+            return;
+        }
+
+        CoreEngine::PlayerInputCommand command = BuildInputCommand(frame, prediction_system);
+        const CoreEngine::NetworkRole role = network_system.Session().Role();
+
+        if (role == CoreEngine::NetworkRole::Client) {
+            player_pawn_->ApplyPlayerInputCommand(command, frame.fixed_delta_time);
+            prediction_system.RecordPrediction(command, player_pawn_->BuildMovementState());
+            network_system.SendPlayerInputCommands(prediction_system.BuildRedundantCommandBatch(command));
+            return;
+        }
+
+        player_pawn_->ApplyPlayerInputCommand(command, frame.fixed_delta_time);
     }
 
     void PlayerController::Possess(IPossessable &possessable) {
@@ -53,6 +76,17 @@ namespace Game {
         possessable_->OnPossessed();
     }
 
+    void PlayerController::PossessPlayerPawn(PlayerPawn &player_pawn) {
+        if (possessable_ == &player_pawn) {
+            return;
+        }
+
+        Unpossess();
+        possessable_ = &player_pawn;
+        player_pawn_ = &player_pawn;
+        possessable_->OnPossessed();
+    }
+
     void PlayerController::Unpossess() {
         if (possessable_ == nullptr) {
             return;
@@ -60,6 +94,7 @@ namespace Game {
 
         possessable_->OnUnpossessed();
         possessable_ = nullptr;
+        player_pawn_ = nullptr;
     }
 
     void PlayerController::AttachCameraController(ThirdPersonCameraController &camera_controller) noexcept {
@@ -96,6 +131,30 @@ namespace Game {
             .world_move = world_move,
             .jump_pressed = frame.input_system.WasActionPressed(Actions::Jump),
             .run_held = frame.input_system.IsActionDown(Actions::Run),
+        };
+    }
+
+    CoreEngine::PlayerInputCommand PlayerController::BuildInputCommand(
+        const CoreEngine::SimulationFrame &frame,
+        CoreEngine::NetworkPredictionSystem &prediction_system) const noexcept {
+        std::uint32_t buttons = 0;
+        if (latest_command_.jump_pressed) {
+            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Jump);
+        }
+        if (latest_command_.run_held) {
+            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Sprint);
+        }
+
+        return CoreEngine::PlayerInputCommand{
+            .client_tick = frame.tick,
+            .sequence = prediction_system.NextSequence(),
+            .last_received_server_snapshot_tick = 0,
+            .move_x = latest_command_.movement_input.x,
+            .move_y = latest_command_.movement_input.y,
+            .look_yaw = camera_controller_ != nullptr ? camera_controller_->YawRadians() : 0.0f,
+            .look_pitch = camera_controller_ != nullptr ? camera_controller_->PitchRadians() : 0.0f,
+            .buttons = buttons,
+            .selected_slot = 0,
         };
     }
 

@@ -6,7 +6,10 @@
 #include "core/ecs/components/camera_component.h"
 #include "core/ecs/world.h"
 #include "core/log/log.h"
+#include "core/network/network_system.h"
+#include "core/network/prediction/network_prediction_system.h"
 #include "core/render/render_system.h"
+#include "core/simulation/simulation_frame.h"
 
 namespace Game {
     namespace {
@@ -34,6 +37,8 @@ namespace Game {
         CreateCamera(context.world);
         AttachController();
 
+        prediction_system_ = &context.prediction_system;
+        network_system_ = &context.network_system;
         initialized_ = true;
         return input_bound;
     }
@@ -46,9 +51,19 @@ namespace Game {
         player_controller_.Update(frame);
     }
 
+    void Player::FixedUpdate(const CoreEngine::SimulationFrame &frame) {
+        if (!initialized_ || prediction_system_ == nullptr || network_system_ == nullptr) {
+            return;
+        }
+
+        player_controller_.FixedUpdate(frame, *prediction_system_, *network_system_);
+    }
+
     void Player::Shutdown() {
         player_controller_.DetachCameraController();
         player_controller_.Unpossess();
+        prediction_system_ = nullptr;
+        network_system_ = nullptr;
         initialized_ = false;
     }
 
@@ -109,6 +124,6 @@ namespace Game {
 
     void Player::AttachController() {
         player_controller_.AttachCameraController(third_person_camera_controller_);
-        player_controller_.Possess(player_pawn_);
+        player_controller_.PossessPlayerPawn(player_pawn_);
     }
 } // namespace Game

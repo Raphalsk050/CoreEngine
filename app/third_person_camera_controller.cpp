@@ -66,6 +66,14 @@ namespace Game {
         distance_ = distance;
     }
 
+    float ThirdPersonCameraController::YawRadians() const noexcept {
+        return Deg2Rad(yaw_degrees_);
+    }
+
+    float ThirdPersonCameraController::PitchRadians() const noexcept {
+        return Deg2Rad(pitch_degrees_);
+    }
+
     void ThirdPersonCameraController::Update(float delta_time) {
         if (!camera_node_.IsValid() || !target_node_.IsValid()) {
             return;

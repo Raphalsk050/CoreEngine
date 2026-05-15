@@ -7,6 +7,9 @@
 namespace CoreEngine {
     struct EngineContext;
     struct FrameContext;
+    struct SimulationFrame;
+    class NetworkPredictionSystem;
+    class NetworkSystem;
     class RenderSystem;
     class World;
 }
@@ -19,6 +22,8 @@ namespace Game {
         bool Initialize(const CoreEngine::EngineContext &context);
 
         void Update(const CoreEngine::FrameContext &frame);
+
+        void FixedUpdate(const CoreEngine::SimulationFrame &frame);
 
         void Shutdown();
 
@@ -37,6 +42,8 @@ namespace Game {
         PlayerPawn player_pawn_;
         ThirdPersonCameraController third_person_camera_controller_;
         PlayerController player_controller_;
+        CoreEngine::NetworkPredictionSystem *prediction_system_ = nullptr;
+        CoreEngine::NetworkSystem *network_system_ = nullptr;
         bool initialized_ = false;
     };
 } // namespace Game

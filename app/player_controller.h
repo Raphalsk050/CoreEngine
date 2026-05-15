@@ -3,12 +3,18 @@
 #include "i_controller.h"
 #include "player_command.h"
 #include "third_person_camera_controller.h"
+#include "core/network/prediction/player_input_command.h"
 
 namespace CoreEngine {
     struct EngineContext;
+    struct SimulationFrame;
+    class NetworkPredictionSystem;
+    class NetworkSystem;
 }
 
 namespace Game {
+    class PlayerPawn;
+
     class PlayerController final : public IController {
     public:
         PlayerController() = default;
@@ -17,7 +23,13 @@ namespace Game {
 
         void Update(const CoreEngine::FrameContext &frame) override;
 
+        void FixedUpdate(const CoreEngine::SimulationFrame &frame,
+                         CoreEngine::NetworkPredictionSystem &prediction_system,
+                         CoreEngine::NetworkSystem &network_system);
+
         void Possess(IPossessable &possessable) override;
+
+        void PossessPlayerPawn(PlayerPawn &player_pawn);
 
         void Unpossess() override;
 
@@ -30,12 +42,18 @@ namespace Game {
     private:
         [[nodiscard]] PlayerCommand BuildCommand(const CoreEngine::FrameContext &frame) const noexcept;
 
+        [[nodiscard]] CoreEngine::PlayerInputCommand BuildInputCommand(
+            const CoreEngine::SimulationFrame &frame,
+            CoreEngine::NetworkPredictionSystem &prediction_system) const noexcept;
+
         [[nodiscard]] CoreEngine::Math::Vec2 BuildLookDelta(const CoreEngine::FrameContext &frame) const noexcept;
 
         void BuildCameraDistance(const CoreEngine::FrameContext &frame) const noexcept;
 
         IPossessable *possessable_ = nullptr;
+        PlayerPawn *player_pawn_ = nullptr;
         ThirdPersonCameraController *camera_controller_ = nullptr;
+        PlayerCommand latest_command_{};
 
         float mouse_sensitivity_x_ = 0.12f;
         float mouse_sensitivity_y_ = 0.12f;

@@ -22,6 +22,10 @@ namespace Game {
             return distance_;
         }
 
+        [[nodiscard]] float YawRadians() const noexcept;
+
+        [[nodiscard]] float PitchRadians() const noexcept;
+
         void Update(float delta_time);
 
     private:
