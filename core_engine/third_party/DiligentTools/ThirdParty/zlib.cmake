@@ -3,6 +3,8 @@ cmake_minimum_required (VERSION 3.10)
 project(ZLib C)
 
 set(ZLIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/zlib)
+set(ZLIB_GENERATED_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/zlib_generated)
+configure_file(${ZLIB_DIR}/zconf.h.in ${ZLIB_GENERATED_INCLUDE_DIR}/zconf.h COPYONLY)
 
 set(ZLIB_SOURCE 
     ${ZLIB_DIR}/adler32.c
@@ -31,7 +33,7 @@ set(ZLIB_INCLUDE
     ${ZLIB_DIR}/inflate.h
     ${ZLIB_DIR}/inftrees.h
     ${ZLIB_DIR}/trees.h
-    ${ZLIB_DIR}/zconf.h
+    ${ZLIB_GENERATED_INCLUDE_DIR}/zconf.h
     ${ZLIB_DIR}/zlib.h
     ${ZLIB_DIR}/zutil.h
 )
@@ -59,9 +61,9 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 
-target_include_directories(ZLib PUBLIC ${ZLIB_DIR})
+target_include_directories(ZLib PUBLIC ${ZLIB_GENERATED_INCLUDE_DIR} ${ZLIB_DIR})
 
-set(ZLIB_INCLUDE_DIR "${ZLIB_DIR}" CACHE INTERNAL "ZLib include directory")
+set(ZLIB_INCLUDE_DIR "${ZLIB_GENERATED_INCLUDE_DIR};${ZLIB_DIR}" CACHE INTERNAL "ZLib include directory")
 set(ZLIB_LIBRARY ZLib CACHE INTERNAL "ZLib library")
 
 source_group("src" FILES ${ZLIB_SOURCE})

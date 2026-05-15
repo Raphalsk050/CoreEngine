@@ -1,0 +1,5 @@
+{
+  "cmake.useCMakePresets": "always",
+  "cmake.configurePreset": "windows-msvc-vs2022-debug",
+  "cmake.buildPreset": "windows-msvc-vs2022-debug"
+}

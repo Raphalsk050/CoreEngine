@@ -21,6 +21,17 @@ from typing import Iterable, Sequence
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_BUILD_DIR = ROOT / "build"
+MSVC_DEVELOPER_ENVIRONMENT_VARS = ("WindowsSdkDir", "WindowsSDKVersion", "VCToolsInstallDir", "INCLUDE", "LIB")
+STEAMWORKS_SDK_ENV_VARS = ("CORE_ENGINE_STEAMWORKS_SDK_DIR", "STEAMWORKS_SDK_DIR", "STEAM_SDK_DIR")
+STEAMWORKS_REQUIRED_HEADERS = (
+    Path("public") / "steam" / "steam_api.h",
+    Path("public") / "steam" / "steam_api_common.h",
+    Path("public") / "steam" / "steamclientpublic.h",
+    Path("public") / "steam" / "steamnetworkingtypes.h",
+    Path("public") / "steam" / "steamtypes.h",
+    Path("public") / "steam" / "isteamnetworkingsockets.h",
+    Path("public") / "steam" / "isteamnetworkingutils.h",
+)
 
 
 @dataclass
@@ -39,6 +50,7 @@ class Context:
     dry_run: bool = False
     env: dict[str, str] = field(default_factory=lambda: dict(os.environ))
     package_manager: str | None = None
+    msvc_environment_attempted: bool = False
 
 
 def log(message: str) -> None:
@@ -80,9 +92,7 @@ def quote_arg(value: str) -> str:
 
 def command_path(name: str, env: dict[str, str] | None = None) -> str | None:
     values = env or os.environ
-    path = values.get("PATH")
-    if path is None and os.name == "nt":
-        path = next((value for key, value in values.items() if key.upper() == "PATH"), None)
+    path = env_get(values, "PATH") if os.name == "nt" else values.get("PATH")
     return shutil.which(name, path=path)
 
 
@@ -120,6 +130,37 @@ def command_version(cmd: Sequence[str], env: dict[str, str] | None = None) -> st
     return first_line[0] if first_line else exe
 
 
+def env_get(env: dict[str, str], name: str) -> str | None:
+    value = env.get(name)
+    if value is not None or os.name != "nt":
+        return value
+    target = name.upper()
+    return next((value for key, value in env.items() if key.upper() == target), None)
+
+
+def env_set_canonical(env: dict[str, str], name: str, value: str) -> None:
+    if os.name == "nt":
+        target = name.upper()
+        for key in list(env):
+            if key.upper() == target and key != name:
+                env.pop(key, None)
+    env[name] = value
+
+
+def normalize_windows_environment(env: dict[str, str]) -> None:
+    if os.name != "nt":
+        return
+
+    path_keys = [key for key in env if key.upper() == "PATH"]
+    if not path_keys:
+        return
+
+    path_value = env.get("PATH") or env.get("Path") or env[path_keys[0]]
+    for key in path_keys:
+        env.pop(key, None)
+    env["PATH"] = path_value
+
+
 def refresh_windows_path(ctx: Context) -> None:
     if ctx.system != "Windows":
         return
@@ -143,6 +184,7 @@ def refresh_windows_path(ctx: Context) -> None:
     if values:
         current = ctx.env.get("PATH", "")
         ctx.env["PATH"] = os.pathsep.join(values + [current])
+        normalize_windows_environment(ctx.env)
 
 
 def find_vswhere() -> Path | None:
@@ -191,9 +233,59 @@ def find_vsdevcmd() -> Path | None:
     return None
 
 
-def load_msvc_environment(ctx: Context) -> bool:
-    if command_path("cl", ctx.env):
+def infer_vc_tools_install_dir(env: dict[str, str]) -> str | None:
+    vc_install_dir = env_get(env, "VCINSTALLDIR")
+    vc_tools_version = env_get(env, "VCToolsVersion")
+    if vc_install_dir and vc_tools_version:
+        candidate = Path(vc_install_dir) / "Tools" / "MSVC" / vc_tools_version
+        if candidate.exists():
+            return str(candidate) + os.sep
+
+    cl_path = command_path("cl", env)
+    if cl_path:
+        parents = Path(cl_path).resolve().parents
+        if len(parents) > 3:
+            candidate = parents[3]
+            if (candidate / "include").exists() and (candidate / "lib").exists():
+                return str(candidate) + os.sep
+
+    include = env_get(env, "INCLUDE") or ""
+    for entry in include.split(os.pathsep):
+        path = Path(entry)
+        if path.name.lower() == "include" and path.parent.name:
+            candidate = path.parent
+            if (candidate / "bin").exists() and (candidate / "lib").exists():
+                return str(candidate) + os.sep
+    return None
+
+
+def normalize_msvc_developer_environment(env: dict[str, str]) -> None:
+    for name in MSVC_DEVELOPER_ENVIRONMENT_VARS:
+        value = env_get(env, name)
+        if value:
+            env_set_canonical(env, name, value)
+
+    if not env_get(env, "VCToolsInstallDir"):
+        inferred = infer_vc_tools_install_dir(env)
+        if inferred:
+            env_set_canonical(env, "VCToolsInstallDir", inferred)
+
+
+def msvc_developer_environment_ready(env: dict[str, str]) -> bool:
+    normalize_msvc_developer_environment(env)
+    return all(env_get(env, name) for name in MSVC_DEVELOPER_ENVIRONMENT_VARS)
+
+
+def load_msvc_environment(ctx: Context, *, require_developer_environment: bool = False) -> bool:
+    normalize_windows_environment(ctx.env)
+    normalize_msvc_developer_environment(ctx.env)
+    if command_path("cl", ctx.env) and (
+        not require_developer_environment or msvc_developer_environment_ready(ctx.env)
+    ):
         return True
+
+    if ctx.msvc_environment_attempted:
+        return False
 
     vsdevcmd = find_vsdevcmd()
     if not vsdevcmd:
@@ -203,7 +295,11 @@ def load_msvc_environment(ctx: Context) -> bool:
     # passed as a string instead of a subprocess argument list.
     cmd = f'cmd.exe /d /c call "{vsdevcmd}" -arch=x64 -host_arch=x64 >nul && set'
     log(f"Loading Visual Studio environment from {vsdevcmd}")
+    ctx.msvc_environment_attempted = True
     if ctx.dry_run:
+        if require_developer_environment:
+            for name in MSVC_DEVELOPER_ENVIRONMENT_VARS:
+                env_set_canonical(ctx.env, name, "<dry-run>")
         return True
 
     result = subprocess.run(
@@ -222,10 +318,15 @@ def load_msvc_environment(ctx: Context) -> bool:
         if "=" not in line:
             continue
         key, value = line.split("=", 1)
-        ctx.env[key] = value
         if key.upper() == "PATH":
             ctx.env["PATH"] = value
-    return command_path("cl", ctx.env) is not None
+            continue
+        ctx.env[key] = value
+    normalize_windows_environment(ctx.env)
+    normalize_msvc_developer_environment(ctx.env)
+    if not command_path("cl", ctx.env):
+        return False
+    return not require_developer_environment or msvc_developer_environment_ready(ctx.env)
 
 
 def detect_package_manager(ctx: Context) -> str | None:
@@ -439,7 +540,7 @@ def install_windows(ctx: Context, keys: Iterable[str]) -> None:
 
     for key in keys:
         if key == "msvc":
-            if load_msvc_environment(ctx):
+            if load_msvc_environment(ctx, require_developer_environment=ctx.args.diligent):
                 log("MSVC developer environment already detected; skipping install.")
                 continue
         elif command_path(key if key != "ninja" else "ninja", ctx.env):
@@ -521,15 +622,19 @@ def xcode_clt_installed() -> bool:
 
 def install_missing(ctx: Context, results: list[CheckResult]) -> None:
     missing_required = [item for item in results if item.required and not item.ok]
-    missing_keys = sorted({item.install_key for item in missing_required if item.install_key})
+    installable_missing = [item for item in missing_required if item.install_key]
+    missing_keys = sorted({item.install_key for item in installable_missing if item.install_key})
 
     if not missing_required:
         log("No installable missing requirements detected.")
         return
 
+    if not installable_missing:
+        raise SystemExit("Missing requirements are not installable by this script. Resolve the paths/configuration above.")
+
     if not ctx.args.yes and not ctx.dry_run:
         log("Missing installable requirements:")
-        for item in missing_required:
+        for item in installable_missing:
             log(f"  - {item.name}: {item.detail}")
         reply = input("Install them now? [y/N] ").strip().lower()
         if reply not in ("y", "yes", "s", "sim"):
@@ -621,20 +726,22 @@ def check_tools(ctx: Context) -> list[CheckResult]:
     compiler = ctx.args.compiler
 
     if ctx.system == "Windows" and compiler in ("auto", "msvc"):
-        if load_msvc_environment(ctx):
+        if load_msvc_environment(ctx, require_developer_environment=ctx.args.diligent):
             compiler_ok = True
             compiler_detail = command_version(["cl"], ctx.env) or "MSVC detected"
         else:
             install_key = "msvc"
             compiler_detail = "MSVC Build Tools not found"
 
-    if not compiler_ok and compiler in ("auto", "clang"):
+    allow_non_msvc_compiler = not (ctx.system == "Windows" and ctx.args.diligent and compiler == "auto")
+
+    if not compiler_ok and allow_non_msvc_compiler and compiler in ("auto", "clang"):
         clang_version = command_version(["clang++", "--version"], ctx.env)
         if clang_version:
             compiler_ok = True
             compiler_detail = clang_version
 
-    if not compiler_ok and compiler in ("auto", "gcc"):
+    if not compiler_ok and allow_non_msvc_compiler and compiler in ("auto", "gcc"):
         gcc_version = command_version(["g++", "--version"], ctx.env)
         if gcc_version:
             compiler_ok = True
@@ -659,14 +766,17 @@ def check_tools(ctx: Context) -> list[CheckResult]:
     if ctx.args.diligent:
         results.extend(check_diligent_requirements(ctx))
 
+    if ctx.args.steam:
+        results.extend(check_steam_requirements(ctx))
+
     return results
 
 
 def check_diligent_requirements(ctx: Context) -> list[CheckResult]:
     results: list[CheckResult] = []
     if ctx.system == "Windows":
-        sdk_vars = ("WindowsSdkDir", "WindowsSDKVersion", "VCToolsInstallDir", "INCLUDE", "LIB")
-        missing = [name for name in sdk_vars if not ctx.env.get(name)]
+        load_msvc_environment(ctx, require_developer_environment=True)
+        missing = [name for name in MSVC_DEVELOPER_ENVIRONMENT_VARS if not env_get(ctx.env, name)]
         results.append(
             CheckResult(
                 "MSVC developer environment",
@@ -686,6 +796,164 @@ def check_diligent_requirements(ctx: Context) -> list[CheckResult]:
                 required=False,
             )
         )
+    return results
+
+
+def default_steamworks_sdk_candidates(ctx: Context) -> list[Path]:
+    candidates: list[Path] = []
+    if ctx.args.steamworks_sdk_dir:
+        candidates.append(Path(ctx.args.steamworks_sdk_dir))
+
+    for name in STEAMWORKS_SDK_ENV_VARS:
+        value = env_get(ctx.env, name)
+        if value:
+            candidates.append(Path(value))
+
+    candidates.extend(
+        [
+            ROOT / "steam_sdk",
+            ROOT / "steamworks_sdk",
+            ROOT / "third_party" / "steam_sdk",
+            ROOT / "third_party" / "steamworks_sdk",
+            ROOT / "core_engine" / "third_party" / "steam_sdk",
+            ROOT / "core_engine" / "third_party" / "steamworks_sdk",
+        ]
+    )
+    return candidates
+
+
+def has_steamworks_header(path: Path) -> bool:
+    return (path / "public" / "steam" / "steam_api.h").exists()
+
+
+def missing_steamworks_headers(path: Path) -> list[Path]:
+    return [relative for relative in STEAMWORKS_REQUIRED_HEADERS if not (path / relative).exists()]
+
+
+def resolve_steamworks_sdk_dir(ctx: Context) -> Path | None:
+    fallback: Path | None = None
+    header_fallback: Path | None = None
+    for candidate in default_steamworks_sdk_candidates(ctx):
+        if not str(candidate):
+            continue
+        resolved = candidate.expanduser().resolve()
+        if fallback is None:
+            fallback = resolved
+        if has_steamworks_header(resolved):
+            if not missing_steamworks_headers(resolved):
+                return resolved
+            if header_fallback is None:
+                header_fallback = resolved
+    return header_fallback or fallback
+
+
+def steamworks_import_library(ctx: Context, sdk_dir: Path) -> Path | None:
+    if ctx.system == "Windows":
+        for relative in (
+            Path("public") / "steam" / "lib" / "win64" / "steam_api64.lib",
+            Path("redistributable_bin") / "win64" / "steam_api64.lib",
+        ):
+            candidate = sdk_dir / relative
+            if candidate.exists():
+                return candidate
+    elif ctx.system == "Darwin":
+        candidate = sdk_dir / "redistributable_bin" / "osx" / "libsteam_api.dylib"
+        if candidate.exists():
+            return candidate
+    else:
+        candidate = sdk_dir / "redistributable_bin" / "linux64" / "libsteam_api.so"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def steamworks_runtime_library(ctx: Context, sdk_dir: Path) -> Path:
+    if ctx.system == "Windows":
+        return sdk_dir / "redistributable_bin" / "win64" / "steam_api64.dll"
+    if ctx.system == "Darwin":
+        return sdk_dir / "redistributable_bin" / "osx" / "libsteam_api.dylib"
+    return sdk_dir / "redistributable_bin" / "linux64" / "libsteam_api.so"
+
+
+def steam_client_running(ctx: Context) -> bool | None:
+    if ctx.system != "Windows" or ctx.dry_run:
+        return None
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq steam.exe"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError:
+        return None
+    return "steam.exe" in (result.stdout or "").lower()
+
+
+def check_steam_requirements(ctx: Context) -> list[CheckResult]:
+    results: list[CheckResult] = [
+        CheckResult("Steamworks integration", True, "enabled by default; pass --no-steam for explicit offline builds")
+    ]
+
+    if not str(ctx.args.steam_app_id).isdigit() or int(ctx.args.steam_app_id) <= 0:
+        results.append(CheckResult("Steam AppID", False, f"invalid AppID: {ctx.args.steam_app_id}"))
+    else:
+        results.append(CheckResult("Steam AppID", True, str(ctx.args.steam_app_id)))
+
+    sdk_dir = resolve_steamworks_sdk_dir(ctx)
+    sdk_hint = "set --steamworks-sdk-dir or CORE_ENGINE_STEAMWORKS_SDK_DIR"
+    if sdk_dir is None or not has_steamworks_header(sdk_dir):
+        detail = f"not found; {sdk_hint}"
+        if sdk_dir is not None:
+            detail = f"missing public/steam/steam_api.h under {sdk_dir}; {sdk_hint}"
+        results.append(CheckResult("Steamworks SDK", False, detail))
+        return results
+
+    results.append(CheckResult("Steamworks SDK", True, str(sdk_dir)))
+
+    missing_headers = missing_steamworks_headers(sdk_dir)
+    results.append(
+        CheckResult(
+            "Steamworks headers",
+            not missing_headers,
+            "complete"
+            if not missing_headers
+            else "missing "
+            + ", ".join(str(path).replace("\\", "/") for path in missing_headers)
+            + "; copy the full SDK public/steam directory",
+        )
+    )
+
+    import_library = steamworks_import_library(ctx, sdk_dir)
+    results.append(
+        CheckResult(
+            "Steamworks import library",
+            import_library is not None,
+            str(import_library) if import_library is not None else f"not found under {sdk_dir}",
+        )
+    )
+
+    runtime_library = steamworks_runtime_library(ctx, sdk_dir)
+    results.append(
+        CheckResult(
+            "Steamworks runtime library",
+            runtime_library.exists(),
+            str(runtime_library) if runtime_library.exists() else f"not found: {runtime_library}",
+        )
+    )
+
+    running = steam_client_running(ctx)
+    if running is not None:
+        results.append(
+            CheckResult(
+                "Steam client",
+                running,
+                "running" if running else "not running; overlay requires the Steam client",
+                required=False,
+            )
+        )
+
     return results
 
 
@@ -712,7 +980,14 @@ def configure(ctx: Context) -> None:
         "-G",
         ctx.args.generator,
         f"-DCORE_ENGINE_ENABLE_DILIGENT={'ON' if ctx.args.diligent else 'OFF'}",
+        f"-DCORE_ENGINE_ENABLE_STEAM={'ON' if ctx.args.steam else 'OFF'}",
+        f"-DCORE_ENGINE_STEAM_APP_ID={ctx.args.steam_app_id}",
     ]
+
+    if ctx.args.steam:
+        steamworks_sdk_dir = resolve_steamworks_sdk_dir(ctx)
+        if steamworks_sdk_dir is not None:
+            configure_cmd.append(f"-DCORE_ENGINE_STEAMWORKS_SDK_DIR={steamworks_sdk_dir}")
 
     if is_single_config_generator(ctx.args.generator):
         configure_cmd.append(f"-DCMAKE_BUILD_TYPE={ctx.args.config}")
@@ -726,8 +1001,9 @@ def configure(ctx: Context) -> None:
 def build(ctx: Context) -> None:
     build_dir = Path(ctx.args.build_dir).resolve()
     build_cmd = ["cmake", "--build", str(build_dir), "--config", ctx.args.config]
-    if ctx.args.target:
-        build_cmd.extend(["--target", ctx.args.target])
+    target_name = build_target_name(ctx)
+    if target_name:
+        build_cmd.extend(["--target", target_name])
     if ctx.args.jobs:
         build_cmd.extend(["--parallel", str(ctx.args.jobs)])
     else:
@@ -740,23 +1016,204 @@ def is_single_config_generator(generator: str) -> bool:
     return "visual studio" not in lowered and "xcode" not in lowered and "multi-config" not in lowered
 
 
-def run_sandbox(ctx: Context) -> None:
+def run_executable(ctx: Context) -> None:
     build_dir = Path(ctx.args.build_dir).resolve()
-    candidates = [
-        build_dir / ctx.args.config / executable_name("sandbox"),
-        build_dir / "app" / ctx.args.config / executable_name("sandbox"),
-        build_dir / "app" / executable_name("sandbox"),
-        build_dir / executable_name("sandbox"),
-    ]
+    target_name = run_target_name(ctx)
+    candidates = executable_candidates(build_dir, ctx.args.config, target_name)
     for candidate in candidates:
         if candidate.exists():
-            run([str(candidate)], ctx=ctx, cwd=candidate.parent)
+            run([str(candidate), *ctx.args.run_arg], ctx=ctx, cwd=candidate.parent)
             return
-    raise SystemExit("Built sandbox executable was not found. Build succeeded, but --run could not locate it.")
+    raise SystemExit(
+        f"Built executable '{target_name}' was not found. Build succeeded, but --run could not locate it. "
+        "Use --run-target <name-or-path> to select the executable."
+    )
+
+
+def package_executable(ctx: Context) -> None:
+    build_dir = Path(ctx.args.build_dir).resolve()
+    target_name = run_target_name(ctx)
+    source_executable = next((path for path in executable_candidates(build_dir, ctx.args.config, target_name) if path.exists()), None)
+    if source_executable is None:
+        raise SystemExit(
+            f"Built executable '{target_name}' was not found. Build succeeded, but --package could not locate it."
+        )
+
+    package_name = package_directory_name(source_executable, ctx)
+    package_root = Path(ctx.args.package_dir).resolve()
+    package_dir = package_root / package_name
+    if package_dir.exists():
+        package_dir.relative_to(package_root)
+        shutil.rmtree(package_dir)
+    copy_runtime_bundle(source_executable.parent, package_dir, ctx.args.config)
+
+    log(f"Packaged {source_executable.name} into {package_dir}")
+    if ctx.system == "Windows" and ctx.args.config == "Debug":
+        log("Note: Debug packages copy MSVC Debug CRT DLLs for developer-machine handoff builds. Use --config RelWithDebInfo or Release for portable sharing.")
+
+
+def package_directory_name(executable: Path, ctx: Context) -> str:
+    system_name = ctx.system.lower()
+    machine_name = platform.machine().lower() or "unknown"
+    return f"{executable.stem}-{ctx.args.config}-{system_name}-{machine_name}"
+
+
+def copy_runtime_bundle(source_dir: Path, destination_dir: Path, config: str) -> None:
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    for item in source_dir.iterdir():
+        if should_skip_package_item(item, config):
+            continue
+
+        target = destination_dir / item.name
+        if item.is_dir():
+            shutil.copytree(item, target, dirs_exist_ok=True, ignore=lambda directory, names: package_ignore(directory, names, config))
+        else:
+            shutil.copy2(item, target)
+
+
+def package_ignore(directory: str, names: list[str], config: str) -> set[str]:
+    ignored: set[str] = set()
+    for name in names:
+        path = Path(directory) / name
+        if should_skip_package_item(path, config):
+            ignored.add(name)
+    return ignored
+
+
+def should_skip_package_item(path: Path, config: str | None = None) -> bool:
+    if path.name in {"CMakeFiles", "cmake_install.cmake"}:
+        return True
+    lowered = path.name.lower()
+    if lowered.endswith((".ninja", ".ninja_deps", ".ninja_log", ".cmake")):
+        return True
+    if config:
+        return should_skip_config_specific_runtime(lowered, config)
+    return False
+
+
+def should_skip_config_specific_runtime(lowered_name: str, config: str) -> bool:
+    is_debug = config.lower() == "debug"
+    if lowered_name.endswith(".dll"):
+        if is_debug:
+            return (
+                is_release_msvc_runtime(lowered_name)
+                or is_release_windows_ucrt_runtime(lowered_name)
+                or is_release_diligent_runtime(lowered_name)
+            )
+        return is_debug_msvc_runtime(lowered_name) or is_debug_windows_ucrt_runtime(lowered_name) or is_debug_diligent_runtime(lowered_name)
+    return False
+
+
+def is_debug_msvc_runtime(lowered_name: str) -> bool:
+    debug_runtime_names = {
+        "concrt140d.dll",
+        "msvcp140d.dll",
+        "msvcp140d_atomic_wait.dll",
+        "msvcp140d_codecvt_ids.dll",
+        "msvcp140_1d.dll",
+        "msvcp140_2d.dll",
+        "vccorlib140d.dll",
+        "vcruntime140d.dll",
+        "vcruntime140_1d.dll",
+        "vcruntime140_threadsd.dll",
+    }
+    return lowered_name in debug_runtime_names
+
+
+def is_release_msvc_runtime(lowered_name: str) -> bool:
+    release_runtime_names = {
+        "concrt140.dll",
+        "msvcp140.dll",
+        "msvcp140_atomic_wait.dll",
+        "msvcp140_codecvt_ids.dll",
+        "msvcp140_1.dll",
+        "msvcp140_2.dll",
+        "vccorlib140.dll",
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+        "vcruntime140_threads.dll",
+    }
+    return lowered_name in release_runtime_names
+
+
+def is_debug_windows_ucrt_runtime(lowered_name: str) -> bool:
+    return lowered_name == "ucrtbased.dll"
+
+
+def is_release_windows_ucrt_runtime(lowered_name: str) -> bool:
+    return (
+        lowered_name == "ucrtbase.dll"
+        or lowered_name.startswith("api-ms-win-crt-")
+        or lowered_name.startswith("api-ms-win-core-")
+    )
+
+
+def is_debug_diligent_runtime(lowered_name: str) -> bool:
+    return lowered_name.startswith("graphicsengine") and lowered_name.endswith("_64d.dll")
+
+
+def is_release_diligent_runtime(lowered_name: str) -> bool:
+    return lowered_name.startswith("graphicsengine") and lowered_name.endswith("_64r.dll")
+
+
+def run_target_name(ctx: Context) -> str:
+    return ctx.args.run_target or ctx.args.target or "sandbox"
+
+
+def build_target_name(ctx: Context) -> str:
+    if ctx.args.target:
+        return ctx.args.target
+    if not ctx.args.run and not ctx.args.package:
+        return ""
+
+    target_name = ctx.args.run_target or "sandbox"
+    target_path = Path(target_name)
+    if target_path.is_absolute() or target_path.parent != Path("."):
+        return ""
+    if platform.system() == "Windows" and target_path.suffix.lower() == ".exe":
+        return target_path.stem
+    return target_name
+
+
+def executable_candidates(build_dir: Path, config: str, target_name: str) -> list[Path]:
+    target_path = Path(target_name)
+    executable = executable_name(target_path.name)
+    candidates: list[Path] = []
+
+    if target_path.is_absolute():
+        candidates.append(target_path)
+    elif target_path.parent != Path("."):
+        candidates.extend([ROOT / target_path, build_dir / target_path])
+
+    candidates.extend(
+        [
+            build_dir / "app" / config / executable,
+            build_dir / config / executable,
+            build_dir / "app" / executable,
+            build_dir / executable,
+        ]
+    )
+
+    if build_dir.exists():
+        candidates.extend(
+            path for path in build_dir.rglob(executable) if "CMakeFiles" not in path.parts
+        )
+
+    unique_candidates: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique_candidates.append(candidate)
+    return unique_candidates
 
 
 def executable_name(name: str) -> str:
-    return f"{name}.exe" if platform.system() == "Windows" else name
+    if platform.system() == "Windows" and Path(name).suffix.lower() != ".exe":
+        return f"{name}.exe"
+    return name
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
@@ -767,7 +1224,28 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--check-only", action="store_true", help="Only check requirements; do not configure or build.")
     parser.add_argument("--clean", action="store_true", help="Delete the build directory before configuring.")
     parser.add_argument("--diligent", action="store_true", help="Enable the experimental Diligent renderer backend.")
-    parser.add_argument("--run", action="store_true", help="Run the sandbox executable after building.")
+    parser.add_argument("--steam", dest="steam", action="store_true", default=True, help="Enable Steamworks integration. Enabled by default.")
+    parser.add_argument("--no-steam", dest="steam", action="store_false", help="Disable Steamworks integration for explicit offline builds.")
+    parser.add_argument(
+        "--steamworks-sdk-dir",
+        default="",
+        help="Path to the Steamworks SDK root. Defaults to CORE_ENGINE_STEAMWORKS_SDK_DIR, STEAMWORKS_SDK_DIR, or STEAM_SDK_DIR.",
+    )
+    parser.add_argument("--steam-app-id", default="480", help="Steam AppID used by development builds.")
+    parser.add_argument("--run", action="store_true", help="Run an executable after building.")
+    parser.add_argument("--package", action="store_true", help="Copy the built executable bundle to a dist directory after building.")
+    parser.add_argument("--package-dir", default=str(ROOT / "dist"), help="Directory that receives --package bundles.")
+    parser.add_argument(
+        "--run-target",
+        default="",
+        help="Executable target/name/path to run. Defaults to --target, or sandbox when --target is empty.",
+    )
+    parser.add_argument(
+        "--run-arg",
+        action="append",
+        default=[],
+        help="Argument passed to the executable when using --run. Can be repeated.",
+    )
     parser.add_argument("--build-dir", default=str(DEFAULT_BUILD_DIR), help="CMake build directory.")
     parser.add_argument("--config", default="Debug", choices=("Debug", "Release", "RelWithDebInfo", "MinSizeRel"))
     parser.add_argument("--generator", default="Ninja", help="CMake generator, e.g. Ninja or Visual Studio 17 2022.")
@@ -786,6 +1264,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     ctx = Context(args=args, system=platform.system(), dry_run=args.dry_run)
+    normalize_windows_environment(ctx.env)
     refresh_windows_path(ctx)
     ctx.package_manager = detect_package_manager(ctx)
 
@@ -808,7 +1287,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         log("Cannot build yet. Missing required items:")
         for item in missing_tools:
             log(f"  - {item.name}: {item.detail}")
-        log("Re-run with --install to install what this script can install.")
+        if any(item.install_key for item in missing_tools):
+            log("Re-run with --install to install what this script can install.")
         return 2
 
     update_submodules_if_needed(ctx, vendor_results)
@@ -826,8 +1306,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     configure(ctx)
     build(ctx)
+    if args.package:
+        package_executable(ctx)
     if args.run:
-        run_sandbox(ctx)
+        run_executable(ctx)
     return 0
 
 

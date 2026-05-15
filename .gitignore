@@ -1,7 +1,14 @@
 build/
+dist/
+
+/core_engine/third_party/steam_sdk/*
+!/core_engine/third_party/steam_sdk/
+!/core_engine/third_party/steam_sdk/CMakeLists.txt
+/core_engine/third_party/steamworks_sdk/*
+!/core_engine/third_party/steamworks_sdk/
+!/core_engine/third_party/steamworks_sdk/CMakeLists.txt
 
 # vscode
-.vscode/
 .idea/
 .cache/
 
