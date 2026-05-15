@@ -2,6 +2,17 @@
 #include <memory>
 #include "imgui.h"
 #include "core/math/math.h"
+#include "gameplay/systems/armor_system.h"
+#include "gameplay/systems/bounty_beacon_system.h"
+#include "gameplay/systems/capture_system.h"
+#include "gameplay/systems/combat_system.h"
+#include "gameplay/systems/crafting_system.h"
+#include "gameplay/systems/economy_result_system.h"
+#include "gameplay/systems/extraction_system.h"
+#include "gameplay/systems/inventory_system.h"
+#include "gameplay/systems/match_session_system.h"
+#include "gameplay/systems/pve_ai_system.h"
+#include "gameplay/systems/target_chain_system.h"
 #include "player.h"
 #include "core/i_game_app.h"
 #include "core/application/application.h"
@@ -26,6 +37,10 @@ public:
     MyGameApp() = default;
 
     void Init(const CoreEngine::EngineContext &context) override {
+        world_ = &context.world;
+        network_system_ = &context.network_system;
+        network_replicator_ = &context.network_replicator;
+
         player_.Initialize(context);
 
         const CoreEngine::MeshHandle cube_mesh =
@@ -77,6 +92,33 @@ public:
         ApplyCursorMode(context.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
     }
 
+    void FixedUpdate(const CoreEngine::SimulationFrame &frame) override {
+        player_.FixedUpdate(frame);
+
+        if (world_ == nullptr || network_system_ == nullptr || network_replicator_ == nullptr) {
+            return;
+        }
+
+        const Game::GameplaySystemContext context{
+            .world = *world_,
+            .network_system = *network_system_,
+            .network_replicator = *network_replicator_,
+            .frame = frame,
+        };
+
+        match_session_system_.FixedUpdate(context);
+        combat_system_.FixedUpdate(context);
+        armor_system_.FixedUpdate(context);
+        bounty_beacon_system_.FixedUpdate(context);
+        capture_system_.FixedUpdate(context);
+        inventory_system_.FixedUpdate(context);
+        crafting_system_.FixedUpdate(context);
+        extraction_system_.FixedUpdate(context);
+        target_chain_system_.FixedUpdate(context);
+        pve_ai_system_.FixedUpdate(context);
+        economy_result_system_.FixedUpdate(context);
+    }
+
     void Update(const CoreEngine::FrameContext &frame) override {
         if (frame.input_system.WasKeyPressed(CoreEngine::Key::Escape)) {
             CoreEngine::Application::RequestShutdown();
@@ -107,6 +149,9 @@ public:
     void Shutdown(const CoreEngine::EngineContext &context) override {
         (void) context;
         player_.Shutdown();
+        world_ = nullptr;
+        network_system_ = nullptr;
+        network_replicator_ = nullptr;
     }
 
 private:
@@ -160,7 +205,21 @@ private:
     }
 
     Game::Player player_;
+    Game::MatchSessionSystem match_session_system_;
+    Game::TargetChainSystem target_chain_system_;
+    Game::BountyBeaconSystem bounty_beacon_system_;
+    Game::CaptureSystem capture_system_;
+    Game::CombatSystem combat_system_;
+    Game::ArmorSystem armor_system_;
+    Game::InventorySystem inventory_system_;
+    Game::CraftingSystem crafting_system_;
+    Game::ExtractionSystem extraction_system_;
+    Game::EconomyResultSystem economy_result_system_;
+    Game::PvEAISystem pve_ai_system_;
     CoreEngine::SteamMultiplayerDebugPanel steam_multiplayer_debug_panel_;
+    CoreEngine::World *world_ = nullptr;
+    CoreEngine::NetworkSystem *network_system_ = nullptr;
+    CoreEngine::NetworkReplicator *network_replicator_ = nullptr;
     CoreEngine::Node plane_node_;
     CoreEngine::Node secondary_camera_node_;
     CoreEngine::TextureHandle floor_texture_;
