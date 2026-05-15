@@ -4,17 +4,25 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <unordered_map>
 
 #include "core/network/network_message.h"
+#include "core/network/prediction/player_input_command.h"
 #include "core/network/network_session.h"
 #include "core/network/network_stats.h"
 #include "core/online/steam/steam_types.h"
 
 namespace CoreEngine {
+    class INetworkTransport;
     class SteamAuthService;
     class SteamLobbyService;
     class SteamOnlineSystem;
-    class SteamP2PTransport;
+
+    struct QueuedPlayerInputCommand {
+        PeerId peer = kInvalidPeerId;
+        std::uint64_t remote_user_id = 0;
+        PlayerInputCommand command{};
+    };
 
     /**
      * @brief Orchestrates online session state, protocol handshakes, and network frame flow.
@@ -46,6 +54,8 @@ namespace CoreEngine {
 
         bool Send(PeerId peer, std::span<const std::byte> payload, SendMode mode);
 
+        bool SendPlayerInputCommands(std::span<const PlayerInputCommand> commands);
+
         void DumpConnectionStatus() const;
 
         [[nodiscard]] const NetworkEventQueue &Events() const noexcept {
@@ -62,6 +72,10 @@ namespace CoreEngine {
 
         [[nodiscard]] const NetworkStats &Stats() const noexcept {
             return stats_;
+        }
+
+        [[nodiscard]] std::span<const QueuedPlayerInputCommand> InputCommands() const noexcept {
+            return input_commands_;
         }
 
         [[nodiscard]] std::span<const SteamLobbyMember> LobbyMembers() const noexcept;
@@ -85,20 +99,25 @@ namespace CoreEngine {
 
         bool SendAuthRejected(PeerId peer, NetworkDisconnectReason reason);
 
+        void HandleInputCommandMessage(const NetworkEvent &event);
+
         [[nodiscard]] std::uint32_t NextSequence() noexcept {
             return next_sequence_++;
         }
 
         SteamOnlineSystem &online_system_;
         std::unique_ptr<SteamLobbyService> lobby_service_;
-        std::unique_ptr<SteamP2PTransport> transport_;
+        std::unique_ptr<INetworkTransport> transport_;
         std::unique_ptr<SteamAuthService> auth_service_;
         NetworkSession session_;
         NetworkStats stats_;
         NetworkEventQueue current_events_;
+        std::vector<QueuedPlayerInputCommand> input_commands_;
+        std::unordered_map<PeerId, std::uint32_t> last_input_sequence_by_peer_;
         bool initialized_ = false;
         int requested_max_players_ = 8;
         std::uint32_t next_sequence_ = 1;
         std::uint32_t local_tick_ = 0;
+        std::uint64_t handshake_nonce_ = 0;
     };
 } // namespace CoreEngine

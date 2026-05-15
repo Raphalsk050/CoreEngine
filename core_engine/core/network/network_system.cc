@@ -3,15 +3,32 @@
 #include "core/log/log.h"
 #include "core/network/message_reader.h"
 #include "core/network/message_writer.h"
+#include "core/network/transport/steam_p2p_transport_adapter.h"
 #include "core/online/steam/steam_auth_service.h"
 #include "core/online/steam/steam_lobby_service.h"
 #include "core/online/steam/steam_online_system.h"
-#include "core/online/steam/steam_p2p_transport.h"
+
+#include <random>
 
 namespace CoreEngine {
     namespace {
-        constexpr std::uint32_t kNetworkBuildHash = 0;
-        constexpr std::uint64_t kHandshakeNonce = 0;
+        [[nodiscard]] constexpr std::uint32_t HashProtocolString(const char *value) noexcept {
+            std::uint32_t hash = 2166136261u;
+            while (*value != '\0') {
+                hash ^= static_cast<std::uint8_t>(*value++);
+                hash *= 16777619u;
+            }
+            return hash;
+        }
+
+        constexpr std::uint32_t kNetworkBuildHash = HashProtocolString("CoreEngine.BountyHunters.Protocol.v1");
+
+        [[nodiscard]] std::uint64_t MakeHandshakeNonce() {
+            std::random_device random;
+            const std::uint64_t high = static_cast<std::uint64_t>(random()) << 32u;
+            const std::uint64_t low = static_cast<std::uint64_t>(random());
+            return high | low;
+        }
     }
 
     NetworkSystem::NetworkSystem(SteamOnlineSystem &online_system)
@@ -28,8 +45,9 @@ namespace CoreEngine {
         }
 
         lobby_service_ = std::make_unique<SteamLobbyService>(online_system_);
-        transport_ = std::make_unique<SteamP2PTransport>(online_system_);
+        transport_ = std::make_unique<SteamP2PTransportAdapter>(online_system_);
         auth_service_ = std::make_unique<SteamAuthService>(online_system_);
+        handshake_nonce_ = MakeHandshakeNonce();
         initialized_ = true;
         return true;
     }
@@ -55,13 +73,17 @@ namespace CoreEngine {
         }
 
         current_events_.clear();
+        input_commands_.clear();
+        last_input_sequence_by_peer_.clear();
         session_.Reset();
         stats_.Reset();
+        handshake_nonce_ = 0;
         initialized_ = false;
     }
 
     void NetworkSystem::BeginFrame() {
         current_events_.clear();
+        input_commands_.clear();
         ++local_tick_;
 
         if (!initialized_) {
@@ -142,6 +164,22 @@ namespace CoreEngine {
             stats_.bytes_out += payload.size();
         }
         return sent;
+    }
+
+    bool NetworkSystem::SendPlayerInputCommands(std::span<const PlayerInputCommand> commands) {
+        if (!initialized_ || commands.empty() || session_.Role() != NetworkRole::Client) {
+            return false;
+        }
+
+        MessageWriter writer;
+        if (!writer.Begin(NetMessageType::InputCommand, NextSequence(), 0, local_tick_) ||
+            !WritePlayerInputCommandBatch(writer, commands) ||
+            !writer.Finalize()) {
+            ++stats_.input_commands_dropped;
+            return false;
+        }
+
+        return Send(kHostPeerId, writer.Bytes(), SendMode::UnreliableNoDelay);
     }
 
     void NetworkSystem::DumpConnectionStatus() const {
@@ -320,8 +358,16 @@ namespace CoreEngine {
                 break;
 
             case NetMessageType::Pong:
+                break;
+
             case NetMessageType::InputCommand:
+                HandleInputCommandMessage(event);
+                break;
+
             case NetMessageType::WorldSnapshot:
+                ++stats_.snapshots_received;
+                break;
+
             case NetMessageType::EntitySpawn:
             case NetMessageType::EntityDespawn:
             case NetMessageType::Disconnect:
@@ -344,7 +390,7 @@ namespace CoreEngine {
             !writer.WriteUInt64(online_system_.LocalSteamId()) ||
             !writer.WriteUInt16(kNetworkProtocolVersion) ||
             !writer.WriteUInt32(kNetworkBuildHash) ||
-            !writer.WriteUInt64(kHandshakeNonce) ||
+            !writer.WriteUInt64(handshake_nonce_) ||
             !writer.Finalize()) {
             return false;
         }
@@ -385,5 +431,36 @@ namespace CoreEngine {
         }
 
         return Send(peer, writer.Bytes(), SendMode::ReliableNoNagle);
+    }
+
+    void NetworkSystem::HandleInputCommandMessage(const NetworkEvent &event) {
+        if (session_.Role() != NetworkRole::Host) {
+            ++stats_.input_commands_dropped;
+            return;
+        }
+
+        MessageReader reader(event.payload);
+        PlayerInputCommandBatch batch;
+        if (!ReadPlayerInputCommandBatch(reader, batch)) {
+            ++stats_.input_commands_dropped;
+            return;
+        }
+
+        std::uint32_t &last_sequence = last_input_sequence_by_peer_[event.peer];
+        for (std::uint8_t i = 0; i < batch.count; ++i) {
+            const PlayerInputCommand &command = batch.commands[i];
+            if (command.sequence <= last_sequence) {
+                ++stats_.input_commands_duplicated;
+                continue;
+            }
+
+            last_sequence = command.sequence;
+            input_commands_.push_back(QueuedPlayerInputCommand{
+                .peer = event.peer,
+                .remote_user_id = event.remote_steam_id,
+                .command = command,
+            });
+            ++stats_.input_commands_received;
+        }
     }
 } // namespace CoreEngine

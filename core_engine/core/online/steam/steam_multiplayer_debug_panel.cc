@@ -33,10 +33,23 @@ namespace CoreEngine {
             ImGui::Text("P2P/Auth state: %s", ToString(status.session_state));
             ImGui::Text("Disconnect reason: %s", ToString(status.last_disconnect_reason));
             ImGui::Text("Ping: %d ms", stats.ping_ms);
+            ImGui::Text("Jitter: %d ms", stats.jitter_ms);
             ImGui::Text("Packet loss: %.2f", stats.packet_loss);
             ImGui::Text("Bytes in/out: %llu / %llu",
                         static_cast<unsigned long long>(stats.bytes_in),
                         static_cast<unsigned long long>(stats.bytes_out));
+            ImGui::Text("Input recv/drop/dup: %llu / %llu / %llu",
+                        static_cast<unsigned long long>(stats.input_commands_received),
+                        static_cast<unsigned long long>(stats.input_commands_dropped),
+                        static_cast<unsigned long long>(stats.input_commands_duplicated));
+            ImGui::Text("Snapshots sent/recv/drop: %llu / %llu / %llu",
+                        static_cast<unsigned long long>(stats.snapshots_sent),
+                        static_cast<unsigned long long>(stats.snapshots_received),
+                        static_cast<unsigned long long>(stats.snapshots_dropped));
+            ImGui::Text("Prediction corrections/snaps: %llu / %llu",
+                        static_cast<unsigned long long>(stats.prediction_corrections),
+                        static_cast<unsigned long long>(stats.prediction_hard_snaps));
+            ImGui::Text("Avg snapshot size: %u bytes", stats.avg_snapshot_size_bytes);
             ImGui::Text("Snapshot tick: %u", stats.last_snapshot_tick);
             ImGui::Text("Last input tick: %u", stats.last_input_tick);
 

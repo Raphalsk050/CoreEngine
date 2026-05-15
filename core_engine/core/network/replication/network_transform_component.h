@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "core/math/math.h"
+#include "core/network/interpolation/snapshot_interpolation_buffer.h"
 
 namespace CoreEngine {
     /**
@@ -18,5 +19,6 @@ namespace CoreEngine {
         std::uint32_t last_snapshot_tick = 0;
         float interpolation_delay_seconds = 0.1f;
         bool interpolation_enabled = true;
+        SnapshotInterpolationBuffer<32> interpolation_buffer;
     };
 } // namespace CoreEngine
