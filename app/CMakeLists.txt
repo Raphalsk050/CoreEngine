@@ -37,6 +37,10 @@ if (COMMAND copy_required_dlls)
     copy_required_dlls(${PROJECT_NAME})
 endif ()
 
+if (COMMAND copy_steam_runtime_dlls)
+    copy_steam_runtime_dlls(${PROJECT_NAME})
+endif ()
+
 if (TARGET Assimp)
     get_target_property(ASSIMP_RUNTIME_LIBRARY Assimp CORE_ENGINE_RUNTIME_LIBRARY)
     get_target_property(ASSIMP_RUNTIME_LIBRARY_NAME Assimp CORE_ENGINE_RUNTIME_LIBRARY_NAME)
