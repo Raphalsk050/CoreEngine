@@ -21,6 +21,8 @@
 #include "core/ecs/world.h"
 #include "core/ecs/components/mesh_renderer_component.h"
 #include "core/ecs/components/camera_component.h"
+#include "core/network/replication/network_identity_component.h"
+#include "core/network/replication/replicated_state_types.h"
 #include "core/input/input_codes.h"
 #include "core/input/input_system.h"
 #include "core/online/steam/steam_multiplayer_debug_panel.h"
@@ -171,6 +173,81 @@ private:
 
         UpdateFpsCounter(frame);
         steam_multiplayer_debug_panel_.Render(frame.online_system);
+        RenderGameplayDebugUi(frame);
+    }
+
+    void RenderGameplayDebugUi(const CoreEngine::FrameContext &frame) {
+        if (!ImGui::Begin("Bounty Hunters MVP")) {
+            ImGui::End();
+            return;
+        }
+
+        ImGui::Text("Match: %u", static_cast<unsigned>(match_session_system_.State()));
+        ImGui::Text("Seed: %u", match_session_system_.Seed());
+        const CoreEngine::ExtractionStateComponent &extraction = extraction_system_.State();
+        ImGui::Text("Extraction: %u  timer %.1f  public %s",
+                    static_cast<unsigned>(extraction.state),
+                    extraction.timer_seconds,
+                    extraction.public_event_active ? "yes" : "no");
+
+        std::uint32_t replicated = 0;
+        std::uint32_t alive = 0;
+        std::uint32_t beacons_on_ground = 0;
+        std::uint32_t captured = 0;
+
+        auto identity_view = frame.world.View<CoreEngine::NetworkIdentityComponent>();
+        for (const entt::entity entity: identity_view) {
+            const auto &identity = identity_view.get<CoreEngine::NetworkIdentityComponent>(entity);
+            if (identity.IsNetworked()) {
+                ++replicated;
+            }
+        }
+
+        auto health_view = frame.world.View<CoreEngine::NetworkIdentityComponent, CoreEngine::HealthComponent>();
+        for (const entt::entity entity: health_view) {
+            const auto &health = health_view.get<CoreEngine::HealthComponent>(entity);
+            if (health.alive) {
+                ++alive;
+            }
+        }
+
+        auto beacon_view = frame.world.View<CoreEngine::BountyBeaconComponent>();
+        for (const entt::entity entity: beacon_view) {
+            const auto &beacon = beacon_view.get<CoreEngine::BountyBeaconComponent>(entity);
+            if (beacon.on_ground && !beacon.extracted) {
+                ++beacons_on_ground;
+            }
+        }
+
+        auto capture_view = frame.world.View<CoreEngine::CaptureStateComponent>();
+        for (const entt::entity entity: capture_view) {
+            const auto &capture = capture_view.get<CoreEngine::CaptureStateComponent>(entity);
+            if (capture.captured) {
+                ++captured;
+            }
+        }
+
+        ImGui::Separator();
+        ImGui::Text("Replicated entities: %u", replicated);
+        ImGui::Text("Alive players/entities: %u", alive);
+        ImGui::Text("Beacons on ground: %u", beacons_on_ground);
+        ImGui::Text("Captured targets: %u", captured);
+
+        if (ImGui::CollapsingHeader("Players")) {
+            for (const entt::entity entity: health_view) {
+                const auto &identity = health_view.get<CoreEngine::NetworkIdentityComponent>(entity);
+                const auto &health = health_view.get<CoreEngine::HealthComponent>(entity);
+                ImGui::Text("NID %llu  owner %u  hp %.0f/%.0f  alive %s  concussed %s",
+                            static_cast<unsigned long long>(identity.network_id),
+                            identity.owner_peer,
+                            health.health,
+                            health.max_health,
+                            health.alive ? "yes" : "no",
+                            health.concussed ? "yes" : "no");
+            }
+        }
+
+        ImGui::End();
     }
 
     void ApplyCursorMode(CoreEngine::WindowSystem &window_system, CoreEngine::WindowCursorMode cursor_mode) {
