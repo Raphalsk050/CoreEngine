@@ -40,5 +40,6 @@ namespace Game {
     private:
         MatchSessionState state_ = MatchSessionState::Lobby;
         std::uint32_t seed_ = 0;
+        std::uint32_t state_enter_tick_ = 0;
     };
 } // namespace Game
