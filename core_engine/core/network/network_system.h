@@ -57,6 +57,9 @@ namespace CoreEngine {
 
         bool SendPlayerInputCommands(std::span<const PlayerInputCommand> commands);
 
+        bool SubmitLocalPlayerInputCommand(NetworkEntityId local_entity_id,
+                                           const PlayerInputCommand &command);
+
         bool SendWorldSnapshot(PeerId peer,
                                std::span<const NetworkTransformSnapshot> transforms,
                                std::uint32_t server_tick,

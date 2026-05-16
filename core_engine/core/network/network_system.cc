@@ -183,6 +183,21 @@ namespace CoreEngine {
         return Send(kHostPeerId, writer.Bytes(), SendMode::UnreliableNoDelay);
     }
 
+    bool NetworkSystem::SubmitLocalPlayerInputCommand(NetworkEntityId local_entity_id,
+                                                      const PlayerInputCommand &command) {
+        if (local_entity_id == 0 || session_.Role() == NetworkRole::Client) {
+            return false;
+        }
+
+        input_commands_.push_back(QueuedPlayerInputCommand{
+            .peer = kInvalidPeerId,
+            .remote_user_id = local_entity_id,
+            .command = command,
+        });
+        ++stats_.input_commands_received;
+        return true;
+    }
+
     bool NetworkSystem::SendWorldSnapshot(PeerId peer,
                                           std::span<const NetworkTransformSnapshot> transforms,
                                           std::uint32_t server_tick,

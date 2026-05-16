@@ -4,6 +4,7 @@
 #include "player_command.h"
 #include "third_person_camera_controller.h"
 #include "core/network/prediction/player_input_command.h"
+#include "core/network/replication/network_identity_component.h"
 
 namespace CoreEngine {
     struct EngineContext;
@@ -25,7 +26,8 @@ namespace Game {
 
         void FixedUpdate(const CoreEngine::SimulationFrame &frame,
                          CoreEngine::NetworkPredictionSystem &prediction_system,
-                         CoreEngine::NetworkSystem &network_system);
+                         CoreEngine::NetworkSystem &network_system,
+                         CoreEngine::NetworkEntityId local_network_id);
 
         void Possess(IPossessable &possessable) override;
 

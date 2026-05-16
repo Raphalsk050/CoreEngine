@@ -82,7 +82,7 @@ namespace Game {
             return;
         }
 
-        player_controller_.FixedUpdate(frame, *prediction_system_, *network_system_);
+        player_controller_.FixedUpdate(frame, *prediction_system_, *network_system_, network_entity_id_);
 
         if (network_system_->Session().Role() == CoreEngine::NetworkRole::Client) {
             auto *movement = player_pawn_.Node().TryGetComponent<CoreEngine::PlayerMovementStateComponent>();

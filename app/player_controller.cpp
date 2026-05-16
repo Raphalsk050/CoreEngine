@@ -60,7 +60,8 @@ namespace Game {
 
     void PlayerController::FixedUpdate(const CoreEngine::SimulationFrame &frame,
                                        CoreEngine::NetworkPredictionSystem &prediction_system,
-                                       CoreEngine::NetworkSystem &network_system) {
+                                       CoreEngine::NetworkSystem &network_system,
+                                       CoreEngine::NetworkEntityId local_network_id) {
         if (player_pawn_ == nullptr) {
             return;
         }
@@ -76,6 +77,7 @@ namespace Game {
         }
 
         player_pawn_->ApplyPlayerInputCommand(command, frame.fixed_delta_time);
+        network_system.SubmitLocalPlayerInputCommand(local_network_id, command);
     }
 
     void PlayerController::Possess(IPossessable &possessable) {
