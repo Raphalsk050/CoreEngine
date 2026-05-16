@@ -13,6 +13,18 @@ namespace CoreEngine {
         Math::Quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
         Math::Vec3 scale{1.0f, 1.0f, 1.0f};
         std::uint32_t tick = 0;
+        std::uint32_t component_mask = 0;
+        std::uint32_t last_processed_input_sequence = 0;
+        float health = 0.0f;
+        float max_health = 0.0f;
+        std::uint64_t beacon_original_owner = 0;
+        std::uint64_t beacon_carrier = 0;
+        std::uint64_t capture_captor = 0;
+        bool alive = true;
+        bool concussed = false;
+        bool beacon_on_ground = false;
+        bool beacon_extracted = false;
+        bool captured = false;
     };
 
     /**

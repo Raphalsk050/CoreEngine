@@ -46,6 +46,7 @@ namespace Game {
         CoreEngine::NetworkPredictionSystem *prediction_system_ = nullptr;
         CoreEngine::NetworkSystem *network_system_ = nullptr;
         CoreEngine::NetworkEntityId network_entity_id_ = 0;
+        std::uint32_t last_reconciled_input_sequence_ = 0;
         bool initialized_ = false;
     };
 } // namespace Game

@@ -54,6 +54,10 @@ namespace Game {
         PlayerPawn *player_pawn_ = nullptr;
         ThirdPersonCameraController *camera_controller_ = nullptr;
         PlayerCommand latest_command_{};
+        bool network_input_fire_held_ = false;
+        bool network_input_reload_pressed_ = false;
+        bool network_input_interact_pressed_ = false;
+        bool network_input_capture_held_ = false;
 
         float mouse_sensitivity_x_ = 0.12f;
         float mouse_sensitivity_y_ = 0.12f;

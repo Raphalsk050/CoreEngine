@@ -4,11 +4,14 @@
 #include "core/application/frame_context.h"
 #include "core/assets/model_asset.h"
 #include "core/ecs/components/camera_component.h"
+#include "core/ecs/components/transform_component.h"
 #include "core/ecs/world.h"
 #include "core/log/log.h"
 #include "core/network/network_system.h"
 #include "core/network/prediction/network_prediction_system.h"
+#include "core/network/prediction/reconciliation.h"
 #include "core/network/replication/network_replicator.h"
+#include "core/network/replication/network_transform_component.h"
 #include "core/network/replication/replicated_state_types.h"
 #include "core/render/render_system.h"
 #include "core/simulation/simulation_frame.h"
@@ -80,6 +83,31 @@ namespace Game {
         }
 
         player_controller_.FixedUpdate(frame, *prediction_system_, *network_system_);
+
+        if (network_system_->Session().Role() == CoreEngine::NetworkRole::Client) {
+            auto *movement = player_pawn_.Node().TryGetComponent<CoreEngine::PlayerMovementStateComponent>();
+            auto *network_transform = player_pawn_.Node().TryGetComponent<CoreEngine::NetworkTransformComponent>();
+            auto *transform = player_pawn_.Node().TryGetComponent<CoreEngine::TransformComponent>();
+            if (movement != nullptr &&
+                network_transform != nullptr &&
+                transform != nullptr &&
+                movement->last_processed_input_sequence > last_reconciled_input_sequence_) {
+                const CoreEngine::PredictedMovementState authoritative_state{
+                    .position = network_transform->authoritative_position,
+                    .rotation = network_transform->authoritative_rotation,
+                    .velocity = movement->velocity,
+                    .movement_flags = 0,
+                };
+                const CoreEngine::ReconciliationResult result =
+                    prediction_system_->Reconcile(authoritative_state, movement->last_processed_input_sequence);
+                if (result.action == CoreEngine::ReconciliationAction::SmoothCorrection ||
+                    result.action == CoreEngine::ReconciliationAction::HardSnap) {
+                    transform->SetPosition(authoritative_state.position);
+                    transform->SetRotation(authoritative_state.rotation);
+                }
+                last_reconciled_input_sequence_ = movement->last_processed_input_sequence;
+            }
+        }
     }
 
     void Player::Shutdown() {
@@ -88,6 +116,7 @@ namespace Game {
         prediction_system_ = nullptr;
         network_system_ = nullptr;
         network_entity_id_ = 0;
+        last_reconciled_input_sequence_ = 0;
         initialized_ = false;
     }
 

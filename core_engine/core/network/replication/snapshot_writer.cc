@@ -19,7 +19,19 @@ namespace CoreEngine {
                writer_.WriteFloat(snapshot.rotation.z) &&
                writer_.WriteFloat(snapshot.scale.x) &&
                writer_.WriteFloat(snapshot.scale.y) &&
-               writer_.WriteFloat(snapshot.scale.z);
+               writer_.WriteFloat(snapshot.scale.z) &&
+               writer_.WriteUInt32(snapshot.component_mask) &&
+               writer_.WriteUInt32(snapshot.last_processed_input_sequence) &&
+               writer_.WriteFloat(snapshot.health) &&
+               writer_.WriteFloat(snapshot.max_health) &&
+               writer_.WriteUInt64(snapshot.beacon_original_owner) &&
+               writer_.WriteUInt64(snapshot.beacon_carrier) &&
+               writer_.WriteUInt64(snapshot.capture_captor) &&
+               writer_.WriteBool(snapshot.alive) &&
+               writer_.WriteBool(snapshot.concussed) &&
+               writer_.WriteBool(snapshot.beacon_on_ground) &&
+               writer_.WriteBool(snapshot.beacon_extracted) &&
+               writer_.WriteBool(snapshot.captured);
     }
 
     bool SnapshotWriter::WriteTransformBatch(std::span<const NetworkTransformSnapshot> snapshots) {

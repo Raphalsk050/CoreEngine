@@ -5,6 +5,7 @@
 #include "core/network/message_reader.h"
 #include "core/network/network_system.h"
 #include "core/network/replication/network_transform_component.h"
+#include "core/network/replication/replicated_state_types.h"
 #include "core/simulation/simulation_frame.h"
 
 #include <chrono>
@@ -14,6 +15,10 @@ namespace CoreEngine {
         [[nodiscard]] float DurationMs(std::chrono::steady_clock::duration duration) noexcept {
             return static_cast<float>(
                 std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(duration).count());
+        }
+
+        [[nodiscard]] constexpr std::uint32_t ComponentBit(ReplicatedComponentTypeId type_id) noexcept {
+            return 1u << type_id;
         }
     }
 
@@ -212,13 +217,43 @@ namespace CoreEngine {
             }
 
             const auto &transform = view.get<TransformComponent>(entity);
-            out_snapshots.push_back(NetworkTransformSnapshot{
+            NetworkTransformSnapshot snapshot{
                 .network_id = identity.network_id,
                 .position = transform.Position(),
                 .rotation = transform.Rotation(),
                 .scale = transform.Scale(),
                 .tick = server_tick,
-            });
+            };
+
+            if (const auto *movement = world_->TryGetComponent<PlayerMovementStateComponent>(entity);
+                movement != nullptr) {
+                snapshot.component_mask |= ComponentBit(kPlayerMovementStateComponentTypeId);
+                snapshot.last_processed_input_sequence = movement->last_processed_input_sequence;
+            }
+
+            if (const auto *health = world_->TryGetComponent<HealthComponent>(entity); health != nullptr) {
+                snapshot.component_mask |= ComponentBit(kHealthComponentTypeId);
+                snapshot.health = health->health;
+                snapshot.max_health = health->max_health;
+                snapshot.alive = health->alive;
+                snapshot.concussed = health->concussed;
+            }
+
+            if (const auto *beacon = world_->TryGetComponent<BountyBeaconComponent>(entity); beacon != nullptr) {
+                snapshot.component_mask |= ComponentBit(kBountyBeaconCarrierComponentTypeId);
+                snapshot.beacon_original_owner = beacon->original_owner_player;
+                snapshot.beacon_carrier = beacon->current_carrier_player;
+                snapshot.beacon_on_ground = beacon->on_ground;
+                snapshot.beacon_extracted = beacon->extracted;
+            }
+
+            if (const auto *capture = world_->TryGetComponent<CaptureStateComponent>(entity); capture != nullptr) {
+                snapshot.component_mask |= ComponentBit(kCaptureStateComponentTypeId);
+                snapshot.capture_captor = capture->captor_player;
+                snapshot.captured = capture->captured;
+            }
+
+            out_snapshots.push_back(snapshot);
         }
     }
 
@@ -261,6 +296,47 @@ namespace CoreEngine {
                 transform->SetPosition(snapshot.position);
                 transform->SetRotation(snapshot.rotation);
                 transform->SetScale(snapshot.scale);
+            }
+
+            if ((snapshot.component_mask & ComponentBit(kPlayerMovementStateComponentTypeId)) != 0u) {
+                auto *movement = node.TryGetComponent<PlayerMovementStateComponent>();
+                if (movement == nullptr) {
+                    movement = &node.AddComponent<PlayerMovementStateComponent>();
+                }
+                movement->last_processed_input_sequence = snapshot.last_processed_input_sequence;
+            }
+
+            if ((snapshot.component_mask & ComponentBit(kHealthComponentTypeId)) != 0u) {
+                auto *health = node.TryGetComponent<HealthComponent>();
+                if (health == nullptr) {
+                    health = &node.AddComponent<HealthComponent>();
+                }
+                health->health = snapshot.health;
+                health->max_health = snapshot.max_health;
+                health->alive = snapshot.alive;
+                health->concussed = snapshot.concussed;
+            }
+
+            if ((snapshot.component_mask & ComponentBit(kBountyBeaconCarrierComponentTypeId)) != 0u) {
+                auto *beacon = node.TryGetComponent<BountyBeaconComponent>();
+                if (beacon == nullptr) {
+                    beacon = &node.AddComponent<BountyBeaconComponent>();
+                }
+                beacon->original_owner_player = snapshot.beacon_original_owner;
+                beacon->current_carrier_player = snapshot.beacon_carrier;
+                beacon->on_ground = snapshot.beacon_on_ground;
+                beacon->extracted = snapshot.beacon_extracted;
+            }
+
+            if ((snapshot.component_mask & ComponentBit(kCaptureStateComponentTypeId)) != 0u) {
+                auto *capture = node.TryGetComponent<CaptureStateComponent>();
+                if (capture == nullptr) {
+                    capture = &node.AddComponent<CaptureStateComponent>();
+                }
+                capture->captor_player = snapshot.capture_captor;
+                capture->captured = snapshot.captured;
+                capture->capturable = snapshot.captured;
+                capture->cast_remaining_seconds = 0.0f;
             }
         }
     }

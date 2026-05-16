@@ -17,7 +17,19 @@ namespace CoreEngine {
                reader_.ReadFloat(snapshot.rotation.z) &&
                reader_.ReadFloat(snapshot.scale.x) &&
                reader_.ReadFloat(snapshot.scale.y) &&
-               reader_.ReadFloat(snapshot.scale.z);
+               reader_.ReadFloat(snapshot.scale.z) &&
+               reader_.ReadUInt32(snapshot.component_mask) &&
+               reader_.ReadUInt32(snapshot.last_processed_input_sequence) &&
+               reader_.ReadFloat(snapshot.health) &&
+               reader_.ReadFloat(snapshot.max_health) &&
+               reader_.ReadUInt64(snapshot.beacon_original_owner) &&
+               reader_.ReadUInt64(snapshot.beacon_carrier) &&
+               reader_.ReadUInt64(snapshot.capture_captor) &&
+               reader_.ReadBool(snapshot.alive) &&
+               reader_.ReadBool(snapshot.concussed) &&
+               reader_.ReadBool(snapshot.beacon_on_ground) &&
+               reader_.ReadBool(snapshot.beacon_extracted) &&
+               reader_.ReadBool(snapshot.captured);
     }
 
     bool SnapshotReader::ReadTransformBatch(std::vector<NetworkTransformSnapshot> &snapshots,

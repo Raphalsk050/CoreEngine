@@ -16,6 +16,10 @@ namespace Game {
         constexpr CoreEngine::InputActionId Move = CoreEngine::MakeInputActionId(1);
         constexpr CoreEngine::InputActionId Jump = CoreEngine::MakeInputActionId(2);
         constexpr CoreEngine::InputActionId Run = CoreEngine::MakeInputActionId(3);
+        constexpr CoreEngine::InputActionId Fire = CoreEngine::MakeInputActionId(4);
+        constexpr CoreEngine::InputActionId Reload = CoreEngine::MakeInputActionId(5);
+        constexpr CoreEngine::InputActionId Interact = CoreEngine::MakeInputActionId(6);
+        constexpr CoreEngine::InputActionId Capture = CoreEngine::MakeInputActionId(7);
     }
 
     bool PlayerController::Init(const CoreEngine::EngineContext &context) {
@@ -29,8 +33,12 @@ namespace Game {
 
         const bool jump_bound = context.input_system.BindButton(Actions::Jump, CoreEngine::Key::Space);
         const bool run_bound = context.input_system.BindButton(Actions::Run, CoreEngine::Key::LeftShift);
+        const bool fire_bound = context.input_system.BindButton(Actions::Fire, CoreEngine::MouseButton::Left);
+        const bool reload_bound = context.input_system.BindButton(Actions::Reload, CoreEngine::Key::R);
+        const bool interact_bound = context.input_system.BindButton(Actions::Interact, CoreEngine::Key::E);
+        const bool capture_bound = context.input_system.BindButton(Actions::Capture, CoreEngine::Key::F);
 
-        return move_bound && jump_bound && run_bound;
+        return move_bound && jump_bound && run_bound && fire_bound && reload_bound && interact_bound && capture_bound;
     }
 
     void PlayerController::Update(const CoreEngine::FrameContext &frame) {
@@ -40,6 +48,10 @@ namespace Game {
         }
 
         latest_command_ = BuildCommand(frame);
+        network_input_fire_held_ = frame.input_system.IsActionDown(Actions::Fire);
+        network_input_reload_pressed_ = frame.input_system.WasActionPressed(Actions::Reload);
+        network_input_interact_pressed_ = frame.input_system.WasActionPressed(Actions::Interact);
+        network_input_capture_held_ = frame.input_system.IsActionDown(Actions::Capture);
 
         if (camera_controller_ != nullptr) {
             camera_controller_->Update(frame.delta_time);
@@ -143,6 +155,18 @@ namespace Game {
         }
         if (latest_command_.run_held) {
             buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Sprint);
+        }
+        if (network_input_fire_held_) {
+            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Fire);
+        }
+        if (network_input_reload_pressed_) {
+            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Reload);
+        }
+        if (network_input_interact_pressed_) {
+            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Interact);
+        }
+        if (network_input_capture_held_) {
+            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Capture);
         }
 
         return CoreEngine::PlayerInputCommand{
