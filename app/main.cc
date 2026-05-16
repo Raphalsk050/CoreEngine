@@ -9,6 +9,7 @@
 #include "gameplay/systems/crafting_system.h"
 #include "gameplay/systems/economy_result_system.h"
 #include "gameplay/systems/extraction_system.h"
+#include "gameplay/systems/health_death_system.h"
 #include "gameplay/systems/inventory_system.h"
 #include "gameplay/systems/match_session_system.h"
 #include "gameplay/systems/network_player_system.h"
@@ -112,6 +113,7 @@ public:
         match_session_system_.FixedUpdate(context);
         combat_system_.FixedUpdate(context);
         armor_system_.FixedUpdate(context);
+        health_death_system_.FixedUpdate(context);
         bounty_beacon_system_.FixedUpdate(context);
         capture_system_.FixedUpdate(context);
         inventory_system_.FixedUpdate(context);
@@ -216,6 +218,7 @@ private:
     Game::CaptureSystem capture_system_;
     Game::CombatSystem combat_system_;
     Game::ArmorSystem armor_system_;
+    Game::HealthDeathSystem health_death_system_;
     Game::InventorySystem inventory_system_;
     Game::CraftingSystem crafting_system_;
     Game::ExtractionSystem extraction_system_;

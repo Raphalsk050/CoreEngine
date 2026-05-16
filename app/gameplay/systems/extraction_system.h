@@ -15,5 +15,12 @@ namespace Game {
         void Activate(CoreEngine::ExtractionStateComponent &state, float arrival_seconds) const noexcept;
 
         void FixedUpdate(const GameplaySystemContext &context) noexcept;
+
+        [[nodiscard]] const CoreEngine::ExtractionStateComponent &State() const noexcept {
+            return state_;
+        }
+
+    private:
+        CoreEngine::ExtractionStateComponent state_;
     };
 } // namespace Game

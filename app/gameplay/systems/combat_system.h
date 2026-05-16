@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <unordered_map>
+
 #include "core/network/replication/replicated_state_types.h"
 #include "gameplay_system_context.h"
 
@@ -22,6 +25,9 @@ namespace Game {
     public:
         [[nodiscard]] float ComputeDamage(float base_damage, HitRegion region) const noexcept;
 
-        void FixedUpdate(const GameplaySystemContext &context) noexcept;
+        void FixedUpdate(const GameplaySystemContext &context);
+
+    private:
+        std::unordered_map<CoreEngine::PeerId, std::uint32_t> next_allowed_fire_tick_by_peer_;
     };
 } // namespace Game

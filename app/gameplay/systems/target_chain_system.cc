@@ -1,5 +1,9 @@
 #include "gameplay/systems/target_chain_system.h"
 
+#include "core/ecs/world.h"
+#include "core/network/network_system.h"
+#include "core/network/replication/network_identity_component.h"
+
 namespace Game {
     void TargetChainSystem::Reset() {
         assignments_.clear();
@@ -25,6 +29,36 @@ namespace Game {
     }
 
     void TargetChainSystem::FixedUpdate(const GameplaySystemContext &context) noexcept {
-        (void) context;
+        if (context.network_system.Session().Role() == CoreEngine::NetworkRole::Client ||
+            !assignments_.empty()) {
+            return;
+        }
+
+        std::vector<CoreEngine::NetworkEntityId> players;
+        players.reserve(8);
+        auto view = context.world.View<CoreEngine::NetworkIdentityComponent, CoreEngine::HealthComponent>();
+        for (const entt::entity entity: view) {
+            const auto &identity = view.get<CoreEngine::NetworkIdentityComponent>(entity);
+            const auto &health = view.get<CoreEngine::HealthComponent>(entity);
+            if (identity.IsNetworked() && health.alive) {
+                players.push_back(identity.network_id);
+            }
+        }
+
+        BuildClosedCycle(players);
+
+        for (const CoreEngine::TargetAssignmentComponent &assignment: assignments_) {
+            CoreEngine::Node target_node = context.network_replicator.FindNode(assignment.hunter_player);
+            if (!target_node.IsValid()) {
+                continue;
+            }
+
+            if (auto *existing = target_node.TryGetComponent<CoreEngine::TargetAssignmentComponent>();
+                existing != nullptr) {
+                *existing = assignment;
+            } else {
+                target_node.AddComponent<CoreEngine::TargetAssignmentComponent>(assignment);
+            }
+        }
     }
 } // namespace Game
