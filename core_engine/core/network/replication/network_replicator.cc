@@ -27,6 +27,7 @@ namespace CoreEngine {
         world_ = &world;
         registry_.RegisterDefaultComponents();
         spawn_system_.Reset();
+        lag_history_.Reset();
         entity_by_network_id_.clear();
         entity_by_network_id_.reserve(256);
         snapshot_scratch_.clear();
@@ -42,6 +43,7 @@ namespace CoreEngine {
         network_system_ = nullptr;
         world_ = nullptr;
         spawn_system_.Reset();
+        lag_history_.Reset();
         entity_by_network_id_.clear();
         snapshot_scratch_.clear();
         inbound_snapshot_scratch_.clear();
@@ -55,6 +57,7 @@ namespace CoreEngine {
     }
 
     void NetworkReplicator::EndSimulationTick(const SimulationFrame &frame) noexcept {
+        StoreLagCompensationSamples(frame);
         SendOutboundSnapshots(frame);
         spawn_system_.ClearPendingEvents();
     }
@@ -349,5 +352,35 @@ namespace CoreEngine {
 
         ticks_until_next_snapshot_ = snapshot_interval_ticks_ > 0 ? snapshot_interval_ticks_ - 1u : 0u;
         return true;
+    }
+
+    void NetworkReplicator::StoreLagCompensationSamples(const SimulationFrame &frame) noexcept {
+        if (world_ == nullptr ||
+            (network_system_ != nullptr && network_system_->Session().Role() == NetworkRole::Client)) {
+            return;
+        }
+
+        const double fixed_dt = frame.fixed_delta_time > 0.0f ? frame.fixed_delta_time : (1.0 / 60.0);
+        auto view = world_->View<NetworkIdentityComponent, TransformComponent>();
+        for (const entt::entity entity: view) {
+            const auto &identity = view.get<NetworkIdentityComponent>(entity);
+            if (!identity.IsNetworked()) {
+                continue;
+            }
+
+            const auto &transform = view.get<TransformComponent>(entity);
+            const auto *health = world_->TryGetComponent<HealthComponent>(entity);
+            const auto *capture = world_->TryGetComponent<CaptureStateComponent>(entity);
+            lag_history_.Store(LagCompensationSample{
+                .entity_id = identity.network_id,
+                .server_tick = frame.tick,
+                .server_time = static_cast<double>(frame.tick) * fixed_dt,
+                .position = transform.Position(),
+                .rotation = transform.Rotation(),
+                .half_extents = {0.5f, 0.9f, 0.5f},
+                .alive = health == nullptr || health->alive,
+                .captured = capture != nullptr && capture->captured,
+            });
+        }
     }
 } // namespace CoreEngine

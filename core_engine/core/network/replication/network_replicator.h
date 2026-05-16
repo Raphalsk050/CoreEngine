@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core/ecs/node.h"
+#include "core/network/lag_compensation/lag_compensation_history.h"
 #include "core/network/replication/interest_management_system.h"
 #include "core/network/replication/network_snapshot_applier.h"
 #include "core/network/replication/network_snapshot_builder.h"
@@ -85,6 +86,10 @@ namespace CoreEngine {
             return stats_;
         }
 
+        [[nodiscard]] const LagCompensationHistory &LagHistory() const noexcept {
+            return lag_history_;
+        }
+
     private:
         void ApplyInboundSnapshots(const SimulationFrame &frame) noexcept;
 
@@ -96,6 +101,8 @@ namespace CoreEngine {
         void ApplyTransformSnapshots(std::span<const NetworkTransformSnapshot> snapshots,
                                      const SimulationFrame &frame) noexcept;
 
+        void StoreLagCompensationSamples(const SimulationFrame &frame) noexcept;
+
         [[nodiscard]] bool ShouldSendSnapshot() noexcept;
 
         NetworkSystem *network_system_ = nullptr;
@@ -105,6 +112,7 @@ namespace CoreEngine {
         InterestManagementSystem interest_management_;
         NetworkSnapshotBuilder snapshot_builder_;
         NetworkSnapshotApplier snapshot_applier_;
+        LagCompensationHistory lag_history_;
         NetworkReplicatorStats stats_;
         std::unordered_map<NetworkEntityId, entt::entity> entity_by_network_id_;
         std::vector<NetworkTransformSnapshot> snapshot_scratch_;
