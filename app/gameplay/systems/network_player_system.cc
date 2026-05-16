@@ -127,8 +127,9 @@ namespace Game {
                 continue;
             }
 
+            const bool is_ai = context.world.HasComponent<CoreEngine::AIStateComponent>(entity);
             const bool should_render_placeholder =
-                !identity.local_authority || identity.owner_peer != CoreEngine::kInvalidPeerId;
+                is_ai || !identity.local_authority || identity.owner_peer != CoreEngine::kInvalidPeerId;
             if (!should_render_placeholder ||
                 context.world.HasComponent<CoreEngine::MeshRendererComponent>(entity)) {
                 continue;
