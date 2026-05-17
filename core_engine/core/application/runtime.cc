@@ -270,6 +270,7 @@ namespace CoreEngine {
         }
 
         render_system_ = std::make_unique<RenderSystem>(std::move(backend), CreateModelImporter());
+        render_system_->SetDebugDrawSystem(debug_draw_system_.get());
 
         RenderDesc desc;
         desc.backend = resolved_render_backend_;

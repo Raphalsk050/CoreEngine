@@ -11,6 +11,7 @@
 #include "core/async/future.h"
 #include "core/assets/i_model_importer.h"
 #include "core/assets/model_asset.h"
+#include "core/debug/debug_draw.h"
 #include "core/ecs/node.h"
 #include "core/render/camera.h"
 #include "core/render/camera_data.h"
@@ -31,6 +32,7 @@ namespace CoreEngine {
     struct CameraComponent;
     struct TransformComponent;
     class DefaultSceneRenderPass;
+    class DebugDrawRenderPass;
 
     struct ModelInstantiationDesc {
         std::string root_name = "Model";
@@ -59,6 +61,8 @@ namespace CoreEngine {
         void BeginImGuiFrame() const;
 
         void RenderFrame(World &world, const FrameClock &frame_clock, float delta_seconds);
+
+        void SetDebugDrawSystem(DebugDrawSystem *debug_draw_system) noexcept;
 
         [[nodiscard]] MeshHandle GetOrCreatePrimitive(PrimitiveType type) override;
 
@@ -146,12 +150,15 @@ namespace CoreEngine {
 
     private:
         friend class DefaultSceneRenderPass;
+        friend class DebugDrawRenderPass;
 
         struct AsyncModelLoadRequest;
         struct ModelRegistry;
         struct UploadedModelResources;
 
         void ExecuteDefaultScenePass(RenderPassContext &context);
+
+        void ExecuteDebugDrawPass(RenderPassContext &context);
 
         void PumpModelUploads();
 
@@ -195,12 +202,15 @@ namespace CoreEngine {
         int surface_height_ = 1;
 
         BatchAccumulator accumulator_;
+        BatchAccumulator debug_accumulator_;
         std::unordered_map<entt::entity, Math::Mat4> world_transform_cache_;
         RenderGraph render_graph_;
         RenderPassHandle default_scene_pass_;
+        RenderPassHandle debug_draw_pass_;
         RenderFrameResources render_frame_resources_;
         std::array<MeshHandle, kPrimitiveCount> primitive_cache_{};
         FrameBufferHandle scene_framebuffer_{};
+        DebugDrawSystem *debug_draw_system_ = nullptr;
         bool initialized_ = false;
     };
 } // namespace CoreEngine

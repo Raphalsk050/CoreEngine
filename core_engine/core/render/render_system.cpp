@@ -23,6 +23,7 @@
 #include "core/log/logger.h"
 #include "core/render/material.h"
 #include "core/render/primitives.h"
+#include "core/render/render_pass/debug_draw_render_pass.h"
 #include "core/render/render_pass/default_scene_render_pass.h"
 
 namespace CoreEngine {
@@ -164,6 +165,30 @@ namespace CoreEngine {
             cache.emplace(entity, world_matrix);
             return world_matrix;
         }
+
+        [[nodiscard]] Math::Quat RotationFromForward(Math::Vec3 direction) noexcept {
+            constexpr float kDirectionEpsilon = 1.0e-6f;
+            if (Math::LengthSquared(direction) <= kDirectionEpsilon) {
+                return {};
+            }
+
+            direction = Math::Normalize(direction);
+            constexpr Math::Vec3 forward{0.0f, 0.0f, 1.0f};
+            const float dot = Math::Clamp(Math::Dot(forward, direction), -1.0f, 1.0f);
+            if (dot > 0.9999f) {
+                return {};
+            }
+            if (dot < -0.9999f) {
+                return Math::AngleAxis(Math::Pi, Math::Vec3{0.0f, 1.0f, 0.0f});
+            }
+
+            const Math::Vec3 axis = Math::Normalize(Math::Cross(forward, direction));
+            return Math::AngleAxis(std::acos(dot), axis);
+        }
+
+        [[nodiscard]] Math::Vec3 Doubled(const Math::Vec3 &value) noexcept {
+            return {value.x * 2.0f, value.y * 2.0f, value.z * 2.0f};
+        }
     }
 
     //clang-format off
@@ -212,6 +237,7 @@ namespace CoreEngine {
         if (initialized_) {
             initialized_ = CreateSceneFrameBuffer();
             default_scene_pass_ = render_graph_.AddPass(std::make_unique<DefaultSceneRenderPass>(*this));
+            debug_draw_pass_ = render_graph_.AddPass(std::make_unique<DebugDrawRenderPass>(*this));
         }
 
         return initialized_;
@@ -263,6 +289,10 @@ namespace CoreEngine {
         render_graph_.Execute(RenderPassStage::Present, pass_context);
 
         backend_->EndFrame();
+    }
+
+    void RenderSystem::SetDebugDrawSystem(DebugDrawSystem *debug_draw_system) noexcept {
+        debug_draw_system_ = debug_draw_system;
     }
 
     MeshHandle RenderSystem::GetOrCreatePrimitive(PrimitiveType type) {
@@ -868,6 +898,7 @@ namespace CoreEngine {
 
     void RenderSystem::Shutdown() {
         default_scene_pass_ = {};
+        debug_draw_pass_ = {};
         render_graph_.Clear(backend_.get());
 
         DestroyAllModels();
@@ -942,6 +973,76 @@ namespace CoreEngine {
                                       context.GetFrameBufferDepthView(scene_framebuffer_));
 
         for (const RenderBatch &batch: accumulator_.Batches()) {
+            context.SubmitBatch(batch);
+        }
+    }
+
+    void RenderSystem::ExecuteDebugDrawPass(RenderPassContext &context) {
+        if (debug_draw_system_ == nullptr || !scene_framebuffer_.IsValid()) {
+            return;
+        }
+
+        const std::span<const DebugDrawCommand> commands = debug_draw_system_->Commands();
+        if (commands.empty()) {
+            return;
+        }
+
+        const MeshHandle cube_mesh = GetOrCreatePrimitive(PrimitiveType::Cube);
+        const MeshHandle sphere_mesh = GetOrCreatePrimitive(PrimitiveType::Sphere);
+        const MeshHandle fallback_sphere_mesh = sphere_mesh.IsValid() ? sphere_mesh : cube_mesh;
+        if (!cube_mesh.IsValid()) {
+            return;
+        }
+
+        debug_accumulator_.Reserve(commands.size());
+        debug_accumulator_.Clear();
+
+        for (const DebugDrawCommand &command: commands) {
+            const MaterialHandle material =
+                Material::Unlit(UnlitProps{.color = command.style.color}).Resolve(*this);
+            if (!material.IsValid()) {
+                continue;
+            }
+
+            switch (command.shape) {
+                case DebugDrawShapeType::Line: {
+                    const Math::Vec3 delta = command.end - command.start;
+                    const float length = Math::Length(delta);
+                    if (length <= 1.0e-5f) {
+                        continue;
+                    }
+
+                    constexpr float kLineThickness = 0.025f;
+                    const Math::Vec3 center = command.start + delta * 0.5f;
+                    const Math::Quat rotation = RotationFromForward(delta);
+                    const Math::Vec3 scale{kLineThickness, kLineThickness, length};
+                    debug_accumulator_.Add(material, cube_mesh, Math::ComposeTransform(center, rotation, scale));
+                    break;
+                }
+
+                case DebugDrawShapeType::Box: {
+                    debug_accumulator_.Add(material,
+                                           cube_mesh,
+                                           Math::ComposeTransform(command.center,
+                                                                  command.rotation,
+                                                                  Doubled(command.half_extents)));
+                    break;
+                }
+
+                case DebugDrawShapeType::Sphere: {
+                    const float diameter = command.radius * 2.0f;
+                    debug_accumulator_.Add(material,
+                                           fallback_sphere_mesh,
+                                           Math::ComposeTransform(command.center,
+                                                                  {},
+                                                                  Math::Vec3{diameter, diameter, diameter}));
+                    break;
+                }
+            }
+        }
+
+        context.SetFrameBuffer(scene_framebuffer_);
+        for (const RenderBatch &batch: debug_accumulator_.Batches()) {
             context.SubmitBatch(batch);
         }
     }
