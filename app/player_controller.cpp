@@ -7,9 +7,7 @@
 #include "core/debug/debug.h"
 #include "core/input/input_system.h"
 #include "core/log/log.h"
-#include "core/network/network_system.h"
-#include "core/network/prediction/network_prediction_system.h"
-#include "core/simulation/simulation_frame.h"
+#include "core/network/player/network_player_system.h"
 
 namespace Game {
     namespace Actions {
@@ -48,36 +46,23 @@ namespace Game {
         }
 
         latest_command_ = BuildCommand(frame);
-        network_input_fire_held_ = frame.input_system.IsActionDown(Actions::Fire);
-        network_input_reload_pressed_ = frame.input_system.WasActionPressed(Actions::Reload);
-        network_input_interact_pressed_ = frame.input_system.WasActionPressed(Actions::Interact);
-        network_input_capture_held_ = frame.input_system.IsActionDown(Actions::Capture);
+
+        CoreEngine::NetworkPlayerInputState network_input;
+        network_input.movement = latest_command_.movement_input;
+        network_input.look_yaw = camera_controller_ != nullptr ? camera_controller_->YawRadians() : 0.0f;
+        network_input.look_pitch = camera_controller_ != nullptr ? camera_controller_->PitchRadians() : 0.0f;
+        network_input.selected_slot = 0;
+        network_input.SetButton(CoreEngine::PlayerInputButton::Jump, latest_command_.jump_pressed);
+        network_input.SetButton(CoreEngine::PlayerInputButton::Sprint, latest_command_.run_held);
+        network_input.SetButton(CoreEngine::PlayerInputButton::Fire, frame.input_system.IsActionDown(Actions::Fire));
+        network_input.SetButton(CoreEngine::PlayerInputButton::Reload, frame.input_system.WasActionPressed(Actions::Reload));
+        network_input.SetButton(CoreEngine::PlayerInputButton::Interact, frame.input_system.WasActionPressed(Actions::Interact));
+        network_input.SetButton(CoreEngine::PlayerInputButton::Capture, frame.input_system.IsActionDown(Actions::Capture));
+        frame.network_players.SetLocalInput(network_input);
 
         if (camera_controller_ != nullptr) {
             camera_controller_->Update(frame.delta_time);
         }
-    }
-
-    void PlayerController::FixedUpdate(const CoreEngine::SimulationFrame &frame,
-                                       CoreEngine::NetworkPredictionSystem &prediction_system,
-                                       CoreEngine::NetworkSystem &network_system,
-                                       CoreEngine::NetworkEntityId local_network_id) {
-        if (player_pawn_ == nullptr) {
-            return;
-        }
-
-        CoreEngine::PlayerInputCommand command = BuildInputCommand(frame, prediction_system);
-        const CoreEngine::NetworkRole role = network_system.Session().Role();
-
-        if (role == CoreEngine::NetworkRole::Client) {
-            player_pawn_->ApplyPlayerInputCommand(command, frame.fixed_delta_time);
-            prediction_system.RecordPrediction(command, player_pawn_->BuildMovementState());
-            network_system.SendPlayerInputCommands(prediction_system.BuildRedundantCommandBatch(command));
-            return;
-        }
-
-        player_pawn_->ApplyPlayerInputCommand(command, frame.fixed_delta_time);
-        network_system.SubmitLocalPlayerInputCommand(local_network_id, command);
     }
 
     void PlayerController::Possess(IPossessable &possessable) {
@@ -145,42 +130,6 @@ namespace Game {
             .world_move = world_move,
             .jump_pressed = frame.input_system.WasActionPressed(Actions::Jump),
             .run_held = frame.input_system.IsActionDown(Actions::Run),
-        };
-    }
-
-    CoreEngine::PlayerInputCommand PlayerController::BuildInputCommand(
-        const CoreEngine::SimulationFrame &frame,
-        CoreEngine::NetworkPredictionSystem &prediction_system) const noexcept {
-        std::uint32_t buttons = 0;
-        if (latest_command_.jump_pressed) {
-            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Jump);
-        }
-        if (latest_command_.run_held) {
-            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Sprint);
-        }
-        if (network_input_fire_held_) {
-            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Fire);
-        }
-        if (network_input_reload_pressed_) {
-            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Reload);
-        }
-        if (network_input_interact_pressed_) {
-            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Interact);
-        }
-        if (network_input_capture_held_) {
-            buttons |= static_cast<std::uint32_t>(CoreEngine::PlayerInputButton::Capture);
-        }
-
-        return CoreEngine::PlayerInputCommand{
-            .client_tick = frame.tick,
-            .sequence = prediction_system.NextSequence(),
-            .last_received_server_snapshot_tick = 0,
-            .move_x = latest_command_.movement_input.x,
-            .move_y = latest_command_.movement_input.y,
-            .look_yaw = camera_controller_ != nullptr ? camera_controller_->YawRadians() : 0.0f,
-            .look_pitch = camera_controller_ != nullptr ? camera_controller_->PitchRadians() : 0.0f,
-            .buttons = buttons,
-            .selected_slot = 0,
         };
     }
 

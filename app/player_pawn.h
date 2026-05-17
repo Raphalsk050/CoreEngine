@@ -2,19 +2,17 @@
 
 #include "camera_arm_component.h"
 #include "i_possessable.h"
-#include "movement_component.h"
 #include "core/ecs/node.h"
 #include "core/ecs/components/camera_component.h"
 #include "core/ecs/components/transform_component.h"
-#include "core/network/prediction/player_input_command.h"
-#include "core/network/prediction/prediction_buffer.h"
+#include "core/network/player/networked_player_movement.h"
 
 namespace Game {
     class PlayerPawn final : public IPossessable {
     public:
         PlayerPawn() = default;
 
-        explicit PlayerPawn(CoreEngine::Node node, MovementComponent movement = {},
+        explicit PlayerPawn(CoreEngine::Node node, CoreEngine::NetworkedPlayerMovementComponent movement = {},
                             CameraArmComponent camera_arm_component = {}
 
         );
@@ -24,10 +22,6 @@ namespace Game {
         void OnUnpossessed() override;
 
         void ApplyPlayerCommand(const PlayerCommand &command, float delta_time) override;
-
-        void ApplyPlayerInputCommand(const CoreEngine::PlayerInputCommand &command, float fixed_delta_time);
-
-        [[nodiscard]] CoreEngine::PredictedMovementState BuildMovementState() const noexcept;
 
         [[nodiscard]] CoreEngine::Node &Node() noexcept;
 
@@ -43,7 +37,7 @@ namespace Game {
                                    CoreEngine::Math::Vec3 move) noexcept;
 
         CoreEngine::Node node_{};
-        MovementComponent movement_{};
+        CoreEngine::NetworkedPlayerMovementComponent movement_{};
         CameraArmComponent camera_arm_{};
         bool possessed_ = false;
     };

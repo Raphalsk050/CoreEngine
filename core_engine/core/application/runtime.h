@@ -4,6 +4,7 @@
 
 #include "application.h"
 #include "core/application/frame_context.h"
+#include "core/debug/debug_draw.h"
 #include "core/ecs/world_access.h"
 #include "core/log/logger.h"
 #include "core/log/sink/console_sink.h"
@@ -11,10 +12,10 @@
 #include "engine.h"
 #include "core/audio/audio_system.h"
 #include "core/input/input_system.h"
+#include "core/network/multiplayer_system.h"
+#include "core/network/player/network_player_system.h"
 #include "core/platform/i_platform_services.h"
 #include "core/render/render_system.h"
-#include "core/network/prediction/network_prediction_system.h"
-#include "core/network/replication/network_replicator.h"
 #include "core/simulation/simulation_scheduler.h"
 #include "core/time/frame_clock.h"
 #include "core/window/window_system.h"
@@ -67,14 +68,15 @@ namespace CoreEngine {
         FrameClock frame_clock_;
         std::unique_ptr<Logger> logger_;
         std::unique_ptr<World> world_;
+        std::unique_ptr<DebugDrawSystem> debug_draw_system_;
         std::shared_ptr<ConsoleSink> console_sink_;
         std::unique_ptr<WindowSystem> window_system_;
         std::unique_ptr<AudioSystem> audio_system_;
         std::unique_ptr<InputSystem> input_system_;
         std::unique_ptr<OnlineSystem> online_system_;
         std::unique_ptr<SimulationScheduler> simulation_scheduler_;
-        std::unique_ptr<NetworkReplicator> network_replicator_;
-        std::unique_ptr<NetworkPredictionSystem> prediction_system_;
+        std::unique_ptr<MultiplayerSystem> multiplayer_system_;
+        std::unique_ptr<NetworkPlayerSystem> network_player_system_;
         std::unique_ptr<RenderSystem> render_system_;
         std::unique_ptr<IPlatformServices> platform_services_;
         RenderBackendType resolved_render_backend_ = RenderBackendType::None;

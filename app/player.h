@@ -2,15 +2,13 @@
 #include "player_controller.h"
 #include "player_pawn.h"
 #include "third_person_camera_controller.h"
-#include "core/network/replication/network_identity_component.h"
+#include "core/network/player/network_player_system.h"
 #include "core/render/render_handle.h"
 
 namespace CoreEngine {
     struct EngineContext;
     struct FrameContext;
-    struct SimulationFrame;
-    class NetworkPredictionSystem;
-    class NetworkSystem;
+    class MultiplayerSystem;
     class RenderSystem;
     class World;
 }
@@ -24,11 +22,18 @@ namespace Game {
 
         void Update(const CoreEngine::FrameContext &frame);
 
-        void FixedUpdate(const CoreEngine::SimulationFrame &frame);
-
         void Shutdown();
 
     private:
+        [[nodiscard]] static CoreEngine::NetworkedPlayerMovementComponent MakeDefaultMovementComponent() noexcept;
+
+        static void InitializeNetworkPlayerEntity(CoreEngine::NetworkPlayerEntityInitContext &context,
+                                                  void *user_data);
+
+        void ConfigureNetworkPlayerNode(CoreEngine::NetworkPlayerEntityInitContext &context);
+
+        void AttachRemotePlayerModel(CoreEngine::World &world, CoreEngine::Node player_node);
+
         void CreatePawn(CoreEngine::World &world);
 
         void CreateCamera(CoreEngine::World &world);
@@ -43,10 +48,8 @@ namespace Game {
         PlayerPawn player_pawn_;
         ThirdPersonCameraController third_person_camera_controller_;
         PlayerController player_controller_;
-        CoreEngine::NetworkPredictionSystem *prediction_system_ = nullptr;
-        CoreEngine::NetworkSystem *network_system_ = nullptr;
-        CoreEngine::NetworkEntityId network_entity_id_ = 0;
-        std::uint32_t last_reconciled_input_sequence_ = 0;
+        CoreEngine::NetworkPlayerSystem *network_players_ = nullptr;
+        CoreEngine::RenderSystem *render_system_ = nullptr;
         bool initialized_ = false;
     };
 } // namespace Game

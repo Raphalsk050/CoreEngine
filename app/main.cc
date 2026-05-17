@@ -12,7 +12,6 @@
 #include "gameplay/systems/health_death_system.h"
 #include "gameplay/systems/inventory_system.h"
 #include "gameplay/systems/match_session_system.h"
-#include "gameplay/systems/network_player_system.h"
 #include "gameplay/systems/pve_ai_system.h"
 #include "gameplay/systems/target_chain_system.h"
 #include "player.h"
@@ -25,6 +24,7 @@
 #include "core/network/replication/replicated_state_types.h"
 #include "core/input/input_codes.h"
 #include "core/input/input_system.h"
+#include "core/network/multiplayer_system.h"
 #include "core/online/steam/steam_multiplayer_debug_panel.h"
 #include "core/render/material.h"
 #include "core/render/primitive_type.h"
@@ -42,8 +42,7 @@ public:
 
     void Init(const CoreEngine::EngineContext &context) override {
         world_ = &context.world;
-        network_system_ = &context.network_system;
-        network_replicator_ = &context.network_replicator;
+        multiplayer_ = &context.multiplayer;
 
         player_.Initialize(context);
 
@@ -93,25 +92,20 @@ public:
         plane_node_.SetRotation(
             CoreEngine::Math::AngleAxis(CoreEngine::Math::Deg2Rad(180.0f), CoreEngine::Math::Vec3(0.0f, 0.f, 1.f)));
 
-        network_player_system_.Initialize(context.render_system);
         ApplyCursorMode(context.window_system, CoreEngine::WindowCursorMode::CURSOR_NORMAL);
     }
 
     void FixedUpdate(const CoreEngine::SimulationFrame &frame) override {
-        player_.FixedUpdate(frame);
-
-        if (world_ == nullptr || network_system_ == nullptr || network_replicator_ == nullptr) {
+        if (world_ == nullptr || multiplayer_ == nullptr) {
             return;
         }
 
         const Game::GameplaySystemContext context{
             .world = *world_,
-            .network_system = *network_system_,
-            .network_replicator = *network_replicator_,
+            .multiplayer = *multiplayer_,
             .frame = frame,
         };
 
-        network_player_system_.FixedUpdate(context);
         match_session_system_.FixedUpdate(context);
         combat_system_.FixedUpdate(context);
         armor_system_.FixedUpdate(context);
@@ -155,11 +149,9 @@ public:
 
     void Shutdown(const CoreEngine::EngineContext &context) override {
         (void) context;
-        network_player_system_.Shutdown();
         player_.Shutdown();
         world_ = nullptr;
-        network_system_ = nullptr;
-        network_replicator_ = nullptr;
+        multiplayer_ = nullptr;
     }
 
 private:
@@ -288,7 +280,6 @@ private:
     }
 
     Game::Player player_;
-    Game::NetworkPlayerSystem network_player_system_;
     Game::MatchSessionSystem match_session_system_;
     Game::TargetChainSystem target_chain_system_;
     Game::BountyBeaconSystem bounty_beacon_system_;
@@ -303,8 +294,7 @@ private:
     Game::PvEAISystem pve_ai_system_;
     CoreEngine::SteamMultiplayerDebugPanel steam_multiplayer_debug_panel_;
     CoreEngine::World *world_ = nullptr;
-    CoreEngine::NetworkSystem *network_system_ = nullptr;
-    CoreEngine::NetworkReplicator *network_replicator_ = nullptr;
+    CoreEngine::MultiplayerSystem *multiplayer_ = nullptr;
     CoreEngine::Node plane_node_;
     CoreEngine::Node secondary_camera_node_;
     CoreEngine::TextureHandle floor_texture_;

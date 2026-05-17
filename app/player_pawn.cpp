@@ -1,12 +1,11 @@
 #include "player_pawn.h"
 
-#include "player_movement_simulation.h"
 #include "core/math/math.h"
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/world.h"
 
 namespace Game {
-    PlayerPawn::PlayerPawn(CoreEngine::Node node, MovementComponent movement,
+    PlayerPawn::PlayerPawn(CoreEngine::Node node, CoreEngine::NetworkedPlayerMovementComponent movement,
                            CameraArmComponent camera_arm_component)
         : node_(node), movement_(movement), camera_arm_(camera_arm_component) {
     }
@@ -45,32 +44,6 @@ namespace Game {
         RotateThroughMovement(delta_time, transform, move);
     }
 
-    void PlayerPawn::ApplyPlayerInputCommand(const CoreEngine::PlayerInputCommand &command, float fixed_delta_time) {
-        if (!possessed_ || !node_.IsValid() || fixed_delta_time <= 0.0f) {
-            return;
-        }
-
-        auto *transform = node_.TryGetComponent<CoreEngine::TransformComponent>();
-        if (transform == nullptr) {
-            return;
-        }
-
-        PlayerMovementSimulation::ApplyInputCommand(*transform, movement_, command, fixed_delta_time);
-    }
-
-    CoreEngine::PredictedMovementState PlayerPawn::BuildMovementState() const noexcept {
-        if (!node_.IsValid()) {
-            return {};
-        }
-
-        const auto *transform = node_.TryGetComponent<CoreEngine::TransformComponent>();
-        if (transform == nullptr) {
-            return {};
-        }
-
-        return PlayerMovementSimulation::BuildMovementState(*transform);
-    }
-
     CoreEngine::Node &PlayerPawn::Node() noexcept {
         return node_;
     }
@@ -89,11 +62,11 @@ namespace Game {
         }
 
         switch (movement_.default_movement_type) {
-            case MovementType::Crouch:
+            case CoreEngine::NetworkedPlayerMovementType::Crouch:
                 return movement_.crouch_speed;
-            case MovementType::Walk:
+            case CoreEngine::NetworkedPlayerMovementType::Walk:
                 return movement_.walk_speed;
-            case MovementType::Run:
+            case CoreEngine::NetworkedPlayerMovementType::Run:
                 return movement_.run_speed;
         }
 

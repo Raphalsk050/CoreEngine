@@ -70,13 +70,13 @@ namespace CoreEngine {
 
         EngineContext engineContext{
             .world = *world_,
+            .debug_draw = *debug_draw_system_,
             .audio_system = *audio_system_,
             .input_system = *input_system_,
             .online_system = *online_system_,
-            .network_system = online_system_->Network(),
+            .multiplayer = *multiplayer_system_,
+            .network_players = *network_player_system_,
             .simulation_scheduler = *simulation_scheduler_,
-            .network_replicator = *network_replicator_,
-            .prediction_system = *prediction_system_,
             .window_system = *window_system_,
             .render_system = *render_system_,
         };
@@ -87,16 +87,17 @@ namespace CoreEngine {
 
         while (!IsShutdownRequested()) {
             const float deltaTime = frame_clock_.TickSeconds();
+            debug_draw_system_->BeginFrame(deltaTime);
             FrameContext frameContext{
                 EngineContext{
                     .world = *world_,
+                    .debug_draw = *debug_draw_system_,
                     .audio_system = *audio_system_,
                     .input_system = *input_system_,
                     .online_system = *online_system_,
-                    .network_system = online_system_->Network(),
+                    .multiplayer = *multiplayer_system_,
+                    .network_players = *network_player_system_,
                     .simulation_scheduler = *simulation_scheduler_,
-                    .network_replicator = *network_replicator_,
-                    .prediction_system = *prediction_system_,
                     .window_system = *window_system_,
                     .render_system = *render_system_,
                 },
@@ -108,11 +109,14 @@ namespace CoreEngine {
             simulation_scheduler_->BeginFrame(deltaTime);
             SimulationFrame simulation_frame;
             while (simulation_scheduler_->ConsumeFixedFrame(simulation_frame)) {
-                network_replicator_->BeginSimulationTick(simulation_frame);
+                multiplayer_system_->BeginSimulationTick(simulation_frame);
+                network_player_system_->FixedUpdate(simulation_frame);
                 app.FixedUpdate(simulation_frame);
-                network_replicator_->EndSimulationTick(simulation_frame);
+                multiplayer_system_->EndSimulationTick(simulation_frame);
             }
+            multiplayer_system_->UpdatePresentation(deltaTime);
             render_system_->BeginImGuiFrame();
+            multiplayer_system_->CaptureLocalInputSample(*simulation_scheduler_);
             app.Update(frameContext);
             online_system_->EndFrame();
             render_system_->RenderFrame(*world_, frame_clock_, deltaTime);
@@ -170,6 +174,7 @@ namespace CoreEngine {
 
     void Runtime::InitializeWorld() {
         world_ = std::make_unique<World>();
+        debug_draw_system_ = std::make_unique<DebugDrawSystem>();
         WorldAccess::Bind(*this);
     }
 
@@ -244,9 +249,11 @@ namespace CoreEngine {
         simulation_scheduler_ = std::make_unique<SimulationScheduler>();
         simulation_scheduler_->Configure(FixedTickClockDesc{});
 
-        prediction_system_ = std::make_unique<NetworkPredictionSystem>();
-        network_replicator_ = std::make_unique<NetworkReplicator>();
-        network_replicator_->Initialize(online_system_->Network(), *world_);
+        multiplayer_system_ = std::make_unique<MultiplayerSystem>();
+        multiplayer_system_->Initialize(online_system_->Network(), *world_);
+
+        network_player_system_ = std::make_unique<NetworkPlayerSystem>();
+        network_player_system_->Initialize(*multiplayer_system_, *world_);
     }
 
     bool Runtime::InitializeRenderBackend() {
@@ -314,11 +321,14 @@ namespace CoreEngine {
         }
 
         if (online_system_ != nullptr) {
-            if (network_replicator_ != nullptr) {
-                network_replicator_->Shutdown();
-                network_replicator_.reset();
+            if (network_player_system_ != nullptr) {
+                network_player_system_->Shutdown();
+                network_player_system_.reset();
             }
-            prediction_system_.reset();
+            if (multiplayer_system_ != nullptr) {
+                multiplayer_system_->Shutdown();
+                multiplayer_system_.reset();
+            }
             simulation_scheduler_.reset();
             online_system_->Shutdown();
             online_system_.reset();
@@ -344,6 +354,7 @@ namespace CoreEngine {
         }
 
         world_.reset();
+        debug_draw_system_.reset();
 
         Log::Unbind();
         console_sink_.reset();
