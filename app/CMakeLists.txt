@@ -15,7 +15,11 @@ file(GLOB_RECURSE APP_HEADERS CONFIGURE_DEPENDS
 list(FILTER APP_SOURCES EXCLUDE REGEX ".*/(build|cmake-build|out|third_party)/.*")
 list(FILTER APP_HEADERS EXCLUDE REGEX ".*/(build|cmake-build|out|third_party)/.*")
 
-add_executable(${PROJECT_NAME})
+add_executable(${PROJECT_NAME}
+        game/bounty_hunters_game.cpp
+        game/bounty_hunters_game.h
+        game/player/player.cpp
+        game/player/player.h)
 target_sources(${PROJECT_NAME} PRIVATE ${APP_SOURCES} ${APP_HEADERS})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE CoreEngine)
