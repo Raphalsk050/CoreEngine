@@ -6,6 +6,7 @@
 #include <string>
 
 #include "core/network/network_message.h"
+#include "core/network/network_stats.h"
 
 namespace CoreEngine {
     /**
@@ -27,6 +28,8 @@ namespace CoreEngine {
         virtual void PollEvents(NetworkEventQueue &out_events) = 0;
 
         virtual bool Send(PeerId peer, std::span<const std::byte> payload, SendMode mode) = 0;
+
+        [[nodiscard]] virtual bool QueryMetrics(PeerId peer, NetworkConnectionMetrics &out_metrics) const = 0;
 
         [[nodiscard]] virtual std::string DetailedConnectionStatus(PeerId peer) const = 0;
     };

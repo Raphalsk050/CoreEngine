@@ -6,8 +6,8 @@
 
 namespace CoreEngine {
     struct FixedTickClockDesc {
-        std::uint32_t tick_rate = 60;
-        std::uint32_t snapshot_rate = 20;
+        std::uint32_t tick_rate = 128;
+        std::uint32_t snapshot_rate = 64;
         double max_accumulated_seconds = 0.25;
     };
 
@@ -44,11 +44,11 @@ namespace CoreEngine {
         }
 
     private:
-        std::uint32_t tick_rate_ = 60;
-        std::uint32_t snapshot_rate_ = 20;
-        std::uint32_t snapshot_interval_ticks_ = 3;
+        std::uint32_t tick_rate_ = 128;
+        std::uint32_t snapshot_rate_ = 64;
+        std::uint32_t snapshot_interval_ticks_ = 2;
         std::uint32_t tick_ = 0;
-        float fixed_delta_time_ = 1.0f / 60.0f;
+        float fixed_delta_time_ = 1.0f / 128.0f;
         double accumulated_seconds_ = 0.0;
         double max_accumulated_seconds_ = 0.25;
     };

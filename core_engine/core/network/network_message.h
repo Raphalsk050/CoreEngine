@@ -24,6 +24,7 @@ namespace CoreEngine {
         PeerConnecting,
         PeerConnected,
         PeerDisconnected,
+        LobbyOwnerChanged,
         PacketReceived,
         AuthAccepted,
         AuthRejected,

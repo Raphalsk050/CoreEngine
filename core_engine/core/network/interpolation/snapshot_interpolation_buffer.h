@@ -17,6 +17,23 @@ namespace CoreEngine {
         std::uint32_t component_mask = 0;
     };
 
+    [[nodiscard]] inline Math::Vec3 HermitePosition(const SnapshotSample &previous,
+                                                    const SnapshotSample &next,
+                                                    float alpha) noexcept {
+        const float t2 = alpha * alpha;
+        const float t3 = t2 * alpha;
+        const float h00 = (2.0f * t3) - (3.0f * t2) + 1.0f;
+        const float h10 = t3 - (2.0f * t2) + alpha;
+        const float h01 = (-2.0f * t3) + (3.0f * t2);
+        const float h11 = t3 - t2;
+        const float duration = static_cast<float>(next.server_time - previous.server_time);
+
+        return (previous.position * h00) +
+               (previous.linear_velocity * (duration * h10)) +
+               (next.position * h01) +
+               (next.linear_velocity * (duration * h11));
+    }
+
     /**
      * @brief Fixed-size temporal buffer for remote entity snapshot samples.
      *
@@ -68,7 +85,7 @@ namespace CoreEngine {
                     out_sample = SnapshotSample{
                         .server_tick = next.server_tick,
                         .server_time = render_time,
-                        .position = Math::Lerp(previous.position, next.position, alpha),
+                        .position = HermitePosition(previous, next, alpha),
                         .rotation = Math::Slerp(previous.rotation, next.rotation, alpha),
                         .scale = Math::Lerp(previous.scale, next.scale, alpha),
                         .linear_velocity = Math::Lerp(previous.linear_velocity, next.linear_velocity, alpha),

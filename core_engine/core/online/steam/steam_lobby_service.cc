@@ -215,7 +215,15 @@ namespace CoreEngine {
             return;
         }
 
+        const SteamId previous_owner = lobby_owner_id_;
         UpdateMembers();
+        if (previous_owner != 0 && lobby_owner_id_ != 0 && previous_owner != lobby_owner_id_) {
+            QueueEvent(NetworkEvent{
+                .type = NetworkEventType::LobbyOwnerChanged,
+                .lobby_id = current_lobby_id_,
+                .lobby_owner_id = lobby_owner_id_,
+            });
+        }
     }
 #endif
 } // namespace CoreEngine

@@ -1,7 +1,7 @@
 #include "gameplay/systems/match_session_system.h"
 
 #include "core/ecs/world.h"
-#include "core/network/network_system.h"
+#include "core/network/multiplayer_system.h"
 #include "core/network/replication/network_identity_component.h"
 #include "core/network/replication/replicated_state_types.h"
 
@@ -19,7 +19,7 @@ namespace Game {
     }
 
     void MatchSessionSystem::FixedUpdate(const GameplaySystemContext &context) noexcept {
-        if (context.network_system.Session().Role() == CoreEngine::NetworkRole::Client) {
+        if (context.multiplayer.Role() == CoreEngine::NetworkRole::Client) {
             return;
         }
 

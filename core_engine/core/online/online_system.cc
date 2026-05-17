@@ -108,6 +108,10 @@ namespace CoreEngine {
         }
     }
 
+    std::string OnlineSystem::ConnectionDiagnosticsText() const {
+        return network_ != nullptr ? network_->ConnectionDiagnosticsText() : std::string{};
+    }
+
     NetworkSystem &OnlineSystem::Network() noexcept {
         return *network_;
     }

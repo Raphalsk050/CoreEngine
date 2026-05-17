@@ -41,6 +41,6 @@ namespace CoreEngine {
 
     private:
         SnapshotInterpolationStats stats_;
-        double interpolation_delay_seconds_ = 0.1;
+        double interpolation_delay_seconds_ = 0.035;
     };
 } // namespace CoreEngine

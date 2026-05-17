@@ -25,6 +25,10 @@ namespace CoreEngine {
         return transport_.Send(peer, payload, mode);
     }
 
+    bool SteamP2PTransportAdapter::QueryMetrics(PeerId peer, NetworkConnectionMetrics &out_metrics) const {
+        return transport_.QueryMetrics(peer, out_metrics);
+    }
+
     std::string SteamP2PTransportAdapter::DetailedConnectionStatus(PeerId peer) const {
         return transport_.DetailedConnectionStatus(peer);
     }

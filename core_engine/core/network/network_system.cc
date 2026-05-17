@@ -9,10 +9,14 @@
 #include "core/online/steam/steam_lobby_service.h"
 #include "core/online/steam/steam_online_system.h"
 
+#include <algorithm>
+#include <chrono>
 #include <random>
 
 namespace CoreEngine {
     namespace {
+        constexpr std::uint64_t kPingIntervalMs = 500;
+
         [[nodiscard]] constexpr std::uint32_t HashProtocolString(const char *value) noexcept {
             std::uint32_t hash = 2166136261u;
             while (*value != '\0') {
@@ -22,7 +26,7 @@ namespace CoreEngine {
             return hash;
         }
 
-        constexpr std::uint32_t kNetworkBuildHash = HashProtocolString("CoreEngine.BountyHunters.Protocol.v1");
+        constexpr std::uint32_t kNetworkBuildHash = HashProtocolString("CoreEngine.BountyHunters.Protocol.v3");
 
         [[nodiscard]] std::uint64_t MakeHandshakeNonce() {
             std::random_device random;
@@ -30,6 +34,30 @@ namespace CoreEngine {
             const std::uint64_t low = static_cast<std::uint64_t>(random());
             return high | low;
         }
+
+        [[nodiscard]] std::uint64_t NowMilliseconds() noexcept {
+            return static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count());
+        }
+
+        [[nodiscard]] const char *PeerStateName(NetworkPeerState state) noexcept {
+            switch (state) {
+                case NetworkPeerState::Disconnected:
+                    return "Disconnected";
+                case NetworkPeerState::Connecting:
+                    return "Connecting";
+                case NetworkPeerState::Authenticating:
+                    return "Authenticating";
+                case NetworkPeerState::Connected:
+                    return "Connected";
+                case NetworkPeerState::Closing:
+                    return "Closing";
+            }
+
+            return "Unknown";
+        }
+
     }
 
     NetworkSystem::NetworkSystem(SteamOnlineSystem &online_system)
@@ -76,9 +104,14 @@ namespace CoreEngine {
         current_events_.clear();
         input_commands_.clear();
         last_input_sequence_by_peer_.clear();
+        last_received_sequence_by_peer_.clear();
+        pending_ping_sent_time_by_peer_.clear();
+        last_protocol_rtt_by_peer_.clear();
+        sent_packet_timing_by_sequence_.clear();
         session_.Reset();
         stats_.Reset();
         handshake_nonce_ = 0;
+        next_ping_time_ms_ = 0;
         initialized_ = false;
     }
 
@@ -111,6 +144,9 @@ namespace CoreEngine {
             HandleEvent(event);
             current_events_.push_back(std::move(event));
         }
+
+        SendConnectionPings();
+        RefreshConnectionMetrics();
     }
 
     void NetworkSystem::EndFrame() {
@@ -152,6 +188,22 @@ namespace CoreEngine {
 
         session_.Reset();
         current_events_.clear();
+        input_commands_.clear();
+        last_input_sequence_by_peer_.clear();
+        last_received_sequence_by_peer_.clear();
+        pending_ping_sent_time_by_peer_.clear();
+        last_protocol_rtt_by_peer_.clear();
+        sent_packet_timing_by_sequence_.clear();
+        stats_.ping_ms = -1;
+        stats_.jitter_ms = 0;
+        stats_.protocol_ping_ms = -1;
+        stats_.protocol_jitter_ms = 0;
+        stats_.transport_queue_time_ms = 0;
+        stats_.transport_pending_unreliable_bytes = 0;
+        stats_.transport_pending_reliable_bytes = 0;
+        stats_.transport_send_rate_bytes_per_second = 0;
+        stats_.packet_loss = 0.0f;
+        next_ping_time_ms_ = 0;
     }
 
     bool NetworkSystem::Send(PeerId peer, std::span<const std::byte> payload, SendMode mode) {
@@ -172,15 +224,22 @@ namespace CoreEngine {
             return false;
         }
 
+        const std::uint32_t sequence = NextSequence();
+        const PeerId peer = kHostPeerId;
+        const std::uint64_t now_ms = NowMilliseconds();
         MessageWriter writer;
-        if (!writer.Begin(NetMessageType::InputCommand, NextSequence(), 0, local_tick_) ||
+        if (!writer.Begin(NetMessageType::InputCommand, sequence, LastReceivedSequence(peer), local_tick_) ||
             !WritePlayerInputCommandBatch(writer, commands) ||
             !writer.Finalize()) {
             ++stats_.input_commands_dropped;
             return false;
         }
 
-        return Send(kHostPeerId, writer.Bytes(), SendMode::UnreliableNoDelay);
+        const bool sent = Send(peer, writer.Bytes(), SendMode::UnreliableNoDelay);
+        if (sent) {
+            RecordSentPacket(peer, sequence, now_ms);
+        }
+        return sent;
     }
 
     bool NetworkSystem::SubmitLocalPlayerInputCommand(NetworkEntityId local_entity_id,
@@ -191,6 +250,7 @@ namespace CoreEngine {
 
         input_commands_.push_back(QueuedPlayerInputCommand{
             .peer = kInvalidPeerId,
+            .player_network_id = local_entity_id,
             .remote_user_id = local_entity_id,
             .command = command,
         });
@@ -207,10 +267,12 @@ namespace CoreEngine {
             return false;
         }
 
+        const std::uint32_t sequence = NextSequence();
+        const std::uint64_t now_ms = NowMilliseconds();
         MessageWriter writer(2048);
         NetworkSnapshotBuilder builder;
         NetworkSnapshotBuildResult build_result;
-        if (!writer.Begin(NetMessageType::WorldSnapshot, NextSequence(), 0, server_tick) ||
+        if (!writer.Begin(NetMessageType::WorldSnapshot, sequence, LastReceivedSequence(peer), server_tick) ||
             !builder.BuildTransformSnapshot(
                 NetworkSnapshotBuildDesc{
                     .server_tick = server_tick,
@@ -227,6 +289,7 @@ namespace CoreEngine {
 
         const bool sent = Send(peer, writer.Bytes(), SendMode::UnreliableNoDelay);
         if (sent) {
+            RecordSentPacket(peer, sequence, now_ms);
             ++stats_.snapshots_sent;
             const std::uint64_t previous_count = stats_.snapshots_sent - 1u;
             const auto packet_size = static_cast<float>(writer.Bytes().size());
@@ -253,6 +316,38 @@ namespace CoreEngine {
                 Log::Info("Network", "Peer {} connection status:\n{}", peer.id, status);
             }
         }
+    }
+
+    std::string NetworkSystem::ConnectionDiagnosticsText() const {
+        if (transport_ == nullptr) {
+            return {};
+        }
+
+        std::string output;
+        for (const NetworkPeer &peer: session_.Peers()) {
+            if (peer.state != NetworkPeerState::Connected &&
+                peer.state != NetworkPeerState::Authenticating &&
+                peer.state != NetworkPeerState::Connecting) {
+                continue;
+            }
+
+            if (!output.empty()) {
+                output.append("\n\n");
+            }
+
+            output.append("Peer ");
+            output.append(std::to_string(peer.id));
+            output.append(" steam_id=");
+            output.append(std::to_string(peer.steam_id));
+            output.append(" state=");
+            output.append(PeerStateName(peer.state));
+            output.append("\n");
+
+            const std::string status = transport_->DetailedConnectionStatus(peer.id);
+            output.append(status.empty() ? "No Steam connection diagnostics available." : status);
+        }
+
+        return output;
     }
 
     std::span<const SteamLobbyMember> NetworkSystem::LobbyMembers() const noexcept {
@@ -297,6 +392,28 @@ namespace CoreEngine {
 
             case NetworkEventType::LobbyLeft:
                 LeaveLobby();
+                break;
+
+            case NetworkEventType::LobbyOwnerChanged:
+                if (event.lobby_id == 0 || event.lobby_id != session_.LobbyId()) {
+                    break;
+                }
+
+                if (event.lobby_owner_id == online_system_.LocalSteamId()) {
+                    session_.BeginHostLobby(event.lobby_id, online_system_.LocalSteamId());
+                    if (transport_ != nullptr &&
+                        !transport_->StartHost(0, static_cast<std::uint32_t>(requested_max_players_))) {
+                        session_.SetDisconnectReason(NetworkDisconnectReason::TransportError);
+                        session_.SetState(NetworkSessionState::Disconnecting);
+                    }
+                    break;
+                }
+
+                session_.BeginClientLobby(event.lobby_id, event.lobby_owner_id, online_system_.LocalSteamId());
+                if (transport_ != nullptr && !transport_->ConnectToHost(event.lobby_owner_id, 0)) {
+                    session_.SetDisconnectReason(NetworkDisconnectReason::TransportError);
+                    session_.SetState(NetworkSessionState::Disconnecting);
+                }
                 break;
 
             case NetworkEventType::PeerConnecting:
@@ -359,6 +476,14 @@ namespace CoreEngine {
         event.tick = header.tick;
         event.payload.assign(payload.begin(), payload.end());
 
+        if (event.peer != kInvalidPeerId) {
+            std::uint32_t &last_received = last_received_sequence_by_peer_[event.peer];
+            if (header.sequence > last_received) {
+                last_received = header.sequence;
+            }
+            HandlePacketAck(event.peer, header.ack, NowMilliseconds());
+        }
+
         if (event.message_type == NetMessageType::InputCommand) {
             stats_.last_input_tick = header.tick;
         } else if (event.message_type == NetMessageType::WorldSnapshot) {
@@ -419,10 +544,11 @@ namespace CoreEngine {
                 break;
 
             case NetMessageType::Ping:
-                SendEmptyMessage(event.peer, NetMessageType::Pong, SendMode::UnreliableNoDelay);
+                HandlePingMessage(event);
                 break;
 
             case NetMessageType::Pong:
+                HandlePongMessage(event);
                 break;
 
             case NetMessageType::InputCommand:
@@ -441,17 +567,25 @@ namespace CoreEngine {
     }
 
     bool NetworkSystem::SendEmptyMessage(PeerId peer, NetMessageType type, SendMode mode) {
+        const std::uint32_t sequence = NextSequence();
+        const std::uint64_t now_ms = NowMilliseconds();
         MessageWriter writer;
-        if (!writer.Begin(type, NextSequence(), 0, local_tick_) || !writer.Finalize()) {
+        if (!writer.Begin(type, sequence, LastReceivedSequence(peer), local_tick_) || !writer.Finalize()) {
             return false;
         }
 
-        return Send(peer, writer.Bytes(), mode);
+        const bool sent = Send(peer, writer.Bytes(), mode);
+        if (sent) {
+            RecordSentPacket(peer, sequence, now_ms);
+        }
+        return sent;
     }
 
     bool NetworkSystem::SendHello(PeerId peer, NetMessageType type) {
+        const std::uint32_t sequence = NextSequence();
+        const std::uint64_t now_ms = NowMilliseconds();
         MessageWriter writer;
-        if (!writer.Begin(type, NextSequence(), 0, local_tick_) ||
+        if (!writer.Begin(type, sequence, LastReceivedSequence(peer), local_tick_) ||
             !writer.WriteUInt64(online_system_.LocalSteamId()) ||
             !writer.WriteUInt16(kNetworkProtocolVersion) ||
             !writer.WriteUInt32(kNetworkBuildHash) ||
@@ -460,7 +594,11 @@ namespace CoreEngine {
             return false;
         }
 
-        return Send(peer, writer.Bytes(), SendMode::ReliableNoNagle);
+        const bool sent = Send(peer, writer.Bytes(), SendMode::ReliableNoNagle);
+        if (sent) {
+            RecordSentPacket(peer, sequence, now_ms);
+        }
+        return sent;
     }
 
     bool NetworkSystem::SendAuthTicket(PeerId peer) {
@@ -472,15 +610,21 @@ namespace CoreEngine {
             return false;
         }
 
+        const std::uint32_t sequence = NextSequence();
+        const std::uint64_t now_ms = NowMilliseconds();
         MessageWriter writer;
-        if (!writer.Begin(NetMessageType::AuthTicket, NextSequence(), 0, local_tick_) ||
+        if (!writer.Begin(NetMessageType::AuthTicket, sequence, LastReceivedSequence(peer), local_tick_) ||
             !writer.WriteUInt64(online_system_.LocalSteamId()) ||
             !writer.WriteSizedBytes(auth_service_->LocalTicket()) ||
             !writer.Finalize()) {
             return false;
         }
 
-        return Send(peer, writer.Bytes(), SendMode::ReliableNoNagle);
+        const bool sent = Send(peer, writer.Bytes(), SendMode::ReliableNoNagle);
+        if (sent) {
+            RecordSentPacket(peer, sequence, now_ms);
+        }
+        return sent;
     }
 
     bool NetworkSystem::SendAuthAccepted(PeerId peer) {
@@ -488,14 +632,183 @@ namespace CoreEngine {
     }
 
     bool NetworkSystem::SendAuthRejected(PeerId peer, NetworkDisconnectReason reason) {
+        const std::uint32_t sequence = NextSequence();
+        const std::uint64_t now_ms = NowMilliseconds();
         MessageWriter writer;
-        if (!writer.Begin(NetMessageType::AuthRejected, NextSequence(), 0, local_tick_) ||
+        if (!writer.Begin(NetMessageType::AuthRejected, sequence, LastReceivedSequence(peer), local_tick_) ||
             !writer.WriteUInt16(static_cast<std::uint16_t>(reason)) ||
             !writer.Finalize()) {
             return false;
         }
 
-        return Send(peer, writer.Bytes(), SendMode::ReliableNoNagle);
+        const bool sent = Send(peer, writer.Bytes(), SendMode::ReliableNoNagle);
+        if (sent) {
+            RecordSentPacket(peer, sequence, now_ms);
+        }
+        return sent;
+    }
+
+    void NetworkSystem::SendConnectionPings() {
+        if (!initialized_ || session_.State() != NetworkSessionState::Connected) {
+            return;
+        }
+
+        const std::uint64_t now_ms = NowMilliseconds();
+        if (now_ms < next_ping_time_ms_) {
+            return;
+        }
+
+        next_ping_time_ms_ = now_ms + kPingIntervalMs;
+        for (const NetworkPeer &peer: session_.Peers()) {
+            if (peer.state == NetworkPeerState::Connected) {
+                SendPing(peer.id, now_ms);
+            }
+        }
+    }
+
+    void NetworkSystem::RefreshConnectionMetrics() noexcept {
+        if (!initialized_ || transport_ == nullptr || session_.State() != NetworkSessionState::Connected) {
+            stats_.ping_ms = -1;
+            stats_.jitter_ms = 0;
+            stats_.protocol_ping_ms = -1;
+            stats_.protocol_jitter_ms = 0;
+            stats_.transport_queue_time_ms = 0;
+            stats_.transport_pending_unreliable_bytes = 0;
+            stats_.transport_pending_reliable_bytes = 0;
+            stats_.transport_send_rate_bytes_per_second = 0;
+            stats_.packet_loss = 0.0f;
+            last_protocol_rtt_by_peer_.clear();
+            pending_ping_sent_time_by_peer_.clear();
+            sent_packet_timing_by_sequence_.clear();
+            return;
+        }
+
+        int ping_total = 0;
+        int ping_count = 0;
+        int max_jitter = 0;
+        int max_queue_time = 0;
+        std::uint32_t pending_unreliable_bytes = 0;
+        std::uint32_t pending_reliable_bytes = 0;
+        std::uint32_t send_rate_bytes_per_second = 0;
+        float max_packet_loss = 0.0f;
+        bool has_connected_peer = false;
+
+        for (const NetworkPeer &peer: session_.Peers()) {
+            if (peer.state != NetworkPeerState::Connected) {
+                continue;
+            }
+
+            has_connected_peer = true;
+            NetworkConnectionMetrics metrics;
+            if (!transport_->QueryMetrics(peer.id, metrics) || !metrics.valid) {
+                continue;
+            }
+
+            ping_total += metrics.ping_ms;
+            ++ping_count;
+            max_jitter = std::max(max_jitter, metrics.jitter_ms);
+            max_queue_time = std::max(max_queue_time, metrics.queue_time_ms);
+            pending_unreliable_bytes += metrics.pending_unreliable_bytes;
+            pending_reliable_bytes += metrics.pending_reliable_bytes;
+            send_rate_bytes_per_second = std::max(send_rate_bytes_per_second, metrics.send_rate_bytes_per_second);
+            max_packet_loss = std::max(max_packet_loss, metrics.packet_loss);
+        }
+
+        if (!has_connected_peer) {
+            stats_.ping_ms = -1;
+            stats_.jitter_ms = 0;
+            stats_.protocol_ping_ms = -1;
+            stats_.protocol_jitter_ms = 0;
+            stats_.transport_queue_time_ms = 0;
+            stats_.transport_pending_unreliable_bytes = 0;
+            stats_.transport_pending_reliable_bytes = 0;
+            stats_.transport_send_rate_bytes_per_second = 0;
+            stats_.packet_loss = 0.0f;
+            last_protocol_rtt_by_peer_.clear();
+            pending_ping_sent_time_by_peer_.clear();
+            sent_packet_timing_by_sequence_.clear();
+            return;
+        }
+
+        if (ping_count > 0) {
+            stats_.ping_ms = ping_total / ping_count;
+            stats_.jitter_ms = max_jitter;
+            stats_.transport_queue_time_ms = max_queue_time;
+            stats_.transport_pending_unreliable_bytes = pending_unreliable_bytes;
+            stats_.transport_pending_reliable_bytes = pending_reliable_bytes;
+            stats_.transport_send_rate_bytes_per_second = send_rate_bytes_per_second;
+            stats_.packet_loss = max_packet_loss;
+        } else {
+            stats_.ping_ms = -1;
+            stats_.jitter_ms = 0;
+            stats_.transport_queue_time_ms = 0;
+            stats_.transport_pending_unreliable_bytes = 0;
+            stats_.transport_pending_reliable_bytes = 0;
+            stats_.transport_send_rate_bytes_per_second = 0;
+            stats_.packet_loss = 0.0f;
+        }
+    }
+
+    bool NetworkSystem::SendPing(PeerId peer, std::uint64_t now_ms) {
+        const std::uint32_t sequence = NextSequence();
+        MessageWriter writer;
+        if (!writer.Begin(NetMessageType::Ping, sequence, LastReceivedSequence(peer), local_tick_) ||
+            !writer.WriteUInt64(now_ms) ||
+            !writer.Finalize()) {
+            return false;
+        }
+
+        if (!Send(peer, writer.Bytes(), SendMode::UnreliableNoDelay)) {
+            return false;
+        }
+
+        RecordSentPacket(peer, sequence, now_ms);
+        pending_ping_sent_time_by_peer_[peer] = now_ms;
+        return true;
+    }
+
+    bool NetworkSystem::SendPong(PeerId peer, std::uint64_t ping_sent_time_ms) {
+        const std::uint32_t sequence = NextSequence();
+        const std::uint64_t now_ms = NowMilliseconds();
+        MessageWriter writer;
+        if (!writer.Begin(NetMessageType::Pong, sequence, LastReceivedSequence(peer), local_tick_) ||
+            !writer.WriteUInt64(ping_sent_time_ms) ||
+            !writer.Finalize()) {
+            return false;
+        }
+
+        const bool sent = Send(peer, writer.Bytes(), SendMode::UnreliableNoDelay);
+        if (sent) {
+            RecordSentPacket(peer, sequence, now_ms);
+        }
+        return sent;
+    }
+
+    void NetworkSystem::HandlePingMessage(const NetworkEvent &event) {
+        MessageReader reader(event.payload);
+        std::uint64_t ping_sent_time_ms = 0;
+        if (!reader.ReadUInt64(ping_sent_time_ms) || reader.Remaining() != 0u) {
+            return;
+        }
+
+        SendPong(event.peer, ping_sent_time_ms);
+    }
+
+    void NetworkSystem::HandlePongMessage(const NetworkEvent &event) {
+        MessageReader reader(event.payload);
+        std::uint64_t ping_sent_time_ms = 0;
+        if (!reader.ReadUInt64(ping_sent_time_ms) || reader.Remaining() != 0u) {
+            return;
+        }
+
+        const auto pending = pending_ping_sent_time_by_peer_.find(event.peer);
+        if (pending == pending_ping_sent_time_by_peer_.end() ||
+            pending->second != ping_sent_time_ms) {
+            return;
+        }
+
+        pending_ping_sent_time_by_peer_.erase(pending);
+        UpdateRoundTripStats(event.peer, ping_sent_time_ms, NowMilliseconds());
     }
 
     void NetworkSystem::HandleInputCommandMessage(const NetworkEvent &event) {
@@ -522,10 +835,74 @@ namespace CoreEngine {
             last_sequence = command.sequence;
             input_commands_.push_back(QueuedPlayerInputCommand{
                 .peer = event.peer,
+                .player_network_id = MakeNetworkPlayerEntityId(event.peer, event.remote_steam_id),
                 .remote_user_id = event.remote_steam_id,
                 .command = command,
             });
             ++stats_.input_commands_received;
         }
+    }
+
+    void NetworkSystem::RecordSentPacket(PeerId peer, std::uint32_t sequence, std::uint64_t now_ms) {
+        if (peer == kInvalidPeerId || sequence == 0) {
+            return;
+        }
+
+        sent_packet_timing_by_sequence_[sequence] = SentPacketTiming{
+            .peer = peer,
+            .sent_time_ms = now_ms,
+        };
+
+        if (sent_packet_timing_by_sequence_.size() <= 512u) {
+            return;
+        }
+
+        std::erase_if(sent_packet_timing_by_sequence_, [now_ms](const auto &entry) {
+            return now_ms > entry.second.sent_time_ms + 5000u;
+        });
+    }
+
+    void NetworkSystem::HandlePacketAck(PeerId peer, std::uint32_t ack, std::uint64_t now_ms) noexcept {
+        if (peer == kInvalidPeerId || ack == 0) {
+            return;
+        }
+
+        const auto sent = sent_packet_timing_by_sequence_.find(ack);
+        if (sent == sent_packet_timing_by_sequence_.end() || sent->second.peer != peer) {
+            return;
+        }
+
+        UpdateRoundTripStats(peer, sent->second.sent_time_ms, now_ms);
+        sent_packet_timing_by_sequence_.erase(sent);
+    }
+
+    void NetworkSystem::UpdateRoundTripStats(PeerId peer,
+                                             std::uint64_t ping_sent_time_ms,
+                                             std::uint64_t now_ms) noexcept {
+        if (now_ms < ping_sent_time_ms) {
+            return;
+        }
+
+        const int rtt_ms = static_cast<int>(std::min<std::uint64_t>(
+            now_ms - ping_sent_time_ms,
+            static_cast<std::uint64_t>(INT32_MAX)));
+
+        const auto previous = last_protocol_rtt_by_peer_.find(peer);
+        if (previous != last_protocol_rtt_by_peer_.end()) {
+            const int delta = std::abs(rtt_ms - previous->second);
+            stats_.protocol_jitter_ms =
+                stats_.protocol_jitter_ms == 0 ? delta : ((stats_.protocol_jitter_ms * 3) + delta) / 4;
+            previous->second = rtt_ms;
+        } else {
+            last_protocol_rtt_by_peer_[peer] = rtt_ms;
+            stats_.protocol_jitter_ms = 0;
+        }
+
+        stats_.protocol_ping_ms = rtt_ms;
+    }
+
+    std::uint32_t NetworkSystem::LastReceivedSequence(PeerId peer) const noexcept {
+        const auto it = last_received_sequence_by_peer_.find(peer);
+        return it != last_received_sequence_by_peer_.end() ? it->second : 0u;
     }
 } // namespace CoreEngine

@@ -9,6 +9,9 @@
 namespace CoreEngine {
     struct NetworkTransformSnapshot {
         NetworkEntityId network_id = 0;
+        PeerId owner_peer = kInvalidPeerId;
+        NetworkArchetypeId archetype_id = 0;
+        NetworkPresentationId presentation_id = 0;
         Math::Vec3 position{0.0f, 0.0f, 0.0f};
         Math::Quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
         Math::Vec3 scale{1.0f, 1.0f, 1.0f};

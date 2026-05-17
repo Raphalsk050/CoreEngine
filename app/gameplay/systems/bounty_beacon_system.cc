@@ -3,9 +3,8 @@
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/world.h"
 #include "core/math/math.h"
-#include "core/network/network_system.h"
+#include "core/network/multiplayer_system.h"
 #include "core/network/replication/network_identity_component.h"
-#include "core/network/replication/network_replicator.h"
 
 #include <algorithm>
 
@@ -13,10 +12,6 @@ namespace Game {
     namespace {
         constexpr float kBeaconPickupRadius = 2.5f;
 
-        [[nodiscard]] CoreEngine::NetworkEntityId NetworkIdForQueuedCommand(
-            const CoreEngine::QueuedPlayerInputCommand &queued) noexcept {
-            return queued.remote_user_id != 0u ? queued.remote_user_id : (0x10000000ull + queued.peer);
-        }
     }
 
     void BountyBeaconSystem::Reset() {
@@ -40,7 +35,7 @@ namespace Game {
     }
 
     void BountyBeaconSystem::FixedUpdate(const GameplaySystemContext &context) noexcept {
-        if (context.network_system.Session().Role() == CoreEngine::NetworkRole::Client) {
+        if (context.multiplayer.Role() == CoreEngine::NetworkRole::Client) {
             return;
         }
 
@@ -75,12 +70,12 @@ namespace Game {
             }
         }
 
-        for (const CoreEngine::QueuedPlayerInputCommand &queued: context.network_system.InputCommands()) {
+        for (const CoreEngine::QueuedPlayerInputCommand &queued: context.multiplayer.InputCommands()) {
             if (!queued.command.IsButtonDown(CoreEngine::PlayerInputButton::Interact)) {
                 continue;
             }
 
-            CoreEngine::Node player = context.network_replicator.FindNode(NetworkIdForQueuedCommand(queued));
+            CoreEngine::Node player = context.multiplayer.FindNode(queued.player_network_id);
             if (!player.IsValid()) {
                 continue;
             }

@@ -3,19 +3,14 @@
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/world.h"
 #include "core/math/math.h"
-#include "core/network/network_system.h"
+#include "core/network/multiplayer_system.h"
 #include "core/network/replication/network_identity_component.h"
-#include "core/network/replication/network_replicator.h"
 
 namespace Game {
     namespace {
         constexpr float kCaptureRange = 2.5f;
         constexpr std::uint32_t kCaptureCooldownTicks = 90;
 
-        [[nodiscard]] CoreEngine::NetworkEntityId NetworkIdForQueuedCommand(
-            const CoreEngine::QueuedPlayerInputCommand &queued) noexcept {
-            return queued.remote_user_id != 0u ? queued.remote_user_id : (0x10000000ull + queued.peer);
-        }
     }
 
     bool CaptureSystem::CanStartCapture(const CoreEngine::HealthComponent &target) const noexcept {
@@ -23,11 +18,11 @@ namespace Game {
     }
 
     void CaptureSystem::FixedUpdate(const GameplaySystemContext &context) {
-        if (context.network_system.Session().Role() != CoreEngine::NetworkRole::Host) {
+        if (context.multiplayer.Role() != CoreEngine::NetworkRole::Host) {
             return;
         }
 
-        for (const CoreEngine::QueuedPlayerInputCommand &queued: context.network_system.InputCommands()) {
+        for (const CoreEngine::QueuedPlayerInputCommand &queued: context.multiplayer.InputCommands()) {
             if (!queued.command.IsButtonDown(CoreEngine::PlayerInputButton::Capture)) {
                 continue;
             }
@@ -37,7 +32,7 @@ namespace Game {
                 continue;
             }
 
-            CoreEngine::Node captor = context.network_replicator.FindNode(NetworkIdForQueuedCommand(queued));
+            CoreEngine::Node captor = context.multiplayer.FindNode(queued.player_network_id);
             if (!captor.IsValid()) {
                 continue;
             }

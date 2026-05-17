@@ -7,9 +7,11 @@
 
 #include "core/ecs/node.h"
 #include "core/network/lag_compensation/lag_compensation_history.h"
+#include "core/network/network_session.h"
 #include "core/network/replication/interest_management_system.h"
 #include "core/network/replication/network_snapshot_applier.h"
 #include "core/network/replication/network_snapshot_builder.h"
+#include "core/network/replication/network_archetype_registry.h"
 #include "core/network/replication/network_spawn_system.h"
 #include "core/network/replication/replicated_component_registry.h"
 
@@ -25,6 +27,14 @@ namespace CoreEngine {
         std::uint32_t last_snapshot_sequence = 0;
         float snapshot_build_time_ms = 0.0f;
         float snapshot_apply_time_ms = 0.0f;
+    };
+
+    struct NetworkEntityRegistrationDesc {
+        NetworkEntityId network_id = 0;
+        PeerId owner_peer = kInvalidPeerId;
+        NetworkArchetypeId archetype_id = 0;
+        NetworkPresentationId presentation_id = 0;
+        bool local_authority = false;
     };
 
     /**
@@ -43,6 +53,11 @@ namespace CoreEngine {
 
         void EndSimulationTick(const SimulationFrame &frame) noexcept;
 
+        void UpdatePresentation(float delta_seconds) noexcept;
+
+        [[nodiscard]] NetworkEntityId RegisterEntity(Node node,
+                                                     const NetworkEntityRegistrationDesc &desc);
+
         [[nodiscard]] NetworkEntityId RegisterEntity(Node node,
                                                      NetworkEntityId network_id,
                                                      PeerId owner_peer,
@@ -54,6 +69,10 @@ namespace CoreEngine {
 
         void UnregisterEntity(NetworkEntityId network_id) noexcept;
 
+        void DestroyEntitiesOwnedByPeer(PeerId peer) noexcept;
+
+        void DestroySessionEntities() noexcept;
+
         [[nodiscard]] Node FindNode(NetworkEntityId network_id) const noexcept;
 
         [[nodiscard]] bool HasAuthority(Node node) const noexcept;
@@ -64,6 +83,14 @@ namespace CoreEngine {
 
         [[nodiscard]] ReplicatedComponentRegistry &Registry() noexcept {
             return registry_;
+        }
+
+        [[nodiscard]] bool RegisterArchetype(const NetworkArchetypeDesc &desc) noexcept {
+            return archetype_registry_.Register(desc);
+        }
+
+        void UnregisterArchetype(NetworkArchetypeId archetype_id) noexcept {
+            archetype_registry_.Unregister(archetype_id);
         }
 
         [[nodiscard]] NetworkSpawnSystem &SpawnSystem() noexcept {
@@ -91,6 +118,8 @@ namespace CoreEngine {
         }
 
     private:
+        void ProcessSessionLifecycleEvents() noexcept;
+
         void ApplyInboundSnapshots(const SimulationFrame &frame) noexcept;
 
         void SendOutboundSnapshots(const SimulationFrame &frame) noexcept;
@@ -103,11 +132,14 @@ namespace CoreEngine {
 
         void StoreLagCompensationSamples(const SimulationFrame &frame) noexcept;
 
+        void ResetSessionScopedState() noexcept;
+
         [[nodiscard]] bool ShouldSendSnapshot() noexcept;
 
         NetworkSystem *network_system_ = nullptr;
         World *world_ = nullptr;
         ReplicatedComponentRegistry registry_;
+        NetworkArchetypeRegistry archetype_registry_;
         NetworkSpawnSystem spawn_system_;
         InterestManagementSystem interest_management_;
         NetworkSnapshotBuilder snapshot_builder_;
@@ -117,8 +149,15 @@ namespace CoreEngine {
         std::unordered_map<NetworkEntityId, entt::entity> entity_by_network_id_;
         std::vector<NetworkTransformSnapshot> snapshot_scratch_;
         std::vector<NetworkTransformSnapshot> inbound_snapshot_scratch_;
+        std::vector<NetworkEntityId> entity_destruction_scratch_;
+        double presentation_server_time_ = 0.0;
+        double newest_snapshot_server_time_ = 0.0;
+        bool presentation_time_initialized_ = false;
         std::uint32_t snapshot_sequence_ = 0;
         std::uint32_t ticks_until_next_snapshot_ = 0;
-        std::uint32_t snapshot_interval_ticks_ = 3;
+        std::uint32_t snapshot_interval_ticks_ = 2;
+        NetworkRole last_session_role_ = NetworkRole::Offline;
+        NetworkSessionState last_session_state_ = NetworkSessionState::Offline;
+        std::uint64_t last_lobby_id_ = 0;
     };
 } // namespace CoreEngine

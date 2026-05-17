@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "core/network/network_input_command_queue.h"
 #include "core/network/network_message.h"
 #include "core/network/prediction/player_input_command.h"
 #include "core/network/replication/snapshot_writer.h"
@@ -19,10 +20,9 @@ namespace CoreEngine {
     class SteamLobbyService;
     class SteamOnlineSystem;
 
-    struct QueuedPlayerInputCommand {
+    struct SentPacketTiming {
         PeerId peer = kInvalidPeerId;
-        std::uint64_t remote_user_id = 0;
-        PlayerInputCommand command{};
+        std::uint64_t sent_time_ms = 0;
     };
 
     /**
@@ -68,6 +68,8 @@ namespace CoreEngine {
 
         void DumpConnectionStatus() const;
 
+        [[nodiscard]] std::string ConnectionDiagnosticsText() const;
+
         [[nodiscard]] const NetworkEventQueue &Events() const noexcept {
             return current_events_;
         }
@@ -111,7 +113,29 @@ namespace CoreEngine {
 
         bool SendAuthRejected(PeerId peer, NetworkDisconnectReason reason);
 
+        void SendConnectionPings();
+
+        void RefreshConnectionMetrics() noexcept;
+
+        bool SendPing(PeerId peer, std::uint64_t now_ms);
+
+        bool SendPong(PeerId peer, std::uint64_t ping_sent_time_ms);
+
+        void HandlePingMessage(const NetworkEvent &event);
+
+        void HandlePongMessage(const NetworkEvent &event);
+
         void HandleInputCommandMessage(const NetworkEvent &event);
+
+        void RecordSentPacket(PeerId peer, std::uint32_t sequence, std::uint64_t now_ms);
+
+        void HandlePacketAck(PeerId peer, std::uint32_t ack, std::uint64_t now_ms) noexcept;
+
+        void UpdateRoundTripStats(PeerId peer,
+                                  std::uint64_t ping_sent_time_ms,
+                                  std::uint64_t now_ms) noexcept;
+
+        [[nodiscard]] std::uint32_t LastReceivedSequence(PeerId peer) const noexcept;
 
         [[nodiscard]] std::uint32_t NextSequence() noexcept {
             return next_sequence_++;
@@ -126,10 +150,15 @@ namespace CoreEngine {
         NetworkEventQueue current_events_;
         std::vector<QueuedPlayerInputCommand> input_commands_;
         std::unordered_map<PeerId, std::uint32_t> last_input_sequence_by_peer_;
+        std::unordered_map<PeerId, std::uint32_t> last_received_sequence_by_peer_;
+        std::unordered_map<PeerId, std::uint64_t> pending_ping_sent_time_by_peer_;
+        std::unordered_map<PeerId, int> last_protocol_rtt_by_peer_;
+        std::unordered_map<std::uint32_t, SentPacketTiming> sent_packet_timing_by_sequence_;
         bool initialized_ = false;
         int requested_max_players_ = 8;
         std::uint32_t next_sequence_ = 1;
         std::uint32_t local_tick_ = 0;
         std::uint64_t handshake_nonce_ = 0;
+        std::uint64_t next_ping_time_ms_ = 0;
     };
 } // namespace CoreEngine

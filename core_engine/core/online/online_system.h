@@ -61,6 +61,8 @@ namespace CoreEngine {
 
         void LeaveLobby() override;
 
+        [[nodiscard]] std::string ConnectionDiagnosticsText() const override;
+
         void DumpConnectionStatus() const override;
 
         [[nodiscard]] NetworkSystem &Network() noexcept;

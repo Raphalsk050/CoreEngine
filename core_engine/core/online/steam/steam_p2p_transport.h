@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "core/network/network_message.h"
+#include "core/network/network_stats.h"
 #include "core/online/steam/steam_config.h"
 
 #if CORE_ENGINE_ENABLE_STEAM
@@ -42,6 +43,8 @@ namespace CoreEngine {
         [[nodiscard]] bool IsHost() const noexcept {
             return is_host_;
         }
+
+        [[nodiscard]] bool QueryMetrics(PeerId peer, NetworkConnectionMetrics &out_metrics) const;
 
         [[nodiscard]] std::string DetailedConnectionStatus(PeerId peer) const;
 

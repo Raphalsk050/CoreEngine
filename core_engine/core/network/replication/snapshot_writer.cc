@@ -9,6 +9,9 @@ namespace CoreEngine {
 
     bool SnapshotWriter::WriteTransform(const NetworkTransformSnapshot &snapshot) {
         return writer_.WriteUInt64(snapshot.network_id) &&
+               writer_.WriteUInt32(snapshot.owner_peer) &&
+               writer_.WriteUInt32(snapshot.archetype_id) &&
+               writer_.WriteUInt32(snapshot.presentation_id) &&
                writer_.WriteUInt32(snapshot.tick) &&
                writer_.WriteFloat(snapshot.position.x) &&
                writer_.WriteFloat(snapshot.position.y) &&

@@ -3,8 +3,7 @@
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/world.h"
 #include "core/math/math.h"
-#include "core/network/network_system.h"
-#include "core/network/replication/network_replicator.h"
+#include "core/network/multiplayer_system.h"
 #include "core/network/replication/replicated_state_types.h"
 
 #include <algorithm>
@@ -20,7 +19,7 @@ namespace Game {
     }
 
     void PvEAISystem::FixedUpdate(const GameplaySystemContext &context) noexcept {
-        if (context.network_system.Session().Role() == CoreEngine::NetworkRole::Client) {
+        if (context.multiplayer.Role() == CoreEngine::NetworkRole::Client) {
             return;
         }
 
@@ -28,7 +27,7 @@ namespace Game {
             CoreEngine::Node ai = context.world.CreateNode("PvEHunter");
             ai.SetPosition({0.0f, 0.0f, 6.0f});
             ai.SetScale({0.75f, 1.7f, 0.75f});
-            ai_id_ = context.network_replicator.RegisterEntity(
+            ai_id_ = context.multiplayer.RegisterEntity(
                 ai,
                 kDefaultAiNetworkId,
                 CoreEngine::kInvalidPeerId,
@@ -42,7 +41,7 @@ namespace Game {
             });
         }
 
-        CoreEngine::Node ai = context.network_replicator.FindNode(ai_id_);
+        CoreEngine::Node ai = context.multiplayer.FindNode(ai_id_);
         if (!ai.IsValid()) {
             ai_id_ = 0;
             return;

@@ -5,7 +5,7 @@
 namespace CoreEngine {
     void SnapshotInterpolationSystem::Reset() noexcept {
         stats_ = {};
-        interpolation_delay_seconds_ = 0.1;
+        interpolation_delay_seconds_ = 0.035;
     }
 
     bool SnapshotInterpolationSystem::PushSample(SnapshotInterpolationBuffer<32> &buffer,
@@ -30,6 +30,6 @@ namespace CoreEngine {
     }
 
     void SnapshotInterpolationSystem::SetInterpolationDelay(double delay_seconds) noexcept {
-        interpolation_delay_seconds_ = std::clamp(delay_seconds, 0.02, 0.25);
+        interpolation_delay_seconds_ = std::clamp(delay_seconds, 0.015, 0.25);
     }
 } // namespace CoreEngine

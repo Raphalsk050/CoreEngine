@@ -5,7 +5,7 @@
 
 namespace CoreEngine {
     inline constexpr std::uint32_t kNetworkMagic = 0x43454E47u; // "CENG"
-    inline constexpr std::uint16_t kNetworkProtocolVersion = 1;
+    inline constexpr std::uint16_t kNetworkProtocolVersion = 3;
     inline constexpr std::size_t kPacketHeaderWireSize = 22;
     inline constexpr std::uint16_t kMaxPacketPayloadBytes = 16u * 1024u;
     inline constexpr std::uint16_t kMaxSnapshotTransformsPerPacket = 256;

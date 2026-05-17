@@ -1,4 +1,5 @@
 #include "core/log/logger.h"
+#include <mutex>
 
 namespace CoreEngine {
     void Logger::AddSink(const std::shared_ptr<ILogSink> &sink) {

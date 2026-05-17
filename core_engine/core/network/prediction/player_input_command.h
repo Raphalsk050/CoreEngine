@@ -23,6 +23,7 @@ namespace CoreEngine {
 
     struct PlayerInputCommand {
         std::uint32_t client_tick = 0;
+        std::uint16_t sub_tick = 0;
         std::uint32_t sequence = 0;
         std::uint32_t last_received_server_snapshot_tick = 0;
         float move_x = 0.0f;
@@ -35,6 +36,25 @@ namespace CoreEngine {
         [[nodiscard]] bool IsButtonDown(PlayerInputButton button) const noexcept {
             return (buttons & static_cast<std::uint32_t>(button)) != 0;
         }
+
+        [[nodiscard]] float SubTickAlpha() const noexcept {
+            return static_cast<float>(sub_tick) / 65535.0f;
+        }
+    };
+
+    /**
+     * @brief Carries gameplay input before network timing and sequencing are applied.
+     *
+     * Responsibility: let application code describe player intent while the
+     * multiplayer layer owns protocol stamps such as tick, sub-tick, and sequence.
+     */
+    struct LocalPlayerInputDesc {
+        float move_x = 0.0f;
+        float move_y = 0.0f;
+        float look_yaw = 0.0f;
+        float look_pitch = 0.0f;
+        std::uint32_t buttons = 0;
+        std::uint8_t selected_slot = 0;
     };
 
     inline constexpr std::uint8_t kMaxInputCommandsPerPacket = 8;
@@ -47,6 +67,7 @@ namespace CoreEngine {
     [[nodiscard]] inline bool WritePlayerInputCommand(MessageWriter &writer,
                                                       const PlayerInputCommand &command) {
         return writer.WriteUInt32(command.client_tick) &&
+               writer.WriteUInt16(command.sub_tick) &&
                writer.WriteUInt32(command.sequence) &&
                writer.WriteUInt32(command.last_received_server_snapshot_tick) &&
                writer.WriteFloat(command.move_x) &&
@@ -60,6 +81,7 @@ namespace CoreEngine {
     [[nodiscard]] inline bool ReadPlayerInputCommand(MessageReader &reader,
                                                      PlayerInputCommand &command) noexcept {
         return reader.ReadUInt32(command.client_tick) &&
+               reader.ReadUInt16(command.sub_tick) &&
                reader.ReadUInt32(command.sequence) &&
                reader.ReadUInt32(command.last_received_server_snapshot_tick) &&
                reader.ReadFloat(command.move_x) &&

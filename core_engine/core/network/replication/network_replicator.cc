@@ -8,6 +8,7 @@
 #include "core/network/replication/replicated_state_types.h"
 #include "core/simulation/simulation_frame.h"
 
+#include <algorithm>
 #include <chrono>
 
 namespace CoreEngine {
@@ -26,6 +27,7 @@ namespace CoreEngine {
         network_system_ = &network_system;
         world_ = &world;
         registry_.RegisterDefaultComponents();
+        archetype_registry_.Reset();
         spawn_system_.Reset();
         lag_history_.Reset();
         entity_by_network_id_.clear();
@@ -34,25 +36,42 @@ namespace CoreEngine {
         snapshot_scratch_.reserve(256);
         inbound_snapshot_scratch_.clear();
         inbound_snapshot_scratch_.reserve(256);
+        entity_destruction_scratch_.clear();
+        entity_destruction_scratch_.reserve(64);
         snapshot_sequence_ = 0;
         ticks_until_next_snapshot_ = 0;
+        presentation_server_time_ = 0.0;
+        newest_snapshot_server_time_ = 0.0;
+        presentation_time_initialized_ = false;
+        last_session_role_ = network_system.Session().Role();
+        last_session_state_ = network_system.Session().State();
+        last_lobby_id_ = network_system.Session().LobbyId();
         stats_ = {};
     }
 
     void NetworkReplicator::Shutdown() noexcept {
         network_system_ = nullptr;
         world_ = nullptr;
+        archetype_registry_.Reset();
         spawn_system_.Reset();
         lag_history_.Reset();
         entity_by_network_id_.clear();
         snapshot_scratch_.clear();
         inbound_snapshot_scratch_.clear();
+        entity_destruction_scratch_.clear();
         snapshot_sequence_ = 0;
         ticks_until_next_snapshot_ = 0;
+        presentation_server_time_ = 0.0;
+        newest_snapshot_server_time_ = 0.0;
+        presentation_time_initialized_ = false;
+        last_session_role_ = NetworkRole::Offline;
+        last_session_state_ = NetworkSessionState::Offline;
+        last_lobby_id_ = 0;
         stats_ = {};
     }
 
     void NetworkReplicator::BeginSimulationTick(const SimulationFrame &frame) noexcept {
+        ProcessSessionLifecycleEvents();
         ApplyInboundSnapshots(frame);
     }
 
@@ -62,14 +81,50 @@ namespace CoreEngine {
         spawn_system_.ClearPendingEvents();
     }
 
+    void NetworkReplicator::UpdatePresentation(float delta_seconds) noexcept {
+        if (world_ == nullptr || delta_seconds <= 0.0f || !presentation_time_initialized_) {
+            return;
+        }
+
+        presentation_server_time_ += static_cast<double>(delta_seconds);
+        const double max_extrapolated_time = newest_snapshot_server_time_ + 0.25;
+        if (presentation_server_time_ > max_extrapolated_time) {
+            presentation_server_time_ = max_extrapolated_time;
+        }
+
+        auto view = world_->View<NetworkIdentityComponent, NetworkTransformComponent, TransformComponent>();
+        for (const entt::entity entity: view) {
+            const auto &identity = view.get<NetworkIdentityComponent>(entity);
+            if (!identity.IsNetworked() || identity.local_authority) {
+                continue;
+            }
+
+            auto &network_transform = view.get<NetworkTransformComponent>(entity);
+            if (!network_transform.interpolation_enabled || network_transform.interpolation_buffer.Count() == 0u) {
+                continue;
+            }
+
+            SnapshotSample sample;
+            const double render_time =
+                presentation_server_time_ - static_cast<double>(network_transform.interpolation_delay_seconds);
+            if (!network_transform.interpolation_buffer.Sample(render_time, sample)) {
+                continue;
+            }
+
+            auto &transform = view.get<TransformComponent>(entity);
+            transform.SetPosition(sample.position);
+            transform.SetRotation(sample.rotation);
+            transform.SetScale(sample.scale);
+        }
+    }
+
     NetworkEntityId NetworkReplicator::RegisterEntity(Node node,
-                                                      NetworkEntityId network_id,
-                                                      PeerId owner_peer,
-                                                      bool local_authority) {
+                                                      const NetworkEntityRegistrationDesc &desc) {
         if (!node.IsValid()) {
             return 0;
         }
 
+        NetworkEntityId network_id = desc.network_id;
         if (network_id == 0) {
             network_id = spawn_system_.AllocateNetworkEntityId();
         }
@@ -80,8 +135,10 @@ namespace CoreEngine {
         }
 
         identity->network_id = network_id;
-        identity->owner_peer = owner_peer;
-        identity->local_authority = local_authority;
+        identity->owner_peer = desc.owner_peer;
+        identity->archetype_id = desc.archetype_id;
+        identity->presentation_id = desc.presentation_id;
+        identity->local_authority = desc.local_authority;
         identity->replicated = true;
 
         if (node.TryGetComponent<NetworkTransformComponent>() == nullptr) {
@@ -92,12 +149,82 @@ namespace CoreEngine {
         return network_id;
     }
 
+    NetworkEntityId NetworkReplicator::RegisterEntity(Node node,
+                                                      NetworkEntityId network_id,
+                                                      PeerId owner_peer,
+                                                      bool local_authority) {
+        return RegisterEntity(node,
+                              NetworkEntityRegistrationDesc{
+                                  .network_id = network_id,
+                                  .owner_peer = owner_peer,
+                                  .archetype_id = 0,
+                                  .presentation_id = 0,
+                                  .local_authority = local_authority,
+                              });
+    }
+
     NetworkEntityId NetworkReplicator::RegisterEntity(Node node, PeerId owner_peer, bool local_authority) {
         return RegisterEntity(node, spawn_system_.AllocateNetworkEntityId(), owner_peer, local_authority);
     }
 
     void NetworkReplicator::UnregisterEntity(NetworkEntityId network_id) noexcept {
         entity_by_network_id_.erase(network_id);
+    }
+
+    void NetworkReplicator::DestroyEntitiesOwnedByPeer(PeerId peer) noexcept {
+        if (world_ == nullptr || peer == kInvalidPeerId) {
+            return;
+        }
+
+        entity_destruction_scratch_.clear();
+        auto view = world_->View<NetworkIdentityComponent>();
+        for (const entt::entity entity: view) {
+            const auto &identity = view.get<NetworkIdentityComponent>(entity);
+            if (identity.IsNetworked() && identity.owner_peer == peer) {
+                entity_destruction_scratch_.push_back(identity.network_id);
+            }
+        }
+
+        for (const NetworkEntityId network_id: entity_destruction_scratch_) {
+            Node node = FindNode(network_id);
+            entity_by_network_id_.erase(network_id);
+            if (node.IsValid()) {
+                world_->DestroyNode(node);
+            }
+        }
+        entity_destruction_scratch_.clear();
+    }
+
+    void NetworkReplicator::DestroySessionEntities() noexcept {
+        if (world_ == nullptr) {
+            entity_by_network_id_.clear();
+            ResetSessionScopedState();
+            return;
+        }
+
+        entity_destruction_scratch_.clear();
+        auto view = world_->View<NetworkIdentityComponent>();
+        for (const entt::entity entity: view) {
+            const auto &identity = view.get<NetworkIdentityComponent>(entity);
+            if (!identity.IsNetworked()) {
+                continue;
+            }
+
+            const bool session_owned = identity.owner_peer != kInvalidPeerId || !identity.local_authority;
+            if (session_owned) {
+                entity_destruction_scratch_.push_back(identity.network_id);
+            }
+        }
+
+        for (const NetworkEntityId network_id: entity_destruction_scratch_) {
+            Node node = FindNode(network_id);
+            entity_by_network_id_.erase(network_id);
+            if (node.IsValid()) {
+                world_->DestroyNode(node);
+            }
+        }
+        entity_destruction_scratch_.clear();
+        ResetSessionScopedState();
     }
 
     Node NetworkReplicator::FindNode(NetworkEntityId network_id) const noexcept {
@@ -138,6 +265,37 @@ namespace CoreEngine {
 
         const auto *identity = node.TryGetComponent<NetworkIdentityComponent>();
         return identity != nullptr ? identity->network_id : 0;
+    }
+
+    void NetworkReplicator::ProcessSessionLifecycleEvents() noexcept {
+        if (network_system_ == nullptr) {
+            return;
+        }
+
+        const NetworkSession &session = network_system_->Session();
+        const bool session_changed =
+            session.Role() != last_session_role_ ||
+            session.State() != last_session_state_ ||
+            session.LobbyId() != last_lobby_id_;
+
+        if (session_changed &&
+            (session.State() == NetworkSessionState::Offline ||
+             session.State() == NetworkSessionState::Disconnecting ||
+             session.Role() == NetworkRole::Offline ||
+             session.LobbyId() != last_lobby_id_ ||
+             session.Role() != last_session_role_)) {
+            DestroySessionEntities();
+        }
+
+        for (const NetworkEvent &event: network_system_->Events()) {
+            if (event.type == NetworkEventType::PeerDisconnected) {
+                DestroyEntitiesOwnedByPeer(event.peer);
+            }
+        }
+
+        last_session_role_ = session.Role();
+        last_session_state_ = session.State();
+        last_lobby_id_ = session.LobbyId();
     }
 
     void NetworkReplicator::ApplyInboundSnapshots(const SimulationFrame &frame) noexcept {
@@ -222,6 +380,9 @@ namespace CoreEngine {
             const auto &transform = view.get<TransformComponent>(entity);
             NetworkTransformSnapshot snapshot{
                 .network_id = identity.network_id,
+                .owner_peer = identity.owner_peer,
+                .archetype_id = identity.archetype_id,
+                .presentation_id = identity.presentation_id,
                 .position = transform.Position(),
                 .rotation = transform.Rotation(),
                 .scale = transform.Scale(),
@@ -266,19 +427,61 @@ namespace CoreEngine {
             return;
         }
 
-        const double fixed_dt = frame.fixed_delta_time > 0.0f ? frame.fixed_delta_time : (1.0 / 60.0);
+        const double fixed_dt = frame.fixed_delta_time > 0.0f ? frame.fixed_delta_time : (1.0 / 128.0);
         for (const NetworkTransformSnapshot &snapshot: snapshots) {
             Node node = FindNode(snapshot.network_id);
             if (!node.IsValid()) {
-                node = world_->CreateNode("RemoteNetworkEntity");
-                (void) RegisterEntity(node, snapshot.network_id, kInvalidPeerId, false);
+                const NetworkArchetypeDesc *archetype = archetype_registry_.Find(snapshot.archetype_id);
+                const char *debug_name =
+                    archetype != nullptr && archetype->debug_name != nullptr
+                        ? archetype->debug_name
+                        : "RemoteNetworkEntity";
+                node = world_->CreateNode(debug_name);
+                (void) RegisterEntity(node,
+                                      NetworkEntityRegistrationDesc{
+                                          .network_id = snapshot.network_id,
+                                          .owner_peer = snapshot.owner_peer,
+                                          .archetype_id = snapshot.archetype_id,
+                                          .presentation_id = snapshot.presentation_id,
+                                          .local_authority = false,
+                                      });
+                if (archetype != nullptr && archetype->initialize_remote_entity != nullptr) {
+                    NetworkArchetypeSpawnContext spawn_context{
+                        .world = *world_,
+                        .node = node,
+                        .network_id = snapshot.network_id,
+                        .owner_peer = snapshot.owner_peer,
+                        .archetype_id = snapshot.archetype_id,
+                        .presentation_id = snapshot.presentation_id,
+                        .local_authority = false,
+                    };
+                    archetype->initialize_remote_entity(spawn_context, archetype->user_data);
+                }
             }
 
             auto *network_transform = node.TryGetComponent<NetworkTransformComponent>();
             auto *transform = node.TryGetComponent<TransformComponent>();
-            const auto *identity = node.TryGetComponent<NetworkIdentityComponent>();
+            auto *identity = node.TryGetComponent<NetworkIdentityComponent>();
             if (network_transform == nullptr || transform == nullptr || identity == nullptr) {
                 continue;
+            }
+
+            identity->owner_peer = snapshot.owner_peer;
+            identity->archetype_id = snapshot.archetype_id;
+            identity->presentation_id = snapshot.presentation_id;
+
+            const double snapshot_time = static_cast<double>(snapshot.tick) * fixed_dt;
+            Math::Vec3 linear_velocity{};
+            if (network_transform->last_snapshot_tick != 0u &&
+                snapshot.tick > network_transform->last_snapshot_tick) {
+                const double previous_time =
+                    static_cast<double>(network_transform->last_snapshot_tick) * fixed_dt;
+                const double elapsed = snapshot_time - previous_time;
+                if (elapsed > 1.0e-6) {
+                    linear_velocity =
+                        (snapshot.position - network_transform->authoritative_position) /
+                        static_cast<float>(elapsed);
+                }
             }
 
             network_transform->authoritative_position = snapshot.position;
@@ -287,15 +490,22 @@ namespace CoreEngine {
             network_transform->last_snapshot_tick = snapshot.tick;
             network_transform->interpolation_buffer.Push(SnapshotSample{
                 .server_tick = snapshot.tick,
-                .server_time = static_cast<double>(snapshot.tick) * fixed_dt,
+                .server_time = snapshot_time,
                 .position = snapshot.position,
                 .rotation = snapshot.rotation,
                 .scale = snapshot.scale,
-                .linear_velocity = {},
+                .linear_velocity = linear_velocity,
                 .component_mask = 0,
             });
+            newest_snapshot_server_time_ = std::max(newest_snapshot_server_time_, snapshot_time);
+            if (!presentation_time_initialized_) {
+                presentation_server_time_ = newest_snapshot_server_time_;
+                presentation_time_initialized_ = true;
+            }
 
-            if (!identity->local_authority) {
+            if (!identity->local_authority &&
+                (!network_transform->interpolation_enabled ||
+                 network_transform->interpolation_buffer.Count() < 2u)) {
                 transform->SetPosition(snapshot.position);
                 transform->SetRotation(snapshot.rotation);
                 transform->SetScale(snapshot.scale);
@@ -354,13 +564,24 @@ namespace CoreEngine {
         return true;
     }
 
+    void NetworkReplicator::ResetSessionScopedState() noexcept {
+        snapshot_sequence_ = 0;
+        ticks_until_next_snapshot_ = 0;
+        presentation_server_time_ = 0.0;
+        newest_snapshot_server_time_ = 0.0;
+        presentation_time_initialized_ = false;
+        inbound_snapshot_scratch_.clear();
+        snapshot_scratch_.clear();
+        lag_history_.Reset();
+    }
+
     void NetworkReplicator::StoreLagCompensationSamples(const SimulationFrame &frame) noexcept {
         if (world_ == nullptr ||
             (network_system_ != nullptr && network_system_->Session().Role() == NetworkRole::Client)) {
             return;
         }
 
-        const double fixed_dt = frame.fixed_delta_time > 0.0f ? frame.fixed_delta_time : (1.0 / 60.0);
+        const double fixed_dt = frame.fixed_delta_time > 0.0f ? frame.fixed_delta_time : (1.0 / 128.0);
         auto view = world_->View<NetworkIdentityComponent, TransformComponent>();
         for (const entt::entity entity: view) {
             const auto &identity = view.get<NetworkIdentityComponent>(entity);

@@ -66,6 +66,8 @@ namespace CoreEngine {
 
         virtual void LeaveLobby() = 0;
 
+        [[nodiscard]] virtual std::string ConnectionDiagnosticsText() const = 0;
+
         virtual void DumpConnectionStatus() const = 0;
     };
 } // namespace CoreEngine

@@ -7,6 +7,9 @@ namespace CoreEngine {
 
     bool SnapshotReader::ReadTransform(NetworkTransformSnapshot &snapshot) noexcept {
         return reader_.ReadUInt64(snapshot.network_id) &&
+               reader_.ReadUInt32(snapshot.owner_peer) &&
+               reader_.ReadUInt32(snapshot.archetype_id) &&
+               reader_.ReadUInt32(snapshot.presentation_id) &&
                reader_.ReadUInt32(snapshot.tick) &&
                reader_.ReadFloat(snapshot.position.x) &&
                reader_.ReadFloat(snapshot.position.y) &&

@@ -26,6 +26,8 @@ namespace CoreEngine {
 
         bool Send(PeerId peer, std::span<const std::byte> payload, SendMode mode) override;
 
+        [[nodiscard]] bool QueryMetrics(PeerId peer, NetworkConnectionMetrics &out_metrics) const override;
+
         [[nodiscard]] std::string DetailedConnectionStatus(PeerId peer) const override;
 
     private:

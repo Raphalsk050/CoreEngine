@@ -1,7 +1,6 @@
 #pragma once
 
-#include "core/network/network_system.h"
-#include "core/network/replication/network_replicator.h"
+#include "core/network/multiplayer_system.h"
 #include "core/simulation/simulation_frame.h"
 
 namespace CoreEngine {
@@ -11,8 +10,7 @@ namespace CoreEngine {
 namespace Game {
     struct GameplaySystemContext {
         CoreEngine::World &world;
-        CoreEngine::NetworkSystem &network_system;
-        CoreEngine::NetworkReplicator &network_replicator;
+        CoreEngine::MultiplayerSystem &multiplayer;
         const CoreEngine::SimulationFrame &frame;
     };
 } // namespace Game

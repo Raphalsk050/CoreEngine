@@ -6,6 +6,8 @@
 
 namespace CoreEngine {
     using NetworkEntityId = std::uint64_t;
+    using NetworkArchetypeId = std::uint32_t;
+    using NetworkPresentationId = std::uint32_t;
 
     /**
      * @brief Identifies an entity replicated over the network.
@@ -16,6 +18,8 @@ namespace CoreEngine {
     struct NetworkIdentityComponent {
         NetworkEntityId network_id = 0;
         PeerId owner_peer = kInvalidPeerId;
+        NetworkArchetypeId archetype_id = 0;
+        NetworkPresentationId presentation_id = 0;
         bool local_authority = false;
         bool replicated = true;
 

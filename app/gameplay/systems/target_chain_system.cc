@@ -1,7 +1,7 @@
 #include "gameplay/systems/target_chain_system.h"
 
 #include "core/ecs/world.h"
-#include "core/network/network_system.h"
+#include "core/network/multiplayer_system.h"
 #include "core/network/replication/network_identity_component.h"
 
 namespace Game {
@@ -29,7 +29,7 @@ namespace Game {
     }
 
     void TargetChainSystem::FixedUpdate(const GameplaySystemContext &context) noexcept {
-        if (context.network_system.Session().Role() == CoreEngine::NetworkRole::Client ||
+        if (context.multiplayer.Role() == CoreEngine::NetworkRole::Client ||
             !assignments_.empty()) {
             return;
         }
@@ -48,7 +48,7 @@ namespace Game {
         BuildClosedCycle(players);
 
         for (const CoreEngine::TargetAssignmentComponent &assignment: assignments_) {
-            CoreEngine::Node target_node = context.network_replicator.FindNode(assignment.hunter_player);
+            CoreEngine::Node target_node = context.multiplayer.FindNode(assignment.hunter_player);
             if (!target_node.IsValid()) {
                 continue;
             }
