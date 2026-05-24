@@ -2,6 +2,7 @@
 
 #include "core/application/engine_context.h"
 #include "core/application/frame_context.h"
+#include "core/debug/debug_draw.h"
 #include "game/input/player_input_bindings.h"
 
 namespace Game {
@@ -43,23 +44,23 @@ namespace Game {
         input.look_yaw = camera_controller_ != nullptr ? camera_controller_->YawRadians() : 0.0f;
         input.look_pitch = camera_controller_ != nullptr ? camera_controller_->PitchRadians() : 0.0f;
         input.selected_slot = 0;
-        input.SetButton(CoreEngine::PlayerInputButton::Jump,
+        input.SetAction(PlayerCommandActions::Jump,
                         frame.input_system.WasActionPressed(PlayerInputActions::Jump));
-        input.SetButton(CoreEngine::PlayerInputButton::Crouch,
+        input.SetAction(PlayerCommandActions::Crouch,
                         frame.input_system.IsActionDown(PlayerInputActions::Crouch));
-        input.SetButton(CoreEngine::PlayerInputButton::Sprint,
+        input.SetAction(PlayerCommandActions::Sprint,
                         frame.input_system.IsActionDown(PlayerInputActions::Sprint));
-        input.SetButton(CoreEngine::PlayerInputButton::Fire,
+        input.SetAction(PlayerCommandActions::Fire,
                         frame.input_system.IsActionDown(PlayerInputActions::Fire));
-        input.SetButton(CoreEngine::PlayerInputButton::AltFire,
+        input.SetAction(PlayerCommandActions::AltFire,
                         frame.input_system.IsActionDown(PlayerInputActions::AltFire));
-        input.SetButton(CoreEngine::PlayerInputButton::Reload,
+        input.SetAction(PlayerCommandActions::Reload,
                         frame.input_system.WasActionPressed(PlayerInputActions::Reload));
-        input.SetButton(CoreEngine::PlayerInputButton::Interact,
+        input.SetAction(PlayerCommandActions::Interact,
                         frame.input_system.WasActionPressed(PlayerInputActions::Interact));
-        input.SetButton(CoreEngine::PlayerInputButton::UseGadget,
+        input.SetAction(PlayerCommandActions::UseGadget,
                         frame.input_system.WasActionPressed(PlayerInputActions::UseGadget));
-        input.SetButton(CoreEngine::PlayerInputButton::Capture,
+        input.SetAction(PlayerCommandActions::Capture,
                         frame.input_system.IsActionDown(PlayerInputActions::Capture));
         return input;
     }

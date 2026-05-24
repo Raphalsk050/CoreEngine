@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <string>
 
 #include "core/network/network_stats.h"
 
@@ -20,7 +21,7 @@ namespace CoreEngine {
      */
     class SteamMultiplayerDebugPanel {
     public:
-        SteamMultiplayerDebugPanel() = default;
+        SteamMultiplayerDebugPanel();
 
         ~SteamMultiplayerDebugPanel();
 
@@ -69,6 +70,11 @@ namespace CoreEngine {
 
         static constexpr std::size_t kNetworkGraphSampleCount = 240;
         char lobby_id_buffer_[32]{};
+        char direct_host_buffer_[64]{};
+        int direct_port_ = 7777;
+        int direct_max_players_ = 4;
+        std::string direct_local_ip_text_ = "unavailable";
+        double next_direct_local_ip_refresh_time_ = 0.0;
         std::array<NetworkGraphSample, kNetworkGraphSampleCount> network_graph_samples_{};
         std::array<float, kNetworkGraphSampleCount> network_plot_scratch_{};
         NetworkStats previous_network_stats_{};

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 #include "core/network/network_message.h"
@@ -19,10 +20,11 @@ namespace CoreEngine {
     class SteamOnlineSystem;
 
     /**
-     * @brief Implements Steam Datagram Relay P2P message transport.
+     * @brief Implements Steam Networking Sockets message transport.
      *
-     * Responsibility: own SteamNetworkingSockets listen/connect handles, accept
-     * only valid session peers, and preserve message boundaries for protocol code.
+     * Responsibility: own SteamNetworkingSockets listen/connect handles for Steam
+     * P2P and direct IP sessions, accept only valid session peers, and preserve
+     * message boundaries for protocol code.
      */
     class SteamP2PTransport {
     public:
@@ -33,6 +35,10 @@ namespace CoreEngine {
         bool StartHost(std::uint16_t virtual_port = 0, std::uint32_t max_peers = 8);
 
         bool ConnectToHost(std::uint64_t host_steam_id, std::uint16_t virtual_port = 0);
+
+        bool StartDirectHost(std::uint16_t port, std::uint32_t max_peers = 8);
+
+        bool ConnectDirect(std::string_view host, std::uint16_t port);
 
         void Shutdown();
 
@@ -78,6 +84,7 @@ namespace CoreEngine {
 
         SteamOnlineSystem &online_system_;
         bool is_host_ = false;
+        bool direct_ip_mode_ = false;
         std::uint32_t max_peers_ = 0;
         PeerId next_peer_id_ = kHostPeerId;
         NetworkEventQueue pending_events_;

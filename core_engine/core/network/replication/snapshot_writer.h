@@ -1,12 +1,21 @@
 #pragma once
 
+#include <cstddef>
 #include <span>
+#include <vector>
 
 #include "core/math/math.h"
 #include "core/network/message_writer.h"
 #include "core/network/replication/network_identity_component.h"
+#include "core/network/replication/replicated_state_types.h"
 
 namespace CoreEngine {
+    struct ReplicatedComponentPayload {
+        ReplicatedComponentTypeId component_type_id = 0;
+        std::uint16_t serialization_version = 1;
+        std::vector<std::byte> bytes;
+    };
+
     struct NetworkTransformSnapshot {
         NetworkEntityId network_id = 0;
         PeerId owner_peer = kInvalidPeerId;
@@ -18,16 +27,7 @@ namespace CoreEngine {
         std::uint32_t tick = 0;
         std::uint32_t component_mask = 0;
         std::uint32_t last_processed_input_sequence = 0;
-        float health = 0.0f;
-        float max_health = 0.0f;
-        std::uint64_t beacon_original_owner = 0;
-        std::uint64_t beacon_carrier = 0;
-        std::uint64_t capture_captor = 0;
-        bool alive = true;
-        bool concussed = false;
-        bool beacon_on_ground = false;
-        bool beacon_extracted = false;
-        bool captured = false;
+        std::vector<ReplicatedComponentPayload> component_payloads;
     };
 
     /**

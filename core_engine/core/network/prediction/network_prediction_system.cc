@@ -3,6 +3,10 @@
 #include <algorithm>
 
 namespace CoreEngine {
+    namespace {
+        constexpr std::uint8_t kInputCommandRedundancy = 3;
+    }
+
     void NetworkPredictionSystem::Reset() noexcept {
         buffer_.Reset();
         stats_ = {};
@@ -44,7 +48,9 @@ namespace CoreEngine {
         command_scratch_[0] = latest;
         std::uint8_t count = 1;
 
-        for (std::uint32_t sequence = latest.sequence; sequence > 1 && count < kMaxInputCommandsPerPacket; --sequence) {
+        for (std::uint32_t sequence = latest.sequence;
+             sequence > 1 && count < std::min(kInputCommandRedundancy, kMaxInputCommandsPerPacket);
+             --sequence) {
             const PredictionRecord *record = buffer_.Find(sequence - 1u);
             if (record == nullptr) {
                 break;

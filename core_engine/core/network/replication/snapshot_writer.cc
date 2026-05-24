@@ -2,12 +2,18 @@
 
 #include "core/network/network_protocol.h"
 
+#include <limits>
+
 namespace CoreEngine {
     SnapshotWriter::SnapshotWriter(MessageWriter &writer) noexcept
         : writer_(writer) {
     }
 
     bool SnapshotWriter::WriteTransform(const NetworkTransformSnapshot &snapshot) {
+        if (snapshot.component_payloads.size() > std::numeric_limits<std::uint16_t>::max()) {
+            return false;
+        }
+
         return writer_.WriteUInt64(snapshot.network_id) &&
                writer_.WriteUInt32(snapshot.owner_peer) &&
                writer_.WriteUInt32(snapshot.archetype_id) &&
@@ -25,16 +31,18 @@ namespace CoreEngine {
                writer_.WriteFloat(snapshot.scale.z) &&
                writer_.WriteUInt32(snapshot.component_mask) &&
                writer_.WriteUInt32(snapshot.last_processed_input_sequence) &&
-               writer_.WriteFloat(snapshot.health) &&
-               writer_.WriteFloat(snapshot.max_health) &&
-               writer_.WriteUInt64(snapshot.beacon_original_owner) &&
-               writer_.WriteUInt64(snapshot.beacon_carrier) &&
-               writer_.WriteUInt64(snapshot.capture_captor) &&
-               writer_.WriteBool(snapshot.alive) &&
-               writer_.WriteBool(snapshot.concussed) &&
-               writer_.WriteBool(snapshot.beacon_on_ground) &&
-               writer_.WriteBool(snapshot.beacon_extracted) &&
-               writer_.WriteBool(snapshot.captured);
+               writer_.WriteUInt16(static_cast<std::uint16_t>(snapshot.component_payloads.size())) &&
+               [&]() {
+                   for (const ReplicatedComponentPayload &payload: snapshot.component_payloads) {
+                       if (!writer_.WriteUInt16(payload.component_type_id) ||
+                           !writer_.WriteUInt16(payload.serialization_version) ||
+                           !writer_.WriteSizedBytes(payload.bytes)) {
+                           return false;
+                       }
+                   }
+
+                   return true;
+               }();
     }
 
     bool SnapshotWriter::WriteTransformBatch(std::span<const NetworkTransformSnapshot> snapshots) {

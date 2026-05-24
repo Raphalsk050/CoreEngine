@@ -24,25 +24,29 @@ namespace CoreEngine {
         float look_pitch = 0.0f;
         std::uint8_t selected_slot = 0;
 
-        void SetButton(PlayerInputButton button, bool down) noexcept {
-            const std::uint32_t bit = static_cast<std::uint32_t>(button);
+        void SetAction(PlayerCommandActionId action, bool down) noexcept {
+            const std::uint64_t bit = PlayerCommandActionBit(action);
+            if (bit == 0u) {
+                return;
+            }
+
             if (down) {
-                buttons_ |= bit;
+                action_bits_ |= bit;
             } else {
-                buttons_ &= ~bit;
+                action_bits_ &= ~bit;
             }
         }
 
-        [[nodiscard]] bool IsButtonDown(PlayerInputButton button) const noexcept {
-            return (buttons_ & static_cast<std::uint32_t>(button)) != 0u;
+        [[nodiscard]] bool IsActionDown(PlayerCommandActionId action) const noexcept {
+            return (action_bits_ & PlayerCommandActionBit(action)) != 0u;
         }
 
-        [[nodiscard]] std::uint32_t Buttons() const noexcept {
-            return buttons_;
+        [[nodiscard]] std::uint64_t ActionBits() const noexcept {
+            return action_bits_;
         }
 
     private:
-        std::uint32_t buttons_ = 0;
+        std::uint64_t action_bits_ = 0;
     };
 
     struct NetworkPlayerEntityInitContext {

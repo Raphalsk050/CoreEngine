@@ -13,6 +13,14 @@ namespace CoreEngine {
         return transport_.ConnectToHost(host_user_id, static_cast<std::uint16_t>(virtual_port));
     }
 
+    bool SteamP2PTransportAdapter::StartDirectHost(std::uint16_t port, std::uint32_t max_peers) {
+        return transport_.StartDirectHost(port, max_peers);
+    }
+
+    bool SteamP2PTransportAdapter::ConnectDirect(std::string_view host, std::uint16_t port) {
+        return transport_.ConnectDirect(host, port);
+    }
+
     void SteamP2PTransportAdapter::Shutdown() {
         transport_.Shutdown();
     }

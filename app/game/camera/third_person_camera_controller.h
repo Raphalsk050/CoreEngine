@@ -36,12 +36,16 @@ namespace Game {
 
         [[nodiscard]] float PitchRadians() const noexcept;
 
+        [[nodiscard]] CoreEngine::Math::Vec3 Forward() const noexcept;
+
+        [[nodiscard]] CoreEngine::Node GetCameraNode() const {
+            return camera_node_;
+        }
+
     private:
         [[nodiscard]] CoreEngine::SpringArmComponent *Arm() noexcept;
 
         [[nodiscard]] const CoreEngine::SpringArmComponent *Arm() const noexcept;
-
-        [[nodiscard]] CoreEngine::Math::Vec3 Forward() const noexcept;
 
         [[nodiscard]] CoreEngine::Math::Vec3 PivotPosition(const CoreEngine::SpringArmComponent &arm) const noexcept;
 

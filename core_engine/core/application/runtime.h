@@ -22,7 +22,10 @@
 
 namespace CoreEngine {
     class IGameApp;
+    class EditorLogSink;
+    class EditorSystem;
     class OnlineSystem;
+    class SteamMultiplayerDebugPanel;
 
     class Runtime : public IApplicationService, public IWorldService {
     public:
@@ -59,6 +62,8 @@ namespace CoreEngine {
 
         void Tick(const FrameContext &frame);
 
+        void RenderDeveloperUi(const FrameContext &frame);
+
         void Shutdown();
 
         [[nodiscard]] Logger &GetLogger() const { return *logger_; }
@@ -79,6 +84,9 @@ namespace CoreEngine {
         std::unique_ptr<NetworkPlayerSystem> network_player_system_;
         std::unique_ptr<RenderSystem> render_system_;
         std::unique_ptr<IPlatformServices> platform_services_;
+        std::shared_ptr<EditorLogSink> editor_log_sink_;
+        std::unique_ptr<EditorSystem> editor_system_;
+        std::unique_ptr<SteamMultiplayerDebugPanel> steam_multiplayer_debug_panel_;
         RenderBackendType resolved_render_backend_ = RenderBackendType::None;
         std::atomic_bool shutdown_requested_{false};
     };

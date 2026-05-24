@@ -14,6 +14,12 @@ namespace CoreEngine {
         Client,
     };
 
+    enum class NetworkSessionKind : std::uint8_t {
+        None,
+        SteamLobby,
+        DirectIp,
+    };
+
     enum class NetworkSessionState : std::uint8_t {
         Offline,
         CreatingLobby,
@@ -25,6 +31,7 @@ namespace CoreEngine {
     };
 
     [[nodiscard]] const char *ToString(NetworkRole role) noexcept;
+    [[nodiscard]] const char *ToString(NetworkSessionKind kind) noexcept;
     [[nodiscard]] const char *ToString(NetworkSessionState state) noexcept;
     [[nodiscard]] const char *ToString(NetworkDisconnectReason reason) noexcept;
 
@@ -41,6 +48,10 @@ namespace CoreEngine {
         void BeginHostLobby(std::uint64_t lobby_id, std::uint64_t local_steam_id);
 
         void BeginClientLobby(std::uint64_t lobby_id, std::uint64_t owner_steam_id, std::uint64_t local_steam_id);
+
+        void BeginDirectHost(std::uint64_t local_steam_id);
+
+        void BeginDirectClient(std::uint64_t local_steam_id);
 
         void SetState(NetworkSessionState state) noexcept;
 
@@ -60,6 +71,10 @@ namespace CoreEngine {
 
         [[nodiscard]] NetworkRole Role() const noexcept {
             return role_;
+        }
+
+        [[nodiscard]] NetworkSessionKind Kind() const noexcept {
+            return kind_;
         }
 
         [[nodiscard]] NetworkSessionState State() const noexcept {
@@ -84,6 +99,7 @@ namespace CoreEngine {
 
     private:
         NetworkRole role_ = NetworkRole::Offline;
+        NetworkSessionKind kind_ = NetworkSessionKind::None;
         NetworkSessionState state_ = NetworkSessionState::Offline;
         NetworkDisconnectReason last_disconnect_reason_ = NetworkDisconnectReason::None;
         std::uint64_t lobby_id_ = 0;

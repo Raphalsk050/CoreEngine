@@ -4,11 +4,15 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
+#include "core/network/diagnostics/network_diagnostics_logger.h"
+#include "core/network/network_gameplay_event.h"
 #include "core/network/network_input_command_queue.h"
 #include "core/network/network_message.h"
 #include "core/network/prediction/player_input_command.h"
+#include "core/network/prediction/reconciliation.h"
 #include "core/network/replication/snapshot_writer.h"
 #include "core/network/network_session.h"
 #include "core/network/network_stats.h"
@@ -49,6 +53,10 @@ namespace CoreEngine {
 
         bool JoinLobbyById(std::uint64_t lobby_id);
 
+        bool CreateDirectHost(std::uint16_t port, int max_players);
+
+        bool JoinDirect(std::string_view host, std::uint16_t port);
+
         bool OpenInviteOverlay();
 
         void LeaveLobby();
@@ -60,6 +68,17 @@ namespace CoreEngine {
         bool SubmitLocalPlayerInputCommand(NetworkEntityId local_entity_id,
                                            const PlayerInputCommand &command);
 
+        bool SendGameplayEvent(PeerId peer,
+                               const NetworkGameplayEvent &event,
+                               SendMode mode = SendMode::UnreliableNoDelay);
+
+        bool SendGameplayEventToHost(const NetworkGameplayEvent &event,
+                                     SendMode mode = SendMode::UnreliableNoDelay);
+
+        bool BroadcastGameplayEvent(const NetworkGameplayEvent &event,
+                                    PeerId excluded_peer = kInvalidPeerId,
+                                    SendMode mode = SendMode::UnreliableNoDelay);
+
         bool SendWorldSnapshot(PeerId peer,
                                std::span<const NetworkTransformSnapshot> transforms,
                                std::uint32_t server_tick,
@@ -69,6 +88,8 @@ namespace CoreEngine {
         void DumpConnectionStatus() const;
 
         [[nodiscard]] std::string ConnectionDiagnosticsText() const;
+
+        [[nodiscard]] std::string LocalNetworkAddressText() const;
 
         [[nodiscard]] const NetworkEventQueue &Events() const noexcept {
             return current_events_;
@@ -90,11 +111,21 @@ namespace CoreEngine {
             return input_commands_;
         }
 
+        [[nodiscard]] std::span<const NetworkGameplayEvent> GameplayEvents() const noexcept {
+            return gameplay_events_;
+        }
+
         [[nodiscard]] std::uint32_t LastProcessedInputSequence(PeerId peer) const noexcept;
 
         [[nodiscard]] std::span<const SteamLobbyMember> LobbyMembers() const noexcept;
 
         [[nodiscard]] std::string DetailedConnectionStatus(PeerId peer) const;
+
+        void RecordPredictionCorrection(ReconciliationAction action,
+                                        float position_error,
+                                        std::uint32_t confirmed_sequence,
+                                        std::uint32_t latest_sequence,
+                                        std::size_t replay_count);
 
     private:
         void HandleEvent(NetworkEvent &event);
@@ -127,6 +158,18 @@ namespace CoreEngine {
 
         void HandleInputCommandMessage(const NetworkEvent &event);
 
+        void HandleGameplayEventMessage(const NetworkEvent &event);
+
+        [[nodiscard]] std::uint64_t RemoteUserIdForPeer(PeerId peer, std::uint64_t fallback_user_id) const noexcept;
+
+        [[nodiscard]] bool IsPeerConnectedForGameplay(PeerId peer) const noexcept;
+
+        void ResetSessionRuntimeState(bool reset_stats) noexcept;
+
+        void TraceDiagnosticsSummary();
+
+        [[nodiscard]] bool ShouldLogDetailedConnectionDiagnostics(std::uint64_t now_ms) noexcept;
+
         void RecordSentPacket(PeerId peer, std::uint32_t sequence, std::uint64_t now_ms);
 
         void HandlePacketAck(PeerId peer, std::uint32_t ack, std::uint64_t now_ms) noexcept;
@@ -147,8 +190,10 @@ namespace CoreEngine {
         std::unique_ptr<SteamAuthService> auth_service_;
         NetworkSession session_;
         NetworkStats stats_;
+        NetworkDiagnosticsLogger diagnostics_;
         NetworkEventQueue current_events_;
         std::vector<QueuedPlayerInputCommand> input_commands_;
+        std::vector<NetworkGameplayEvent> gameplay_events_;
         std::unordered_map<PeerId, std::uint32_t> last_input_sequence_by_peer_;
         std::unordered_map<PeerId, std::uint32_t> last_received_sequence_by_peer_;
         std::unordered_map<PeerId, std::uint64_t> pending_ping_sent_time_by_peer_;
@@ -160,5 +205,7 @@ namespace CoreEngine {
         std::uint32_t local_tick_ = 0;
         std::uint64_t handshake_nonce_ = 0;
         std::uint64_t next_ping_time_ms_ = 0;
+        std::uint64_t next_diagnostics_summary_time_ms_ = 0;
+        std::uint64_t next_diagnostics_details_time_ms_ = 0;
     };
 } // namespace CoreEngine

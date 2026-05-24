@@ -3,6 +3,7 @@
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/world.h"
 #include "core/network/message_reader.h"
+#include "core/network/message_writer.h"
 #include "core/network/network_system.h"
 #include "core/network/replication/network_transform_component.h"
 #include "core/network/replication/replicated_state_types.h"
@@ -26,6 +27,7 @@ namespace CoreEngine {
     void NetworkReplicator::Initialize(NetworkSystem &network_system, World &world) {
         network_system_ = &network_system;
         world_ = &world;
+        registry_.Reset();
         registry_.RegisterDefaultComponents();
         archetype_registry_.Reset();
         spawn_system_.Reset();
@@ -44,6 +46,7 @@ namespace CoreEngine {
         newest_snapshot_server_time_ = 0.0;
         presentation_time_initialized_ = false;
         last_session_role_ = network_system.Session().Role();
+        last_session_kind_ = network_system.Session().Kind();
         last_session_state_ = network_system.Session().State();
         last_lobby_id_ = network_system.Session().LobbyId();
         stats_ = {};
@@ -65,6 +68,7 @@ namespace CoreEngine {
         newest_snapshot_server_time_ = 0.0;
         presentation_time_initialized_ = false;
         last_session_role_ = NetworkRole::Offline;
+        last_session_kind_ = NetworkSessionKind::None;
         last_session_state_ = NetworkSessionState::Offline;
         last_lobby_id_ = 0;
         stats_ = {};
@@ -275,6 +279,7 @@ namespace CoreEngine {
         const NetworkSession &session = network_system_->Session();
         const bool session_changed =
             session.Role() != last_session_role_ ||
+            session.Kind() != last_session_kind_ ||
             session.State() != last_session_state_ ||
             session.LobbyId() != last_lobby_id_;
 
@@ -282,6 +287,7 @@ namespace CoreEngine {
             (session.State() == NetworkSessionState::Offline ||
              session.State() == NetworkSessionState::Disconnecting ||
              session.Role() == NetworkRole::Offline ||
+             session.Kind() != last_session_kind_ ||
              session.LobbyId() != last_lobby_id_ ||
              session.Role() != last_session_role_)) {
             DestroySessionEntities();
@@ -294,6 +300,7 @@ namespace CoreEngine {
         }
 
         last_session_role_ = session.Role();
+        last_session_kind_ = session.Kind();
         last_session_state_ = session.State();
         last_lobby_id_ = session.LobbyId();
     }
@@ -395,26 +402,26 @@ namespace CoreEngine {
                 snapshot.last_processed_input_sequence = movement->last_processed_input_sequence;
             }
 
-            if (const auto *health = world_->TryGetComponent<HealthComponent>(entity); health != nullptr) {
-                snapshot.component_mask |= ComponentBit(kHealthComponentTypeId);
-                snapshot.health = health->health;
-                snapshot.max_health = health->max_health;
-                snapshot.alive = health->alive;
-                snapshot.concussed = health->concussed;
-            }
+            snapshot.component_payloads.reserve(4);
+            for (const ReplicatedComponentDesc &component: registry_.Components()) {
+                if (component.component_type_id <= kPlayerMovementStateComponentTypeId ||
+                    (component.flags & static_cast<std::uint32_t>(ReplicatedComponentFlags::OwnerOnly)) != 0u ||
+                    component.has_component == nullptr ||
+                    component.serialize == nullptr ||
+                    !component.has_component(*world_, entity)) {
+                    continue;
+                }
 
-            if (const auto *beacon = world_->TryGetComponent<BountyBeaconComponent>(entity); beacon != nullptr) {
-                snapshot.component_mask |= ComponentBit(kBountyBeaconCarrierComponentTypeId);
-                snapshot.beacon_original_owner = beacon->original_owner_player;
-                snapshot.beacon_carrier = beacon->current_carrier_player;
-                snapshot.beacon_on_ground = beacon->on_ground;
-                snapshot.beacon_extracted = beacon->extracted;
-            }
+                MessageWriter component_writer(128);
+                if (!component.serialize(*world_, entity, component_writer)) {
+                    continue;
+                }
 
-            if (const auto *capture = world_->TryGetComponent<CaptureStateComponent>(entity); capture != nullptr) {
-                snapshot.component_mask |= ComponentBit(kCaptureStateComponentTypeId);
-                snapshot.capture_captor = capture->captor_player;
-                snapshot.captured = capture->captured;
+                snapshot.component_payloads.push_back(ReplicatedComponentPayload{
+                    .component_type_id = component.component_type_id,
+                    .serialization_version = component.serialization_version,
+                    .bytes = component_writer.TakeBytes(),
+                });
             }
 
             out_snapshots.push_back(snapshot);
@@ -519,37 +526,16 @@ namespace CoreEngine {
                 movement->last_processed_input_sequence = snapshot.last_processed_input_sequence;
             }
 
-            if ((snapshot.component_mask & ComponentBit(kHealthComponentTypeId)) != 0u) {
-                auto *health = node.TryGetComponent<HealthComponent>();
-                if (health == nullptr) {
-                    health = &node.AddComponent<HealthComponent>();
+            for (const ReplicatedComponentPayload &payload: snapshot.component_payloads) {
+                const ReplicatedComponentDesc *component = registry_.Find(payload.component_type_id);
+                if (component == nullptr ||
+                    component->apply == nullptr ||
+                    component->serialization_version != payload.serialization_version) {
+                    continue;
                 }
-                health->health = snapshot.health;
-                health->max_health = snapshot.max_health;
-                health->alive = snapshot.alive;
-                health->concussed = snapshot.concussed;
-            }
 
-            if ((snapshot.component_mask & ComponentBit(kBountyBeaconCarrierComponentTypeId)) != 0u) {
-                auto *beacon = node.TryGetComponent<BountyBeaconComponent>();
-                if (beacon == nullptr) {
-                    beacon = &node.AddComponent<BountyBeaconComponent>();
-                }
-                beacon->original_owner_player = snapshot.beacon_original_owner;
-                beacon->current_carrier_player = snapshot.beacon_carrier;
-                beacon->on_ground = snapshot.beacon_on_ground;
-                beacon->extracted = snapshot.beacon_extracted;
-            }
-
-            if ((snapshot.component_mask & ComponentBit(kCaptureStateComponentTypeId)) != 0u) {
-                auto *capture = node.TryGetComponent<CaptureStateComponent>();
-                if (capture == nullptr) {
-                    capture = &node.AddComponent<CaptureStateComponent>();
-                }
-                capture->captor_player = snapshot.capture_captor;
-                capture->captured = snapshot.captured;
-                capture->capturable = snapshot.captured;
-                capture->cast_remaining_seconds = 0.0f;
+                MessageReader reader(std::span<const std::byte>{payload.bytes.data(), payload.bytes.size()});
+                (void) component->apply(*world_, node, reader);
             }
         }
     }
@@ -590,8 +576,6 @@ namespace CoreEngine {
             }
 
             const auto &transform = view.get<TransformComponent>(entity);
-            const auto *health = world_->TryGetComponent<HealthComponent>(entity);
-            const auto *capture = world_->TryGetComponent<CaptureStateComponent>(entity);
             lag_history_.Store(LagCompensationSample{
                 .entity_id = identity.network_id,
                 .server_tick = frame.tick,
@@ -599,8 +583,8 @@ namespace CoreEngine {
                 .position = transform.Position(),
                 .rotation = transform.Rotation(),
                 .half_extents = {0.5f, 0.9f, 0.5f},
-                .alive = health == nullptr || health->alive,
-                .captured = capture != nullptr && capture->captured,
+                .alive = true,
+                .captured = false,
             });
         }
     }

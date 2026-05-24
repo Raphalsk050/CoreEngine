@@ -47,7 +47,7 @@ namespace CoreEngine {
     float NetworkedPlayerMovementSimulation::ResolveSpeed(
         const NetworkedPlayerMovementComponent &movement,
         const PlayerInputCommand &command) noexcept {
-        if (command.IsButtonDown(PlayerInputButton::Sprint)) {
+        if (movement.sprint_action.IsValid() && command.IsActionDown(movement.sprint_action)) {
             return movement.run_speed;
         }
 

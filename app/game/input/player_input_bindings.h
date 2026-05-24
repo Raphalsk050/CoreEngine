@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/input/input_system.h"
+#include "core/network/prediction/player_input_command.h"
 
 namespace Game {
     struct PlayerInputActions {
@@ -14,6 +15,18 @@ namespace Game {
         static constexpr CoreEngine::InputActionId Interact = CoreEngine::MakeInputActionId(8);
         static constexpr CoreEngine::InputActionId UseGadget = CoreEngine::MakeInputActionId(9);
         static constexpr CoreEngine::InputActionId Capture = CoreEngine::MakeInputActionId(10);
+    };
+
+    struct PlayerCommandActions {
+        static constexpr CoreEngine::PlayerCommandActionId Jump = CoreEngine::MakePlayerCommandActionId(1);
+        static constexpr CoreEngine::PlayerCommandActionId Sprint = CoreEngine::MakePlayerCommandActionId(2);
+        static constexpr CoreEngine::PlayerCommandActionId Crouch = CoreEngine::MakePlayerCommandActionId(3);
+        static constexpr CoreEngine::PlayerCommandActionId Fire = CoreEngine::MakePlayerCommandActionId(4);
+        static constexpr CoreEngine::PlayerCommandActionId AltFire = CoreEngine::MakePlayerCommandActionId(5);
+        static constexpr CoreEngine::PlayerCommandActionId Reload = CoreEngine::MakePlayerCommandActionId(6);
+        static constexpr CoreEngine::PlayerCommandActionId Interact = CoreEngine::MakePlayerCommandActionId(7);
+        static constexpr CoreEngine::PlayerCommandActionId UseGadget = CoreEngine::MakePlayerCommandActionId(8);
+        static constexpr CoreEngine::PlayerCommandActionId Capture = CoreEngine::MakePlayerCommandActionId(9);
     };
 
     /**

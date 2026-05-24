@@ -4,7 +4,9 @@
 #include <span>
 
 #include "core/ecs/node.h"
+#include "core/network/network_gameplay_event.h"
 #include "core/network/network_input_command_queue.h"
+#include "core/network/network_message.h"
 #include "core/network/network_peer.h"
 #include "core/network/network_session.h"
 #include "core/network/network_stats.h"
@@ -51,6 +53,8 @@ namespace CoreEngine {
 
         [[nodiscard]] std::span<const QueuedPlayerInputCommand> InputCommands() const noexcept;
 
+        [[nodiscard]] std::span<const NetworkGameplayEvent> GameplayEvents() const noexcept;
+
         [[nodiscard]] NetworkEntityId RegisterEntity(Node node,
                                                      const NetworkEntityRegistrationDesc &desc);
 
@@ -75,7 +79,16 @@ namespace CoreEngine {
 
         void UnregisterArchetype(NetworkArchetypeId archetype_id) noexcept;
 
+        [[nodiscard]] bool RegisterReplicatedComponent(const ReplicatedComponentDesc &desc) noexcept;
+
         [[nodiscard]] const NetworkReplicatorStats &ReplicationStats() const noexcept;
+
+        bool SendGameplayEventToHost(const NetworkGameplayEvent &event,
+                                     SendMode mode = SendMode::UnreliableNoDelay);
+
+        bool BroadcastGameplayEvent(const NetworkGameplayEvent &event,
+                                    PeerId excluded_peer = kInvalidPeerId,
+                                    SendMode mode = SendMode::UnreliableNoDelay);
 
         void CaptureLocalInputSample(const SimulationScheduler &scheduler) noexcept;
 
@@ -97,6 +110,8 @@ namespace CoreEngine {
         }
 
     private:
+        void ProcessPredictionSessionLifecycle() noexcept;
+
         struct LocalInputSampleStamp {
             std::uint32_t tick = 0;
             std::uint16_t sub_tick = 0;
@@ -107,5 +122,12 @@ namespace CoreEngine {
         NetworkPredictionSystem prediction_system_;
         NetworkReplicator replicator_;
         LocalInputSampleStamp latest_local_input_stamp_{};
+        NetworkRole last_prediction_role_ = NetworkRole::Offline;
+        NetworkSessionKind last_prediction_kind_ = NetworkSessionKind::None;
+        NetworkSessionState last_prediction_state_ = NetworkSessionState::Offline;
+        std::uint64_t last_prediction_lobby_id_ = 0;
+        std::uint64_t last_prediction_local_user_id_ = 0;
+        bool prediction_lifecycle_initialized_ = false;
+        bool client_prediction_ready_ = false;
     };
 } // namespace CoreEngine

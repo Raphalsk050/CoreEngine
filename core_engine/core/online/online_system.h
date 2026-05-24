@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "core/online/i_online_system.h"
@@ -55,6 +56,10 @@ namespace CoreEngine {
 
         bool JoinLobbyById(std::uint64_t lobby_id) override;
 
+        bool CreateDirectHost(std::uint16_t port, int max_players) override;
+
+        bool JoinDirect(std::string_view host, std::uint16_t port) override;
+
         bool OpenSteamOverlay(const char *dialog) override;
 
         bool OpenInviteOverlay() override;
@@ -62,6 +67,8 @@ namespace CoreEngine {
         void LeaveLobby() override;
 
         [[nodiscard]] std::string ConnectionDiagnosticsText() const override;
+
+        [[nodiscard]] std::string LocalNetworkAddressText() const override;
 
         void DumpConnectionStatus() const override;
 

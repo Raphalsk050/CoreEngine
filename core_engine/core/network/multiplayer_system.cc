@@ -29,9 +29,17 @@ namespace CoreEngine {
         prediction_system_.Reset();
         network_system_ = nullptr;
         latest_local_input_stamp_ = {};
+        last_prediction_role_ = NetworkRole::Offline;
+        last_prediction_kind_ = NetworkSessionKind::None;
+        last_prediction_state_ = NetworkSessionState::Offline;
+        last_prediction_lobby_id_ = 0;
+        last_prediction_local_user_id_ = 0;
+        prediction_lifecycle_initialized_ = false;
+        client_prediction_ready_ = false;
     }
 
     void MultiplayerSystem::BeginSimulationTick(const SimulationFrame &frame) noexcept {
+        ProcessPredictionSessionLifecycle();
         replicator_.BeginSimulationTick(frame);
     }
 
@@ -61,6 +69,10 @@ namespace CoreEngine {
 
     std::span<const QueuedPlayerInputCommand> MultiplayerSystem::InputCommands() const noexcept {
         return network_system_ != nullptr ? network_system_->InputCommands() : std::span<const QueuedPlayerInputCommand>{};
+    }
+
+    std::span<const NetworkGameplayEvent> MultiplayerSystem::GameplayEvents() const noexcept {
+        return network_system_ != nullptr ? network_system_->GameplayEvents() : std::span<const NetworkGameplayEvent>{};
     }
 
     NetworkEntityId MultiplayerSystem::RegisterEntity(Node node,
@@ -107,8 +119,24 @@ namespace CoreEngine {
         replicator_.UnregisterArchetype(archetype_id);
     }
 
+    bool MultiplayerSystem::RegisterReplicatedComponent(const ReplicatedComponentDesc &desc) noexcept {
+        return replicator_.Registry().Register(desc);
+    }
+
     const NetworkReplicatorStats &MultiplayerSystem::ReplicationStats() const noexcept {
         return replicator_.Stats();
+    }
+
+    bool MultiplayerSystem::SendGameplayEventToHost(const NetworkGameplayEvent &event,
+                                                    SendMode mode) {
+        return network_system_ != nullptr && network_system_->SendGameplayEventToHost(event, mode);
+    }
+
+    bool MultiplayerSystem::BroadcastGameplayEvent(const NetworkGameplayEvent &event,
+                                                   PeerId excluded_peer,
+                                                   SendMode mode) {
+        return network_system_ != nullptr &&
+               network_system_->BroadcastGameplayEvent(event, excluded_peer, mode);
     }
 
     void MultiplayerSystem::CaptureLocalInputSample(const SimulationScheduler &scheduler) noexcept {
@@ -135,7 +163,7 @@ namespace CoreEngine {
             .move_y = input.move_y,
             .look_yaw = input.look_yaw,
             .look_pitch = input.look_pitch,
-            .buttons = input.buttons,
+            .action_bits = input.action_bits,
             .selected_slot = input.selected_slot,
         };
     }
@@ -148,6 +176,10 @@ namespace CoreEngine {
         }
 
         if (Role() == NetworkRole::Client) {
+            if (SessionState() != NetworkSessionState::Connected) {
+                return false;
+            }
+
             prediction_system_.RecordPrediction(command, predicted_state);
             return network_system_->SendPlayerInputCommands(
                 prediction_system_.BuildRedundantCommandBatch(command));
@@ -177,8 +209,45 @@ namespace CoreEngine {
             .movement_flags = 0,
         };
 
-        return prediction_system_.BuildReconciliationPlan(
+        LocalPlayerReconciliationPlan plan = prediction_system_.BuildReconciliationPlan(
             authoritative_state,
             movement->last_processed_input_sequence);
+        network_system_->RecordPredictionCorrection(plan.result.action,
+                                                    plan.result.position_error,
+                                                    plan.result.confirmed_sequence,
+                                                    prediction_system_.LastIssuedSequence(),
+                                                    plan.replay_commands.size());
+        return plan;
+    }
+
+    void MultiplayerSystem::ProcessPredictionSessionLifecycle() noexcept {
+        if (network_system_ == nullptr) {
+            return;
+        }
+
+        const NetworkSession &session = network_system_->Session();
+        const bool session_changed =
+            !prediction_lifecycle_initialized_ ||
+            session.Role() != last_prediction_role_ ||
+            session.Kind() != last_prediction_kind_ ||
+            session.LobbyId() != last_prediction_lobby_id_ ||
+            session.LocalSteamId() != last_prediction_local_user_id_;
+        const bool client_ready =
+            session.Role() == NetworkRole::Client &&
+            session.State() == NetworkSessionState::Connected;
+
+        if (session_changed ||
+            (client_ready && !client_prediction_ready_) ||
+            (!client_ready && client_prediction_ready_)) {
+            prediction_system_.Reset();
+        }
+
+        last_prediction_role_ = session.Role();
+        last_prediction_kind_ = session.Kind();
+        last_prediction_state_ = session.State();
+        last_prediction_lobby_id_ = session.LobbyId();
+        last_prediction_local_user_id_ = session.LocalSteamId();
+        prediction_lifecycle_initialized_ = true;
+        client_prediction_ready_ = client_ready;
     }
 } // namespace CoreEngine

@@ -16,6 +16,19 @@ namespace CoreEngine {
         return "Unknown";
     }
 
+    const char *ToString(NetworkSessionKind kind) noexcept {
+        switch (kind) {
+            case NetworkSessionKind::None:
+                return "None";
+            case NetworkSessionKind::SteamLobby:
+                return "SteamLobby";
+            case NetworkSessionKind::DirectIp:
+                return "DirectIp";
+        }
+
+        return "Unknown";
+    }
+
     const char *ToString(NetworkSessionState state) noexcept {
         switch (state) {
             case NetworkSessionState::Offline:
@@ -64,6 +77,7 @@ namespace CoreEngine {
 
     void NetworkSession::Reset() noexcept {
         role_ = NetworkRole::Offline;
+        kind_ = NetworkSessionKind::None;
         state_ = NetworkSessionState::Offline;
         last_disconnect_reason_ = NetworkDisconnectReason::None;
         lobby_id_ = 0;
@@ -75,6 +89,7 @@ namespace CoreEngine {
     void NetworkSession::BeginHostLobby(std::uint64_t lobby_id, std::uint64_t local_steam_id) {
         Reset();
         role_ = NetworkRole::Host;
+        kind_ = NetworkSessionKind::SteamLobby;
         state_ = NetworkSessionState::InLobby;
         lobby_id_ = lobby_id;
         lobby_owner_steam_id_ = local_steam_id;
@@ -86,9 +101,27 @@ namespace CoreEngine {
                                           std::uint64_t local_steam_id) {
         Reset();
         role_ = NetworkRole::Client;
+        kind_ = NetworkSessionKind::SteamLobby;
         state_ = NetworkSessionState::Connecting;
         lobby_id_ = lobby_id;
         lobby_owner_steam_id_ = owner_steam_id;
+        local_steam_id_ = local_steam_id;
+    }
+
+    void NetworkSession::BeginDirectHost(std::uint64_t local_steam_id) {
+        Reset();
+        role_ = NetworkRole::Host;
+        kind_ = NetworkSessionKind::DirectIp;
+        state_ = NetworkSessionState::InLobby;
+        lobby_owner_steam_id_ = local_steam_id;
+        local_steam_id_ = local_steam_id;
+    }
+
+    void NetworkSession::BeginDirectClient(std::uint64_t local_steam_id) {
+        Reset();
+        role_ = NetworkRole::Client;
+        kind_ = NetworkSessionKind::DirectIp;
+        state_ = NetworkSessionState::Connecting;
         local_steam_id_ = local_steam_id;
     }
 
@@ -104,7 +137,9 @@ namespace CoreEngine {
                                                  std::uint64_t steam_id,
                                                  NetworkPeerState state) {
         if (NetworkPeer *peer = FindPeer(peer_id); peer != nullptr) {
-            peer->steam_id = steam_id;
+            if (steam_id != 0 || peer->steam_id == 0) {
+                peer->steam_id = steam_id;
+            }
             peer->state = state;
             return *peer;
         }

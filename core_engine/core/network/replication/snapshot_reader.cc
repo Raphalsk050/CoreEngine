@@ -1,5 +1,7 @@
 #include "core/network/replication/snapshot_reader.h"
 
+#include <utility>
+
 namespace CoreEngine {
     SnapshotReader::SnapshotReader(MessageReader &reader) noexcept
         : reader_(reader) {
@@ -23,16 +25,30 @@ namespace CoreEngine {
                reader_.ReadFloat(snapshot.scale.z) &&
                reader_.ReadUInt32(snapshot.component_mask) &&
                reader_.ReadUInt32(snapshot.last_processed_input_sequence) &&
-               reader_.ReadFloat(snapshot.health) &&
-               reader_.ReadFloat(snapshot.max_health) &&
-               reader_.ReadUInt64(snapshot.beacon_original_owner) &&
-               reader_.ReadUInt64(snapshot.beacon_carrier) &&
-               reader_.ReadUInt64(snapshot.capture_captor) &&
-               reader_.ReadBool(snapshot.alive) &&
-               reader_.ReadBool(snapshot.concussed) &&
-               reader_.ReadBool(snapshot.beacon_on_ground) &&
-               reader_.ReadBool(snapshot.beacon_extracted) &&
-               reader_.ReadBool(snapshot.captured);
+               [&]() {
+                   std::uint16_t payload_count = 0;
+                   if (!reader_.ReadUInt16(payload_count)) {
+                       return false;
+                   }
+
+                   snapshot.component_payloads.clear();
+                   snapshot.component_payloads.reserve(payload_count);
+                   for (std::uint16_t i = 0; i < payload_count; ++i) {
+                       ReplicatedComponentPayload payload;
+                       std::span<const std::byte> bytes;
+                       if (!reader_.ReadUInt16(payload.component_type_id) ||
+                           !reader_.ReadUInt16(payload.serialization_version) ||
+                           !reader_.ReadSizedBytes(bytes)) {
+                           snapshot.component_payloads.clear();
+                           return false;
+                       }
+
+                       payload.bytes.assign(bytes.begin(), bytes.end());
+                       snapshot.component_payloads.push_back(std::move(payload));
+                   }
+
+                   return true;
+               }();
     }
 
     bool SnapshotReader::ReadTransformBatch(std::vector<NetworkTransformSnapshot> &snapshots,

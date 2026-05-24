@@ -4,6 +4,7 @@
 #include "core/network/message_reader.h"
 #include "core/network/message_writer.h"
 #include "core/network/replication/network_snapshot_builder.h"
+#include "core/network/transport/local_network_address.h"
 #include "core/network/transport/steam_p2p_transport_adapter.h"
 #include "core/online/steam/steam_auth_service.h"
 #include "core/online/steam/steam_lobby_service.h"
@@ -16,6 +17,8 @@
 namespace CoreEngine {
     namespace {
         constexpr std::uint64_t kPingIntervalMs = 500;
+        constexpr std::uint64_t kDiagnosticsSummaryIntervalMs = 1000;
+        constexpr std::uint64_t kDiagnosticsDetailsIntervalMs = 5000;
 
         [[nodiscard]] constexpr std::uint32_t HashProtocolString(const char *value) noexcept {
             std::uint32_t hash = 2166136261u;
@@ -26,7 +29,7 @@ namespace CoreEngine {
             return hash;
         }
 
-        constexpr std::uint32_t kNetworkBuildHash = HashProtocolString("CoreEngine.BountyHunters.Protocol.v3");
+        constexpr std::uint32_t kNetworkBuildHash = HashProtocolString("CoreEngine.BountyHunters.Protocol.v4");
 
         [[nodiscard]] std::uint64_t MakeHandshakeNonce() {
             std::random_device random;
@@ -78,6 +81,17 @@ namespace CoreEngine {
         auth_service_ = std::make_unique<SteamAuthService>(online_system_);
         handshake_nonce_ = MakeHandshakeNonce();
         initialized_ = true;
+
+        if (diagnostics_.Initialize("logs/network_diagnostics.log")) {
+            diagnostics_.WriteHeader(online_system_.LocalSteamId(),
+                                     QueryLocalNetworkAddressText(),
+                                     kNetworkProtocolVersion,
+                                     kNetworkBuildHash);
+            Log::Info("Network", "Network diagnostics log: {}", diagnostics_.Path().string());
+        } else {
+            Log::Warn("Network", "Network diagnostics log could not be opened.");
+        }
+
         return true;
     }
 
@@ -103,6 +117,7 @@ namespace CoreEngine {
 
         current_events_.clear();
         input_commands_.clear();
+        gameplay_events_.clear();
         last_input_sequence_by_peer_.clear();
         last_received_sequence_by_peer_.clear();
         pending_ping_sent_time_by_peer_.clear();
@@ -112,12 +127,17 @@ namespace CoreEngine {
         stats_.Reset();
         handshake_nonce_ = 0;
         next_ping_time_ms_ = 0;
+        next_diagnostics_summary_time_ms_ = 0;
+        next_diagnostics_details_time_ms_ = 0;
         initialized_ = false;
+        diagnostics_.LogSessionAction("shutdown", session_);
+        diagnostics_.Shutdown();
     }
 
     void NetworkSystem::BeginFrame() {
         current_events_.clear();
         input_commands_.clear();
+        gameplay_events_.clear();
         ++local_tick_;
 
         if (!initialized_) {
@@ -138,15 +158,18 @@ namespace CoreEngine {
         for (NetworkEvent &event: events) {
             if (event.type == NetworkEventType::PacketReceived && !HandlePacketEvent(event)) {
                 ++stats_.packets_dropped;
+                diagnostics_.LogMalformedInboundPacket(event.peer, event.remote_steam_id, event.payload.size());
                 continue;
             }
 
+            diagnostics_.LogNetworkEvent(event);
             HandleEvent(event);
             current_events_.push_back(std::move(event));
         }
 
         SendConnectionPings();
         RefreshConnectionMetrics();
+        TraceDiagnosticsSummary();
     }
 
     void NetworkSystem::EndFrame() {
@@ -158,7 +181,9 @@ namespace CoreEngine {
         }
 
         requested_max_players_ = max_players;
+        ResetSessionRuntimeState(true);
         session_.SetState(NetworkSessionState::CreatingLobby);
+        diagnostics_.LogSessionAction("create_friends_lobby_requested", session_);
         return lobby_service_->CreateFriendsLobby(max_players);
     }
 
@@ -167,8 +192,47 @@ namespace CoreEngine {
             return false;
         }
 
+        ResetSessionRuntimeState(true);
         session_.SetState(NetworkSessionState::Connecting);
+        diagnostics_.LogSessionAction("join_lobby_requested", session_);
         return lobby_service_->JoinLobby(lobby_id);
+    }
+
+    bool NetworkSystem::CreateDirectHost(std::uint16_t port, int max_players) {
+        if (!initialized_ || transport_ == nullptr || port == 0 || max_players <= 0) {
+            return false;
+        }
+
+        LeaveLobby();
+        requested_max_players_ = max_players;
+        if (!transport_->StartDirectHost(port, static_cast<std::uint32_t>(max_players))) {
+            session_.SetDisconnectReason(NetworkDisconnectReason::TransportError);
+            session_.SetState(NetworkSessionState::Disconnecting);
+            diagnostics_.LogSessionAction("direct_host_failed", session_);
+            return false;
+        }
+
+        session_.BeginDirectHost(online_system_.LocalSteamId());
+        diagnostics_.LogSessionAction("direct_host_started", session_);
+        return true;
+    }
+
+    bool NetworkSystem::JoinDirect(std::string_view host, std::uint16_t port) {
+        if (!initialized_ || transport_ == nullptr || host.empty() || port == 0) {
+            return false;
+        }
+
+        LeaveLobby();
+        session_.BeginDirectClient(online_system_.LocalSteamId());
+        diagnostics_.LogSessionAction("direct_connect_requested", session_);
+        if (!transport_->ConnectDirect(host, port)) {
+            session_.SetDisconnectReason(NetworkDisconnectReason::TransportError);
+            session_.SetState(NetworkSessionState::Disconnecting);
+            diagnostics_.LogSessionAction("direct_connect_failed", session_);
+            return false;
+        }
+
+        return true;
     }
 
     bool NetworkSystem::OpenInviteOverlay() {
@@ -187,23 +251,8 @@ namespace CoreEngine {
         }
 
         session_.Reset();
-        current_events_.clear();
-        input_commands_.clear();
-        last_input_sequence_by_peer_.clear();
-        last_received_sequence_by_peer_.clear();
-        pending_ping_sent_time_by_peer_.clear();
-        last_protocol_rtt_by_peer_.clear();
-        sent_packet_timing_by_sequence_.clear();
-        stats_.ping_ms = -1;
-        stats_.jitter_ms = 0;
-        stats_.protocol_ping_ms = -1;
-        stats_.protocol_jitter_ms = 0;
-        stats_.transport_queue_time_ms = 0;
-        stats_.transport_pending_unreliable_bytes = 0;
-        stats_.transport_pending_reliable_bytes = 0;
-        stats_.transport_send_rate_bytes_per_second = 0;
-        stats_.packet_loss = 0.0f;
-        next_ping_time_ms_ = 0;
+        diagnostics_.LogSessionAction("leave", session_);
+        ResetSessionRuntimeState(true);
     }
 
     bool NetworkSystem::Send(PeerId peer, std::span<const std::byte> payload, SendMode mode) {
@@ -212,15 +261,22 @@ namespace CoreEngine {
         }
 
         const bool sent = transport_->Send(peer, payload, mode);
+        diagnostics_.LogOutboundPacket(peer, payload, mode, sent);
         if (sent) {
             ++stats_.packets_out;
             stats_.bytes_out += payload.size();
+        } else {
+            ++stats_.packets_send_failed;
         }
         return sent;
     }
 
     bool NetworkSystem::SendPlayerInputCommands(std::span<const PlayerInputCommand> commands) {
-        if (!initialized_ || commands.empty() || session_.Role() != NetworkRole::Client) {
+        if (!initialized_ ||
+            commands.empty() ||
+            session_.Role() != NetworkRole::Client ||
+            session_.State() != NetworkSessionState::Connected ||
+            !IsPeerConnectedForGameplay(kHostPeerId)) {
             return false;
         }
 
@@ -238,6 +294,8 @@ namespace CoreEngine {
         const bool sent = Send(peer, writer.Bytes(), SendMode::UnreliableNoDelay);
         if (sent) {
             RecordSentPacket(peer, sequence, now_ms);
+        } else {
+            ++stats_.input_commands_dropped;
         }
         return sent;
     }
@@ -254,8 +312,67 @@ namespace CoreEngine {
             .remote_user_id = local_entity_id,
             .command = command,
         });
-        ++stats_.input_commands_received;
         return true;
+    }
+
+    bool NetworkSystem::SendGameplayEvent(PeerId peer,
+                                          const NetworkGameplayEvent &event,
+                                          SendMode mode) {
+        if (!initialized_ ||
+            event.event_type == 0u ||
+            event.payload_size > kMaxNetworkGameplayEventPayloadBytes ||
+            session_.State() != NetworkSessionState::Connected ||
+            !IsPeerConnectedForGameplay(peer)) {
+            return false;
+        }
+
+        const std::uint32_t sequence = NextSequence();
+        const std::uint64_t now_ms = NowMilliseconds();
+        MessageWriter writer(160);
+        if (!writer.Begin(NetMessageType::GameplayEvent, sequence, LastReceivedSequence(peer), local_tick_) ||
+            !writer.WriteUInt32(event.event_type) ||
+            !writer.WriteUInt64(event.source_network_id) ||
+            !writer.WriteUInt32(event.sequence) ||
+            !writer.WriteUInt32(event.server_tick) ||
+            !writer.WriteSizedBytes(event.Payload()) ||
+            !writer.Finalize()) {
+            return false;
+        }
+
+        const bool sent = Send(peer, writer.Bytes(), mode);
+        if (sent) {
+            RecordSentPacket(peer, sequence, now_ms);
+        }
+        return sent;
+    }
+
+    bool NetworkSystem::SendGameplayEventToHost(const NetworkGameplayEvent &event,
+                                                SendMode mode) {
+        if (session_.Role() != NetworkRole::Client) {
+            return false;
+        }
+
+        return SendGameplayEvent(kHostPeerId, event, mode);
+    }
+
+    bool NetworkSystem::BroadcastGameplayEvent(const NetworkGameplayEvent &event,
+                                               PeerId excluded_peer,
+                                               SendMode mode) {
+        if (session_.Role() != NetworkRole::Host ||
+            session_.State() != NetworkSessionState::Connected) {
+            return false;
+        }
+
+        bool sent_any = false;
+        for (const NetworkPeer &peer: session_.Peers()) {
+            if (peer.id == excluded_peer || peer.state != NetworkPeerState::Connected) {
+                continue;
+            }
+
+            sent_any = SendGameplayEvent(peer.id, event, mode) || sent_any;
+        }
+
+        return sent_any;
     }
 
     bool NetworkSystem::SendWorldSnapshot(PeerId peer,
@@ -300,6 +417,8 @@ namespace CoreEngine {
                           static_cast<float>(stats_.snapshots_sent);
             stats_.avg_snapshot_size_bytes = static_cast<std::uint32_t>(average + 0.5f);
             stats_.last_snapshot_tick = server_tick;
+        } else {
+            ++stats_.snapshots_dropped;
         }
 
         return sent;
@@ -363,6 +482,30 @@ namespace CoreEngine {
         return transport_ != nullptr ? transport_->DetailedConnectionStatus(peer) : std::string{};
     }
 
+    std::string NetworkSystem::LocalNetworkAddressText() const {
+        return QueryLocalNetworkAddressText();
+    }
+
+    void NetworkSystem::RecordPredictionCorrection(ReconciliationAction action,
+                                                   float position_error,
+                                                   std::uint32_t confirmed_sequence,
+                                                   std::uint32_t latest_sequence,
+                                                   std::size_t replay_count) {
+        if (action == ReconciliationAction::SmoothCorrection) {
+            ++stats_.prediction_corrections;
+        } else if (action == ReconciliationAction::HardSnap) {
+            ++stats_.prediction_hard_snaps;
+        }
+
+        if (action != ReconciliationAction::None) {
+            diagnostics_.LogPredictionCorrection(action,
+                                                 position_error,
+                                                 confirmed_sequence,
+                                                 latest_sequence,
+                                                 replay_count);
+        }
+    }
+
     void NetworkSystem::HandleEvent(NetworkEvent &event) {
         switch (event.type) {
             case NetworkEventType::LobbyCreated:
@@ -371,11 +514,13 @@ namespace CoreEngine {
                     session_.SetDisconnectReason(NetworkDisconnectReason::TransportError);
                     session_.SetState(NetworkSessionState::Disconnecting);
                 }
+                diagnostics_.LogSessionAction("lobby_created", session_);
                 break;
 
             case NetworkEventType::LobbyEntered:
                 if (event.lobby_owner_id == online_system_.LocalSteamId()) {
                     session_.BeginHostLobby(event.lobby_id, online_system_.LocalSteamId());
+                    diagnostics_.LogSessionAction("lobby_entered_as_host", session_);
                     break;
                 }
 
@@ -384,6 +529,7 @@ namespace CoreEngine {
                     session_.SetDisconnectReason(NetworkDisconnectReason::TransportError);
                     session_.SetState(NetworkSessionState::Disconnecting);
                 }
+                diagnostics_.LogSessionAction("lobby_entered_as_client", session_);
                 break;
 
             case NetworkEventType::LobbyJoinRequested:
@@ -406,6 +552,7 @@ namespace CoreEngine {
                         session_.SetDisconnectReason(NetworkDisconnectReason::TransportError);
                         session_.SetState(NetworkSessionState::Disconnecting);
                     }
+                    diagnostics_.LogSessionAction("lobby_owner_changed_to_local", session_);
                     break;
                 }
 
@@ -414,10 +561,12 @@ namespace CoreEngine {
                     session_.SetDisconnectReason(NetworkDisconnectReason::TransportError);
                     session_.SetState(NetworkSessionState::Disconnecting);
                 }
+                diagnostics_.LogSessionAction("lobby_owner_changed_to_remote", session_);
                 break;
 
             case NetworkEventType::PeerConnecting:
                 session_.AddOrUpdatePeer(event.peer, event.remote_steam_id, NetworkPeerState::Connecting);
+                diagnostics_.LogSessionAction("peer_connecting", session_);
                 break;
 
             case NetworkEventType::PeerConnected:
@@ -429,6 +578,7 @@ namespace CoreEngine {
                     SendHello(event.peer, NetMessageType::ClientHello);
                 }
                 SendAuthTicket(event.peer);
+                diagnostics_.LogSessionAction("peer_connected_authenticating", session_);
                 break;
 
             case NetworkEventType::PeerDisconnected:
@@ -437,18 +587,21 @@ namespace CoreEngine {
                 if (session_.Role() == NetworkRole::Client && event.peer == kHostPeerId) {
                     session_.SetState(NetworkSessionState::Disconnecting);
                 }
+                diagnostics_.LogSessionAction("peer_disconnected", session_);
                 break;
 
             case NetworkEventType::AuthAccepted:
                 session_.AddOrUpdatePeer(event.peer, event.remote_steam_id, NetworkPeerState::Connected);
                 session_.SetState(NetworkSessionState::Connected);
                 SendAuthAccepted(event.peer);
+                diagnostics_.LogSessionAction("auth_accepted", session_);
                 break;
 
             case NetworkEventType::AuthRejected:
                 session_.AddOrUpdatePeer(event.peer, event.remote_steam_id, NetworkPeerState::Closing);
                 session_.SetDisconnectReason(event.disconnect_reason);
                 SendAuthRejected(event.peer, event.disconnect_reason);
+                diagnostics_.LogSessionAction("auth_rejected", session_);
                 break;
 
             case NetworkEventType::PacketReceived:
@@ -474,7 +627,9 @@ namespace CoreEngine {
         event.sequence = header.sequence;
         event.ack = header.ack;
         event.tick = header.tick;
+        const std::size_t packet_size = event.payload.size();
         event.payload.assign(payload.begin(), payload.end());
+        diagnostics_.LogInboundPacket(event, packet_size);
 
         if (event.peer != kInvalidPeerId) {
             std::uint32_t &last_received = last_received_sequence_by_peer_[event.peer];
@@ -534,7 +689,10 @@ namespace CoreEngine {
             }
 
             case NetMessageType::AuthAccepted:
-                session_.AddOrUpdatePeer(event.peer, event.remote_steam_id, NetworkPeerState::Connected);
+                session_.AddOrUpdatePeer(
+                    event.peer,
+                    RemoteUserIdForPeer(event.peer, event.remote_steam_id),
+                    NetworkPeerState::Connected);
                 session_.SetState(NetworkSessionState::Connected);
                 break;
 
@@ -557,6 +715,10 @@ namespace CoreEngine {
 
             case NetMessageType::WorldSnapshot:
                 ++stats_.snapshots_received;
+                break;
+
+            case NetMessageType::GameplayEvent:
+                HandleGameplayEventMessage(event);
                 break;
 
             case NetMessageType::EntitySpawn:
@@ -812,7 +974,9 @@ namespace CoreEngine {
     }
 
     void NetworkSystem::HandleInputCommandMessage(const NetworkEvent &event) {
-        if (session_.Role() != NetworkRole::Host) {
+        if (session_.Role() != NetworkRole::Host ||
+            session_.State() != NetworkSessionState::Connected ||
+            !IsPeerConnectedForGameplay(event.peer)) {
             ++stats_.input_commands_dropped;
             return;
         }
@@ -825,6 +989,7 @@ namespace CoreEngine {
         }
 
         std::uint32_t &last_sequence = last_input_sequence_by_peer_[event.peer];
+        const std::uint64_t remote_user_id = RemoteUserIdForPeer(event.peer, event.remote_steam_id);
         for (std::uint8_t i = 0; i < batch.count; ++i) {
             const PlayerInputCommand &command = batch.commands[i];
             if (command.sequence <= last_sequence) {
@@ -835,12 +1000,137 @@ namespace CoreEngine {
             last_sequence = command.sequence;
             input_commands_.push_back(QueuedPlayerInputCommand{
                 .peer = event.peer,
-                .player_network_id = MakeNetworkPlayerEntityId(event.peer, event.remote_steam_id),
-                .remote_user_id = event.remote_steam_id,
+                .player_network_id = MakeNetworkPlayerEntityId(event.peer, remote_user_id),
+                .remote_user_id = remote_user_id,
                 .command = command,
             });
             ++stats_.input_commands_received;
         }
+    }
+
+    void NetworkSystem::HandleGameplayEventMessage(const NetworkEvent &event) {
+        if (!IsPeerConnectedForGameplay(event.peer)) {
+            ++stats_.packets_dropped;
+            return;
+        }
+
+        MessageReader reader(event.payload);
+        NetworkGameplayEvent gameplay_event;
+        std::span<const std::byte> payload;
+        if (!reader.ReadUInt32(gameplay_event.event_type) ||
+            !reader.ReadUInt64(gameplay_event.source_network_id) ||
+            !reader.ReadUInt32(gameplay_event.sequence) ||
+            !reader.ReadUInt32(gameplay_event.server_tick) ||
+            !reader.ReadSizedBytes(payload) ||
+            reader.Remaining() != 0u ||
+            gameplay_event.event_type == 0u ||
+            payload.size() > kMaxNetworkGameplayEventPayloadBytes ||
+            !gameplay_event.SetPayload(payload)) {
+            ++stats_.packets_dropped;
+            return;
+        }
+
+        gameplay_event.peer = event.peer;
+        gameplay_events_.push_back(gameplay_event);
+    }
+
+    std::uint64_t NetworkSystem::RemoteUserIdForPeer(PeerId peer, std::uint64_t fallback_user_id) const noexcept {
+        if (const NetworkPeer *known_peer = session_.FindPeer(peer);
+            known_peer != nullptr && known_peer->steam_id != 0) {
+            return known_peer->steam_id;
+        }
+
+        return fallback_user_id;
+    }
+
+    bool NetworkSystem::IsPeerConnectedForGameplay(PeerId peer) const noexcept {
+        if (peer == kInvalidPeerId) {
+            return false;
+        }
+
+        const NetworkPeer *known_peer = session_.FindPeer(peer);
+        return known_peer != nullptr && known_peer->state == NetworkPeerState::Connected;
+    }
+
+    void NetworkSystem::ResetSessionRuntimeState(bool reset_stats) noexcept {
+        current_events_.clear();
+        input_commands_.clear();
+        gameplay_events_.clear();
+        last_input_sequence_by_peer_.clear();
+        last_received_sequence_by_peer_.clear();
+        pending_ping_sent_time_by_peer_.clear();
+        last_protocol_rtt_by_peer_.clear();
+        sent_packet_timing_by_sequence_.clear();
+        next_ping_time_ms_ = 0;
+        next_sequence_ = 1;
+
+        if (reset_stats) {
+            stats_.Reset();
+        }
+
+        stats_.ping_ms = -1;
+        stats_.jitter_ms = 0;
+        stats_.protocol_ping_ms = -1;
+        stats_.protocol_jitter_ms = 0;
+        stats_.transport_queue_time_ms = 0;
+        stats_.transport_pending_unreliable_bytes = 0;
+        stats_.transport_pending_reliable_bytes = 0;
+        stats_.transport_send_rate_bytes_per_second = 0;
+        stats_.packet_loss = 0.0f;
+    }
+
+    void NetworkSystem::TraceDiagnosticsSummary() {
+        if (!diagnostics_.IsOpen()) {
+            return;
+        }
+
+        const std::uint64_t now_ms = NowMilliseconds();
+        if (now_ms < next_diagnostics_summary_time_ms_) {
+            return;
+        }
+
+        next_diagnostics_summary_time_ms_ = now_ms + kDiagnosticsSummaryIntervalMs;
+        diagnostics_.LogSummary(session_,
+                                stats_,
+                                NetworkDiagnosticsRuntimeState{
+                                    .local_tick = local_tick_,
+                                    .pending_packet_acks = sent_packet_timing_by_sequence_.size(),
+                                    .pending_protocol_pings = pending_ping_sent_time_by_peer_.size(),
+                                    .pending_transport_packets = stats_.transport_pending_unreliable_bytes +
+                                                                 stats_.transport_pending_reliable_bytes,
+                                });
+
+        if (ShouldLogDetailedConnectionDiagnostics(now_ms)) {
+            diagnostics_.LogConnectionDetails(ConnectionDiagnosticsText());
+        }
+    }
+
+    bool NetworkSystem::ShouldLogDetailedConnectionDiagnostics(std::uint64_t now_ms) noexcept {
+        if (session_.State() != NetworkSessionState::Connected) {
+            return false;
+        }
+
+        const bool suspicious =
+            stats_.transport_queue_time_ms > 8 ||
+            stats_.transport_pending_unreliable_bytes > 0 ||
+            stats_.transport_pending_reliable_bytes > 0 ||
+            stats_.packet_loss > 0.0f ||
+            stats_.packets_send_failed > 0 ||
+            stats_.packets_dropped > 0 ||
+            stats_.input_commands_dropped > 0 ||
+            stats_.snapshots_dropped > 0 ||
+            stats_.prediction_hard_snaps > 0 ||
+            (stats_.ping_ms >= 0 &&
+             stats_.protocol_ping_ms >= 0 &&
+             stats_.protocol_ping_ms > stats_.ping_ms + 16);
+
+        if (now_ms < next_diagnostics_details_time_ms_ && !suspicious) {
+            return false;
+        }
+
+        next_diagnostics_details_time_ms_ =
+            now_ms + (suspicious ? kDiagnosticsSummaryIntervalMs : kDiagnosticsDetailsIntervalMs);
+        return true;
     }
 
     void NetworkSystem::RecordSentPacket(PeerId peer, std::uint32_t sequence, std::uint64_t now_ms) {

@@ -22,6 +22,25 @@ namespace CoreEngine {
             return options;
         }
 
+        [[nodiscard]] bool ParseDirectAddress(std::string_view host,
+                                              std::uint16_t port,
+                                              SteamNetworkingIPAddr &out_address) {
+            std::string address_text{host};
+            if (address_text.empty()) {
+                return false;
+            }
+
+            out_address.Clear();
+            if (!out_address.ParseString(address_text.c_str())) {
+                return false;
+            }
+
+            if (out_address.m_port == 0) {
+                out_address.m_port = port;
+            }
+            return out_address.m_port != 0;
+        }
+
         [[nodiscard]] int ToSteamSendFlags(SendMode mode) noexcept {
             switch (mode) {
                 case SendMode::Unreliable:
@@ -199,6 +218,7 @@ namespace CoreEngine {
         }
 
         is_host_ = true;
+        direct_ip_mode_ = false;
         max_peers_ = max_peers;
         next_peer_id_ = kHostPeerId;
         return true;
@@ -239,12 +259,85 @@ namespace CoreEngine {
 
         SteamNetworkingSockets()->SetConnectionPollGroup(connection, poll_group_);
         is_host_ = false;
+        direct_ip_mode_ = false;
         max_peers_ = 1;
         RegisterConnection(host_steam_id, connection, NetworkPeerState::Connecting);
         return true;
 #else
         (void) host_steam_id;
         (void) virtual_port;
+        return false;
+#endif
+    }
+
+    bool SteamP2PTransport::StartDirectHost(std::uint16_t port, std::uint32_t max_peers) {
+#if CORE_ENGINE_ENABLE_STEAM
+        if (!online_system_.IsAvailable() || SteamNetworkingSockets() == nullptr || port == 0 || max_peers == 0) {
+            return false;
+        }
+
+        Shutdown();
+        poll_group_ = SteamNetworkingSockets()->CreatePollGroup();
+        if (poll_group_ == k_HSteamNetPollGroup_Invalid) {
+            return false;
+        }
+
+        SteamNetworkingIPAddr listen_address;
+        listen_address.Clear();
+        listen_address.m_port = port;
+
+        listen_socket_ = SteamNetworkingSockets()->CreateListenSocketIP(listen_address, 0, nullptr);
+        if (listen_socket_ == k_HSteamListenSocket_Invalid) {
+            SteamNetworkingSockets()->DestroyPollGroup(poll_group_);
+            poll_group_ = k_HSteamNetPollGroup_Invalid;
+            return false;
+        }
+
+        is_host_ = true;
+        direct_ip_mode_ = true;
+        max_peers_ = max_peers;
+        next_peer_id_ = kHostPeerId;
+        return true;
+#else
+        (void) port;
+        (void) max_peers;
+        return false;
+#endif
+    }
+
+    bool SteamP2PTransport::ConnectDirect(std::string_view host, std::uint16_t port) {
+#if CORE_ENGINE_ENABLE_STEAM
+        if (!online_system_.IsAvailable() || SteamNetworkingSockets() == nullptr || port == 0) {
+            return false;
+        }
+
+        SteamNetworkingIPAddr address;
+        if (!ParseDirectAddress(host, port, address)) {
+            return false;
+        }
+
+        Shutdown();
+        poll_group_ = SteamNetworkingSockets()->CreatePollGroup();
+        if (poll_group_ == k_HSteamNetPollGroup_Invalid) {
+            return false;
+        }
+
+        const HSteamNetConnection connection = SteamNetworkingSockets()->ConnectByIPAddress(address, 0, nullptr);
+        if (connection == k_HSteamNetConnection_Invalid) {
+            SteamNetworkingSockets()->DestroyPollGroup(poll_group_);
+            poll_group_ = k_HSteamNetPollGroup_Invalid;
+            return false;
+        }
+
+        SteamNetworkingSockets()->SetConnectionPollGroup(connection, poll_group_);
+        is_host_ = false;
+        direct_ip_mode_ = true;
+        max_peers_ = 1;
+        RegisterConnection(0, connection, NetworkPeerState::Connecting);
+        return true;
+#else
+        (void) host;
+        (void) port;
         return false;
 #endif
     }
@@ -275,6 +368,7 @@ namespace CoreEngine {
 
         pending_events_.clear();
         is_host_ = false;
+        direct_ip_mode_ = false;
         max_peers_ = 0;
         next_peer_id_ = kHostPeerId;
     }
@@ -519,7 +613,7 @@ namespace CoreEngine {
                 }
 
                 SteamNetworkingSockets()->SetConnectionPollGroup(connection, poll_group_);
-                RegisterConnection(remote_steam_id, connection, NetworkPeerState::Connecting);
+                RegisterConnection(direct_ip_mode_ ? 0 : remote_steam_id, connection, NetworkPeerState::Connecting);
                 break;
             }
 

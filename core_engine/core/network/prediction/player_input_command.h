@@ -8,18 +8,23 @@
 #include "core/network/message_writer.h"
 
 namespace CoreEngine {
-    enum class PlayerInputButton : std::uint32_t {
-        Jump = 1u << 0u,
-        Crouch = 1u << 1u,
-        Sprint = 1u << 2u,
-        Fire = 1u << 3u,
-        AltFire = 1u << 4u,
-        Reload = 1u << 5u,
-        Interact = 1u << 6u,
-        UseGadget = 1u << 7u,
-        Capture = 1u << 8u,
-        OpenInventory = 1u << 9u,
+    inline constexpr std::uint8_t kMaxPlayerCommandActions = 64;
+
+    struct PlayerCommandActionId {
+        std::uint8_t value = 0;
+
+        [[nodiscard]] constexpr bool IsValid() const noexcept {
+            return value > 0 && value <= kMaxPlayerCommandActions;
+        }
     };
+
+    [[nodiscard]] constexpr PlayerCommandActionId MakePlayerCommandActionId(std::uint8_t value) noexcept {
+        return PlayerCommandActionId{value};
+    }
+
+    [[nodiscard]] constexpr std::uint64_t PlayerCommandActionBit(PlayerCommandActionId action) noexcept {
+        return action.IsValid() ? (1ull << static_cast<std::uint64_t>(action.value - 1u)) : 0ull;
+    }
 
     struct PlayerInputCommand {
         std::uint32_t client_tick = 0;
@@ -30,11 +35,11 @@ namespace CoreEngine {
         float move_y = 0.0f;
         float look_yaw = 0.0f;
         float look_pitch = 0.0f;
-        std::uint32_t buttons = 0;
+        std::uint64_t action_bits = 0;
         std::uint8_t selected_slot = 0;
 
-        [[nodiscard]] bool IsButtonDown(PlayerInputButton button) const noexcept {
-            return (buttons & static_cast<std::uint32_t>(button)) != 0;
+        [[nodiscard]] bool IsActionDown(PlayerCommandActionId action) const noexcept {
+            return (action_bits & PlayerCommandActionBit(action)) != 0u;
         }
 
         [[nodiscard]] float SubTickAlpha() const noexcept {
@@ -53,7 +58,7 @@ namespace CoreEngine {
         float move_y = 0.0f;
         float look_yaw = 0.0f;
         float look_pitch = 0.0f;
-        std::uint32_t buttons = 0;
+        std::uint64_t action_bits = 0;
         std::uint8_t selected_slot = 0;
     };
 
@@ -74,7 +79,7 @@ namespace CoreEngine {
                writer.WriteFloat(command.move_y) &&
                writer.WriteFloat(command.look_yaw) &&
                writer.WriteFloat(command.look_pitch) &&
-               writer.WriteUInt32(command.buttons) &&
+               writer.WriteUInt64(command.action_bits) &&
                writer.WriteUInt8(command.selected_slot);
     }
 
@@ -88,7 +93,7 @@ namespace CoreEngine {
                reader.ReadFloat(command.move_y) &&
                reader.ReadFloat(command.look_yaw) &&
                reader.ReadFloat(command.look_pitch) &&
-               reader.ReadUInt32(command.buttons) &&
+               reader.ReadUInt64(command.action_bits) &&
                reader.ReadUInt8(command.selected_slot);
     }
 

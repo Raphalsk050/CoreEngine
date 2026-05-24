@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core/network/network_session.h"
@@ -35,6 +36,7 @@ namespace CoreEngine {
         std::uint64_t lobby_id = 0;
         std::uint64_t lobby_owner_user_id = 0;
         NetworkRole role = NetworkRole::Offline;
+        NetworkSessionKind session_kind = NetworkSessionKind::None;
         NetworkSessionState session_state = NetworkSessionState::Offline;
         NetworkDisconnectReason last_disconnect_reason = NetworkDisconnectReason::None;
         NetworkStats network_stats;
@@ -60,6 +62,10 @@ namespace CoreEngine {
 
         virtual bool JoinLobbyById(std::uint64_t lobby_id) = 0;
 
+        virtual bool CreateDirectHost(std::uint16_t port, int max_players) = 0;
+
+        virtual bool JoinDirect(std::string_view host, std::uint16_t port) = 0;
+
         virtual bool OpenSteamOverlay(const char *dialog) = 0;
 
         virtual bool OpenInviteOverlay() = 0;
@@ -67,6 +73,8 @@ namespace CoreEngine {
         virtual void LeaveLobby() = 0;
 
         [[nodiscard]] virtual std::string ConnectionDiagnosticsText() const = 0;
+
+        [[nodiscard]] virtual std::string LocalNetworkAddressText() const = 0;
 
         virtual void DumpConnectionStatus() const = 0;
     };

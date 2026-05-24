@@ -18,6 +18,7 @@ namespace CoreEngine {
         float walk_speed = 3.0f;
         float run_speed = 6.0f;
         NetworkedPlayerMovementType default_movement_type = NetworkedPlayerMovementType::Walk;
+        PlayerCommandActionId sprint_action{};
     };
 
     /**

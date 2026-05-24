@@ -20,6 +20,7 @@ namespace CoreEngine {
         std::uint64_t packets_in = 0;
         std::uint64_t packets_out = 0;
         std::uint64_t packets_dropped = 0;
+        std::uint64_t packets_send_failed = 0;
         std::uint64_t input_commands_received = 0;
         std::uint64_t input_commands_dropped = 0;
         std::uint64_t input_commands_duplicated = 0;

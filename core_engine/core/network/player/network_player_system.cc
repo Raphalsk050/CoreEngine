@@ -4,6 +4,7 @@
 #include "core/ecs/world.h"
 #include "core/log/log.h"
 #include "core/network/multiplayer_system.h"
+#include "core/network/replication/network_transform_component.h"
 #include "core/network/replication/replicated_state_types.h"
 #include "core/simulation/simulation_frame.h"
 
@@ -190,12 +191,21 @@ namespace CoreEngine {
             return;
         }
 
+        if (multiplayer_->Role() == NetworkRole::Client) {
+            const auto *network_transform = local_player_.node.TryGetComponent<NetworkTransformComponent>();
+            if (multiplayer_->SessionState() != NetworkSessionState::Connected ||
+                network_transform == nullptr ||
+                network_transform->last_snapshot_tick == 0u) {
+                return;
+            }
+        }
+
         PlayerInputCommand command = multiplayer_->BuildLocalPlayerInputCommand(LocalPlayerInputDesc{
             .move_x = local_input_.movement.x,
             .move_y = local_input_.movement.y,
             .look_yaw = local_input_.look_yaw,
             .look_pitch = local_input_.look_pitch,
-            .buttons = local_input_.Buttons(),
+            .action_bits = local_input_.ActionBits(),
             .selected_slot = local_input_.selected_slot,
         });
 
@@ -263,7 +273,8 @@ namespace CoreEngine {
                                                                  queued.command,
                                                                  frame.fixed_delta_time);
             movement_state->last_processed_input_sequence = queued.command.sequence;
-            movement_state->sprinting = queued.command.IsButtonDown(PlayerInputButton::Sprint);
+            movement_state->sprinting = record->movement.sprint_action.IsValid() &&
+                                        queued.command.IsActionDown(record->movement.sprint_action);
 
             record->movement_command = queued.command;
             record->last_input_sequence = queued.command.sequence;
@@ -293,7 +304,8 @@ namespace CoreEngine {
                                                                  record.movement_command,
                                                                  frame.fixed_delta_time);
             movement_state->last_processed_input_sequence = record.last_input_sequence;
-            movement_state->sprinting = record.movement_command.IsButtonDown(PlayerInputButton::Sprint);
+            movement_state->sprinting = record.movement.sprint_action.IsValid() &&
+                                        record.movement_command.IsActionDown(record.movement.sprint_action);
             ++record.ticks_since_movement_command;
         }
     }

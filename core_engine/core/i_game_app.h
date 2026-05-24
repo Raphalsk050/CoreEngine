@@ -2,8 +2,8 @@
 
 #include "engine.h"
 #include "application/engine_context.h"
+#include "application/fixed_frame_context.h"
 #include "application/frame_context.h"
-#include "core/simulation/simulation_frame.h"
 
 namespace CoreEngine {
     class IGameApp {
@@ -12,7 +12,7 @@ namespace CoreEngine {
 
         virtual void Init(const EngineContext &context) = 0;
 
-        virtual void FixedUpdate(const SimulationFrame &frame) {
+        virtual void FixedUpdate(const FixedFrameContext &frame) {
             (void) frame;
         }
 

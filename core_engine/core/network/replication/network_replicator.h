@@ -157,6 +157,7 @@ namespace CoreEngine {
         std::uint32_t ticks_until_next_snapshot_ = 0;
         std::uint32_t snapshot_interval_ticks_ = 2;
         NetworkRole last_session_role_ = NetworkRole::Offline;
+        NetworkSessionKind last_session_kind_ = NetworkSessionKind::None;
         NetworkSessionState last_session_state_ = NetworkSessionState::Offline;
         std::uint64_t last_lobby_id_ = 0;
     };

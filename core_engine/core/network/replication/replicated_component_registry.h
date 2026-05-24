@@ -5,9 +5,24 @@
 #include <cstdint>
 #include <span>
 
+#include <entt/entt.hpp>
+
+#include "core/ecs/node.h"
+#include "core/network/message_reader.h"
+#include "core/network/message_writer.h"
 #include "core/network/replication/replicated_state_types.h"
 
 namespace CoreEngine {
+    class World;
+
+    using ReplicatedComponentHasFn = bool (*)(const World &world, entt::entity entity) noexcept;
+    using ReplicatedComponentSerializeFn = bool (*)(const World &world,
+                                                   entt::entity entity,
+                                                   MessageWriter &writer);
+    using ReplicatedComponentApplyFn = bool (*)(World &world,
+                                               Node node,
+                                               MessageReader &reader);
+
     struct ReplicatedComponentDesc {
         ReplicatedComponentTypeId component_type_id = 0;
         std::uint16_t serialization_version = 1;
@@ -15,6 +30,9 @@ namespace CoreEngine {
         ReplicationReliability reliability = ReplicationReliability::UnreliableSnapshot;
         std::uint8_t max_send_rate = 20;
         std::uint32_t flags = 0;
+        ReplicatedComponentHasFn has_component = nullptr;
+        ReplicatedComponentSerializeFn serialize = nullptr;
+        ReplicatedComponentApplyFn apply = nullptr;
     };
 
     /**
@@ -33,6 +51,8 @@ namespace CoreEngine {
         }
 
         [[nodiscard]] const ReplicatedComponentDesc *Find(ReplicatedComponentTypeId component_type_id) const noexcept;
+
+        void Reset() noexcept;
 
         [[nodiscard]] std::span<const ReplicatedComponentDesc> Components() const noexcept {
             return std::span<const ReplicatedComponentDesc>{components_.data(), count_};

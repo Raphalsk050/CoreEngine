@@ -30,6 +30,8 @@ namespace CoreEngine {
         }
     }
 
+    SteamMultiplayerDebugPanel::SteamMultiplayerDebugPanel() = default;
+
     SteamMultiplayerDebugPanel::~SteamMultiplayerDebugPanel() = default;
 
     void SteamMultiplayerDebugPanel::Render(IOnlineSystem &online_system) {
@@ -50,6 +52,7 @@ namespace CoreEngine {
             ImGui::Text("Lobby ID: %llu", static_cast<unsigned long long>(status.lobby_id));
             ImGui::Text("Lobby owner: %llu", static_cast<unsigned long long>(status.lobby_owner_user_id));
             ImGui::Text("Role: %s", ToString(status.role));
+            ImGui::Text("Session route: %s", ToString(status.session_kind));
             ImGui::Text("P2P/Auth state: %s", ToString(status.session_state));
             ImGui::Text("Disconnect reason: %s", ToString(status.last_disconnect_reason));
             ImGui::Text("Ping: %d ms", stats.ping_ms);
@@ -64,6 +67,11 @@ namespace CoreEngine {
             ImGui::Text("Bytes in/out: %llu / %llu",
                         static_cast<unsigned long long>(stats.bytes_in),
                         static_cast<unsigned long long>(stats.bytes_out));
+            ImGui::Text("Packets in/out/drop/send fail: %llu / %llu / %llu / %llu",
+                        static_cast<unsigned long long>(stats.packets_in),
+                        static_cast<unsigned long long>(stats.packets_out),
+                        static_cast<unsigned long long>(stats.packets_dropped),
+                        static_cast<unsigned long long>(stats.packets_send_failed));
             ImGui::Text("Input recv/drop/dup: %llu / %llu / %llu",
                         static_cast<unsigned long long>(stats.input_commands_received),
                         static_cast<unsigned long long>(stats.input_commands_dropped),
@@ -124,6 +132,32 @@ namespace CoreEngine {
             if (ImGui::Button("Join")) {
                 const auto lobby_id = static_cast<std::uint64_t>(std::strtoull(lobby_id_buffer_, nullptr, 10));
                 online_system.JoinLobbyById(lobby_id);
+            }
+
+            if (ImGui::CollapsingHeader("Direct LAN", ImGuiTreeNodeFlags_DefaultOpen)) {
+                const double now_seconds = ImGui::GetTime();
+                if (now_seconds >= next_direct_local_ip_refresh_time_) {
+                    direct_local_ip_text_ = online_system.LocalNetworkAddressText();
+                    next_direct_local_ip_refresh_time_ = now_seconds + 1.0;
+                }
+                ImGui::Text("Local IP: %s", direct_local_ip_text_.c_str());
+
+                ImGui::InputInt("Direct Port", &direct_port_);
+                direct_port_ = std::clamp(direct_port_, 1, 65535);
+
+                ImGui::InputInt("Direct Max Players", &direct_max_players_);
+                direct_max_players_ = std::clamp(direct_max_players_, 1, 32);
+
+                ImGui::InputText("Direct Host", direct_host_buffer_, sizeof(direct_host_buffer_));
+
+                if (ImGui::Button("Create Local Match")) {
+                    online_system.CreateDirectHost(static_cast<std::uint16_t>(direct_port_), direct_max_players_);
+                }
+
+                ImGui::SameLine();
+                if (ImGui::Button("Direct Connect")) {
+                    online_system.JoinDirect(direct_host_buffer_, static_cast<std::uint16_t>(direct_port_));
+                }
             }
 
             if (ImGui::Button("Leave Lobby")) {

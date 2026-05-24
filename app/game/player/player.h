@@ -5,9 +5,11 @@
 #include "core/ecs/node.h"
 #include "core/network/player/network_player_system.h"
 #include "core/render/render_handle.h"
+#include "game/player_weapon/player_weapon.h"
 
 namespace CoreEngine {
     struct EngineContext;
+    struct FixedFrameContext;
     struct FrameContext;
     class RenderSystem;
     class World;
@@ -25,6 +27,8 @@ namespace Game {
         Player() = default;
 
         [[nodiscard]] bool Initialize(const CoreEngine::EngineContext &context);
+
+        void FixedUpdate(const CoreEngine::FixedFrameContext &frame);
 
         void Update(const CoreEngine::FrameContext &frame);
 
@@ -62,6 +66,7 @@ namespace Game {
         CoreEngine::NetworkPlayerSystem *network_players_ = nullptr;
         CoreEngine::RenderSystem *render_system_ = nullptr;
         CoreEngine::ModelHandle player_model_{};
+        PlayerWeapon player_weapon_{};
         bool initialized_ = false;
     };
 } // Game

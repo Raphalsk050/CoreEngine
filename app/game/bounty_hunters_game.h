@@ -18,6 +18,8 @@ namespace Game {
 
         void Init(const CoreEngine::EngineContext &context) override;
 
+        void FixedUpdate(const CoreEngine::FixedFrameContext &frame) override;
+
         void Update(const CoreEngine::FrameContext &frame) override;
 
         void Shutdown(const CoreEngine::EngineContext &context) override;

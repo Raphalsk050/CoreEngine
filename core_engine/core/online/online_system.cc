@@ -86,6 +86,14 @@ namespace CoreEngine {
         return network_ != nullptr && network_->JoinLobbyById(lobby_id);
     }
 
+    bool OnlineSystem::CreateDirectHost(std::uint16_t port, int max_players) {
+        return network_ != nullptr && network_->CreateDirectHost(port, max_players);
+    }
+
+    bool OnlineSystem::JoinDirect(std::string_view host, std::uint16_t port) {
+        return network_ != nullptr && network_->JoinDirect(host, port);
+    }
+
     bool OnlineSystem::OpenSteamOverlay(const char *dialog) {
         return steam_.OpenOverlay(dialog);
     }
@@ -112,6 +120,10 @@ namespace CoreEngine {
         return network_ != nullptr ? network_->ConnectionDiagnosticsText() : std::string{};
     }
 
+    std::string OnlineSystem::LocalNetworkAddressText() const {
+        return network_ != nullptr ? network_->LocalNetworkAddressText() : std::string{"unavailable"};
+    }
+
     NetworkSystem &OnlineSystem::Network() noexcept {
         return *network_;
     }
@@ -134,6 +146,7 @@ namespace CoreEngine {
             status_.lobby_id = 0;
             status_.lobby_owner_user_id = 0;
             status_.role = NetworkRole::Offline;
+            status_.session_kind = NetworkSessionKind::None;
             status_.session_state = NetworkSessionState::Offline;
             status_.last_disconnect_reason = NetworkDisconnectReason::None;
             status_.network_stats.Reset();
@@ -144,6 +157,7 @@ namespace CoreEngine {
         status_.lobby_id = session.LobbyId();
         status_.lobby_owner_user_id = session.LobbyOwnerSteamId();
         status_.role = session.Role();
+        status_.session_kind = session.Kind();
         status_.session_state = session.State();
         status_.last_disconnect_reason = session.LastDisconnectReason();
         status_.network_stats = network_->Stats();

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string_view>
+
 #include "core/network/transport/i_network_transport.h"
 #include "core/online/steam/steam_p2p_transport.h"
 
@@ -19,6 +21,10 @@ namespace CoreEngine {
         bool StartHost(int virtual_port, std::uint32_t max_peers) override;
 
         bool ConnectToHost(std::uint64_t host_user_id, int virtual_port) override;
+
+        bool StartDirectHost(std::uint16_t port, std::uint32_t max_peers) override;
+
+        bool ConnectDirect(std::string_view host, std::uint16_t port) override;
 
         void Shutdown() override;
 

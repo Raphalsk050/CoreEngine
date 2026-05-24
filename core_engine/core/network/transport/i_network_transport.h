@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 
 #include "core/network/network_message.h"
 #include "core/network/network_stats.h"
@@ -22,6 +23,10 @@ namespace CoreEngine {
         virtual bool StartHost(int virtual_port, std::uint32_t max_peers) = 0;
 
         virtual bool ConnectToHost(std::uint64_t host_user_id, int virtual_port) = 0;
+
+        virtual bool StartDirectHost(std::uint16_t port, std::uint32_t max_peers) = 0;
+
+        virtual bool ConnectDirect(std::string_view host, std::uint16_t port) = 0;
 
         virtual void Shutdown() = 0;
 

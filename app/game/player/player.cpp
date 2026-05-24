@@ -1,6 +1,7 @@
 #include "player.h"
 
 #include "core/application/engine_context.h"
+#include "core/application/fixed_frame_context.h"
 #include "core/application/frame_context.h"
 #include "core/debug/debug_draw.h"
 #include "core/ecs/components/camera_component.h"
@@ -8,8 +9,9 @@
 #include "core/ecs/world.h"
 #include "core/log/log.h"
 #include "core/network/player/network_player_ids.h"
-#include "core/network/replication/replicated_state_types.h"
 #include "core/render/render_system.h"
+#include "game/components/bounty_gameplay_components.h"
+#include "game/input/player_input_bindings.h"
 
 namespace Game {
     namespace {
@@ -22,6 +24,7 @@ namespace Game {
             .walk_speed = 3.0f,
             .run_speed = 6.0f,
             .default_movement_type = CoreEngine::NetworkedPlayerMovementType::Walk,
+            .sprint_action = PlayerCommandActions::Sprint,
         };
     }
 
@@ -30,7 +33,6 @@ namespace Game {
 
         render_system_ = &context.render_system;
         network_players_ = &context.network_players;
-
         const bool input_bound = controller_.Initialize(context);
         if (!input_bound) {
             CoreEngine::Log::Warn("Game", "One or more player input bindings failed");
@@ -39,6 +41,7 @@ namespace Game {
         CreateLocalPlayer(context.world);
         CreateCamera(context.world);
         controller_.AttachCameraController(camera_controller_);
+        player_weapon_.AttachCameraController(camera_controller_);
         LoadPlayerModel(context);
 
         const bool network_configured = context.network_players.Configure(CoreEngine::NetworkPlayerSystemDesc{
@@ -53,12 +56,12 @@ namespace Game {
         }
 
         const CoreEngine::NetworkEntityId local_network_id =
-            context.network_players.RegisterLocalPlayer(CoreEngine::LocalNetworkPlayerDesc{
-                .node = player_node_,
-                .local_user_id = context.online_system.Status().local_user_id,
-                .presentation_id = CoreEngine::kDefaultNetworkPlayerPresentationId,
-                .movement = MakeDefaultMovement(),
-            });
+                context.network_players.RegisterLocalPlayer(CoreEngine::LocalNetworkPlayerDesc{
+                    .node = player_node_,
+                    .local_user_id = context.online_system.Status().local_user_id,
+                    .presentation_id = CoreEngine::kDefaultNetworkPlayerPresentationId,
+                    .movement = MakeDefaultMovement(),
+                });
         if (local_network_id == 0u) {
             CoreEngine::Log::Error("Game", "Failed to register local player for multiplayer");
         }
@@ -67,12 +70,21 @@ namespace Game {
         return initialized_ && input_bound && network_configured;
     }
 
+    void Player::FixedUpdate(const CoreEngine::FixedFrameContext &frame) {
+        if (!initialized_) {
+            return;
+        }
+
+        player_weapon_.FixedUpdate(frame);
+    }
+
     void Player::Update(const CoreEngine::FrameContext &frame) {
         if (!initialized_) {
             return;
         }
 
         controller_.Update(frame);
+        player_weapon_.Update(frame);
 
         if (player_node_.IsValid()) {
             frame.debug_draw.DrawSphere(player_node_.GetPosition(), 0.2f);
@@ -81,6 +93,7 @@ namespace Game {
 
     void Player::Shutdown() {
         controller_.DetachCameraController();
+        player_weapon_.DetachCameraController();
 
         if (network_players_ != nullptr) {
             network_players_->ClearLocalPlayer();
@@ -118,17 +131,17 @@ namespace Game {
             return;
         }
 
-        if (context.node.TryGetComponent<CoreEngine::HealthComponent>() == nullptr) {
-            context.node.AddComponent<CoreEngine::HealthComponent>();
+        if (context.node.TryGetComponent<HealthComponent>() == nullptr) {
+            context.node.AddComponent<HealthComponent>();
         }
-        if (context.node.TryGetComponent<CoreEngine::ArmorSegmentsComponent>() == nullptr) {
-            context.node.AddComponent<CoreEngine::ArmorSegmentsComponent>();
+        if (context.node.TryGetComponent<ArmorSegmentsComponent>() == nullptr) {
+            context.node.AddComponent<ArmorSegmentsComponent>();
         }
-        if (context.node.TryGetComponent<CoreEngine::InventoryComponent>() == nullptr) {
-            context.node.AddComponent<CoreEngine::InventoryComponent>();
+        if (context.node.TryGetComponent<InventoryComponent>() == nullptr) {
+            context.node.AddComponent<InventoryComponent>();
         }
-        if (context.node.TryGetComponent<CoreEngine::EquipmentComponent>() == nullptr) {
-            context.node.AddComponent<CoreEngine::EquipmentComponent>();
+        if (context.node.TryGetComponent<EquipmentComponent>() == nullptr) {
+            context.node.AddComponent<EquipmentComponent>();
         }
 
         if (!context.local_player && context.presentation_id == CoreEngine::kDefaultNetworkPlayerPresentationId) {
@@ -148,7 +161,8 @@ namespace Game {
         player_renderer_node_ = world.CreateNode("LocalPlayerRenderer");
         player_renderer_node_.SetParent(player_node_);
         player_renderer_node_.RotateEuler({-90.0f, 180.0f, 0.0f});
-        player_renderer_node_.SetPosition(player_renderer_node_.GetPosition() + CoreEngine::Math::Vec3{0.0f, -0.75f, 0.0f});
+        player_renderer_node_.SetPosition(
+            player_renderer_node_.GetPosition() + CoreEngine::Math::Vec3{0.0f, -0.75f, 0.0f});
         player_renderer_node_.SetScale({0.01f, 0.01f, 0.01f});
     }
 

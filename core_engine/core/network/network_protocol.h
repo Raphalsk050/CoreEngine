@@ -5,7 +5,7 @@
 
 namespace CoreEngine {
     inline constexpr std::uint32_t kNetworkMagic = 0x43454E47u; // "CENG"
-    inline constexpr std::uint16_t kNetworkProtocolVersion = 3;
+    inline constexpr std::uint16_t kNetworkProtocolVersion = 4;
     inline constexpr std::size_t kPacketHeaderWireSize = 22;
     inline constexpr std::uint16_t kMaxPacketPayloadBytes = 16u * 1024u;
     inline constexpr std::uint16_t kMaxSnapshotTransformsPerPacket = 256;
@@ -23,6 +23,7 @@ namespace CoreEngine {
         Ping = 10,
         Pong = 11,
         Disconnect = 12,
+        GameplayEvent = 13,
     };
 
     [[nodiscard]] constexpr bool IsValidNetMessageType(std::uint16_t value) noexcept {
@@ -39,6 +40,7 @@ namespace CoreEngine {
             case NetMessageType::Ping:
             case NetMessageType::Pong:
             case NetMessageType::Disconnect:
+            case NetMessageType::GameplayEvent:
                 return true;
         }
 
@@ -59,6 +61,7 @@ namespace CoreEngine {
         return type == NetMessageType::InputCommand ||
                type == NetMessageType::WorldSnapshot ||
                type == NetMessageType::EntitySpawn ||
-               type == NetMessageType::EntityDespawn;
+               type == NetMessageType::EntityDespawn ||
+               type == NetMessageType::GameplayEvent;
     }
 } // namespace CoreEngine

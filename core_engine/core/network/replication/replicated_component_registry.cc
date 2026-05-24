@@ -21,6 +21,11 @@ namespace CoreEngine {
         return nullptr;
     }
 
+    void ReplicatedComponentRegistry::Reset() noexcept {
+        components_ = {};
+        count_ = 0;
+    }
+
     void ReplicatedComponentRegistry::RegisterDefaultComponents() noexcept {
         const auto add_default = [this](const ReplicatedComponentDesc &desc) noexcept {
             [[maybe_unused]] const bool registered = Register(desc);
@@ -29,14 +34,5 @@ namespace CoreEngine {
         add_default({kNetworkIdentityComponentTypeId, 1, AuthorityPolicy::ServerOnly, ReplicationReliability::ReliableEvent, 0, 0});
         add_default({kNetworkTransformComponentTypeId, 1, AuthorityPolicy::PublicInterpolated, ReplicationReliability::UnreliableSnapshot, 30, static_cast<std::uint32_t>(ReplicatedComponentFlags::Interpolated)});
         add_default({kPlayerMovementStateComponentTypeId, 1, AuthorityPolicy::OwnerPredictedServerAuthoritative, ReplicationReliability::UnreliableSnapshot, 30, static_cast<std::uint32_t>(ReplicatedComponentFlags::Predicted)});
-        add_default({kHealthComponentTypeId, 1, AuthorityPolicy::ServerOnly, ReplicationReliability::UnreliableSnapshot, 20, static_cast<std::uint32_t>(ReplicatedComponentFlags::Critical)});
-        add_default({kArmorSegmentsComponentTypeId, 1, AuthorityPolicy::ServerOnly, ReplicationReliability::UnreliableSnapshot, 10, 0});
-        add_default({kInventoryComponentTypeId, 1, AuthorityPolicy::OwnerOnlyPrivate, ReplicationReliability::ReliableEvent, 0, static_cast<std::uint32_t>(ReplicatedComponentFlags::OwnerOnly)});
-        add_default({kEquipmentComponentTypeId, 1, AuthorityPolicy::ServerOnly, ReplicationReliability::ReliableEvent, 0, 0});
-        add_default({kBountyBeaconCarrierComponentTypeId, 1, AuthorityPolicy::ServerOnly, ReplicationReliability::ReliableEvent, 0, static_cast<std::uint32_t>(ReplicatedComponentFlags::Critical)});
-        add_default({kCaptureStateComponentTypeId, 1, AuthorityPolicy::ServerOnly, ReplicationReliability::ReliableEvent, 0, static_cast<std::uint32_t>(ReplicatedComponentFlags::Critical)});
-        add_default({kExtractionStateComponentTypeId, 1, AuthorityPolicy::ServerOnly, ReplicationReliability::ReliableEvent, 0, static_cast<std::uint32_t>(ReplicatedComponentFlags::Critical)});
-        add_default({kTargetChainComponentTypeId, 1, AuthorityPolicy::OwnerOnlyPrivate, ReplicationReliability::ReliableEvent, 0, static_cast<std::uint32_t>(ReplicatedComponentFlags::OwnerOnly)});
-        add_default({kAIStateComponentTypeId, 1, AuthorityPolicy::ServerOnly, ReplicationReliability::UnreliableSnapshot, 10, 0});
     }
 } // namespace CoreEngine

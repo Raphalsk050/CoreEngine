@@ -2,9 +2,12 @@
 #include "core/i_game_app.h"
 #include <memory>
 
+#include "core/editor/editor_log_sink.h"
+#include "core/editor/editor_system.h"
 #include "core/network/network_system.h"
 #include "core/online/online_system.h"
 #include "core/online/steam/steam_config.h"
+#include "core/online/steam/steam_multiplayer_debug_panel.h"
 #include "core/render/render_desc.h"
 #include "core/window/window_event.h"
 #include "platform/model_importer_factory.h"
@@ -106,18 +109,42 @@ namespace CoreEngine {
 
             Tick(frameContext);
             online_system_->BeginFrame();
-            simulation_scheduler_->BeginFrame(deltaTime);
-            SimulationFrame simulation_frame;
-            while (simulation_scheduler_->ConsumeFixedFrame(simulation_frame)) {
-                multiplayer_system_->BeginSimulationTick(simulation_frame);
-                network_player_system_->FixedUpdate(simulation_frame);
-                app.FixedUpdate(simulation_frame);
-                multiplayer_system_->EndSimulationTick(simulation_frame);
-            }
-            multiplayer_system_->UpdatePresentation(deltaTime);
             render_system_->BeginImGuiFrame();
-            multiplayer_system_->CaptureLocalInputSample(*simulation_scheduler_);
-            app.Update(frameContext);
+            RenderDeveloperUi(frameContext);
+
+            const bool run_single_step = editor_system_ != nullptr && editor_system_->ConsumeSingleStepRequest();
+            const bool run_game_frame = editor_system_ == nullptr || editor_system_->ShouldRunGame() || run_single_step;
+            const float simulation_delta = run_single_step
+                                               ? simulation_scheduler_->Clock().FixedDeltaTime()
+                                               : deltaTime;
+
+            simulation_scheduler_->BeginFrame(run_game_frame ? simulation_delta : 0.0f);
+            if (run_game_frame) {
+                SimulationFrame simulation_frame;
+                while (simulation_scheduler_->ConsumeFixedFrame(simulation_frame)) {
+                    multiplayer_system_->BeginSimulationTick(simulation_frame);
+                    network_player_system_->FixedUpdate(simulation_frame);
+                    app.FixedUpdate(FixedFrameContext{
+                        EngineContext{
+                            .world = *world_,
+                            .debug_draw = *debug_draw_system_,
+                            .audio_system = *audio_system_,
+                            .input_system = *input_system_,
+                            .online_system = *online_system_,
+                            .multiplayer = *multiplayer_system_,
+                            .network_players = *network_player_system_,
+                            .simulation_scheduler = *simulation_scheduler_,
+                            .window_system = *window_system_,
+                            .render_system = *render_system_,
+                        },
+                        simulation_frame,
+                    });
+                    multiplayer_system_->EndSimulationTick(simulation_frame);
+                }
+                multiplayer_system_->UpdatePresentation(simulation_delta);
+                multiplayer_system_->CaptureLocalInputSample(*simulation_scheduler_);
+                app.Update(frameContext);
+            }
             online_system_->EndFrame();
             render_system_->RenderFrame(*world_, frame_clock_, deltaTime);
         }
@@ -170,6 +197,10 @@ namespace CoreEngine {
         Log::Bind(*logger_);
         console_sink_ = std::make_shared<ConsoleSink>();
         logger_->AddSink(console_sink_);
+        if (config_.enableEditor) {
+            editor_log_sink_ = std::make_shared<EditorLogSink>();
+            logger_->AddSink(editor_log_sink_);
+        }
     }
 
     void Runtime::InitializeWorld() {
@@ -275,13 +306,27 @@ namespace CoreEngine {
         RenderDesc desc;
         desc.backend = resolved_render_backend_;
         desc.vsync = config_.vsync;
-        desc.enable_imgui = config_.enableImGui;
+        const bool enable_imgui = config_.enableImGui || config_.enableEditor;
+        desc.enable_imgui = enable_imgui;
         desc.width = config_.windowWidth;
         desc.height = config_.windowHeight;
 
         if (!render_system_->Initialize(desc, window_system_->GetNativeHandle())) {
             Log::Error("Render", render_system_->LastError());
             return false;
+        }
+
+        if (config_.enableEditor) {
+            editor_system_ = std::make_unique<EditorSystem>();
+            editor_system_->Initialize(EditorSystemDesc{
+                .project_root = config_.projectRoot,
+                .asset_roots = config_.editorAssetRoots,
+                .log_sink = editor_log_sink_,
+            });
+        }
+
+        if (enable_imgui) {
+            steam_multiplayer_debug_panel_ = std::make_unique<SteamMultiplayerDebugPanel>();
         }
 
         return true;
@@ -312,9 +357,30 @@ namespace CoreEngine {
         }
     }
 
+    void Runtime::RenderDeveloperUi(const FrameContext &frame) {
+        if ((!config_.enableImGui && !config_.enableEditor) || online_system_ == nullptr) {
+            return;
+        }
+
+        if (editor_system_ != nullptr) {
+            editor_system_->Render(frame);
+        }
+
+        if (steam_multiplayer_debug_panel_ != nullptr) {
+            steam_multiplayer_debug_panel_->Render(*online_system_);
+        }
+    }
+
     void Runtime::Shutdown() {
         Application::Unbind();
         WorldAccess::Unbind();
+
+        if (editor_system_ != nullptr) {
+            editor_system_->Shutdown();
+            editor_system_.reset();
+        }
+
+        steam_multiplayer_debug_panel_.reset();
 
         if (render_system_ != nullptr) {
             render_system_->Shutdown();
@@ -358,6 +424,7 @@ namespace CoreEngine {
         debug_draw_system_.reset();
 
         Log::Unbind();
+        editor_log_sink_.reset();
         console_sink_.reset();
         logger_.reset();
     }
