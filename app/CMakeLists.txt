@@ -1,6 +1,10 @@
 project(CoreEngineSandbox LANGUAGES CXX)
 
-add_executable(sandbox main.cc)
+add_executable(sandbox
+    main.cc
+    terrain_generator.cc
+    terrain_generator.h
+)
 
 target_link_libraries(sandbox PRIVATE CoreEngine)
 target_compile_features(sandbox PRIVATE cxx_std_23)
