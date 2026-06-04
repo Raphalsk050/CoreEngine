@@ -158,6 +158,7 @@ public:
         stream_center_ = center;
         stream_center_initialized_ = true;
         UnloadChunksOutsideActiveArea(center, render_system);
+        PruneBuildQueuesForCenter(center);
         LoadMissingChunksAround(center);
         RequestDistantLodBuild(center);
         ProcessCompletedChunks(world, render_system);
@@ -273,6 +274,12 @@ private:
         return a.x == b.x && a.z == b.z;
     }
 
+    [[nodiscard]] static int ChunkDistanceSquared(ChunkCoord a, ChunkCoord b) noexcept {
+        const int dx = a.x - b.x;
+        const int dz = a.z - b.z;
+        return dx * dx + dz * dz;
+    }
+
     [[nodiscard]] static int FloorToInt(float value) noexcept {
         const int truncated = static_cast<int>(value);
         return value < static_cast<float>(truncated) ? truncated - 1 : truncated;
@@ -342,6 +349,35 @@ private:
         }
     }
 
+    void PruneBuildQueuesForCenter(ChunkCoord center) {
+        const auto is_stale = [this, center](const auto &build) noexcept {
+            if (build.kind == TerrainBuildKind::DistantLod) {
+                return !SameChunkCoord(build.coord, center);
+            }
+
+            return !IsInsideActiveArea(build.coord, center);
+        };
+
+        std::deque<ChunkBuildResult> discarded_results;
+        {
+            std::lock_guard<std::mutex> lock(chunk_worker_mutex_);
+            pending_builds_.erase(std::remove_if(pending_builds_.begin(), pending_builds_.end(), is_stale),
+                                  pending_builds_.end());
+
+            std::deque<ChunkBuildResult> kept_results;
+            while (!completed_builds_.empty()) {
+                ChunkBuildResult result = std::move(completed_builds_.front());
+                completed_builds_.pop_front();
+                if (is_stale(result)) {
+                    discarded_results.push_back(std::move(result));
+                } else {
+                    kept_results.push_back(std::move(result));
+                }
+            }
+            completed_builds_ = std::move(kept_results);
+        }
+    }
+
     void ProcessCompletedChunks(CoreEngine::World &world, CoreEngine::RenderSystem &render_system) {
         int processed_results = 0;
         while (processed_results < config_.max_chunk_uploads_per_frame) {
@@ -364,19 +400,16 @@ private:
 
             const auto chunk_it = chunk_lookup_.find(PackChunkCoord(result.coord));
             if (chunk_it == chunk_lookup_.end()) {
-                ++processed_results;
                 continue;
             }
 
             if (stream_center_initialized_ && !IsInsideActiveArea(result.coord, stream_center_)) {
                 RemoveChunkAtIndex(chunk_it->second, render_system);
-                ++processed_results;
                 continue;
             }
 
             Chunk &chunk = chunks_[chunk_it->second];
             if (!chunk.build_pending && chunk.mesh.IsValid()) {
-                ++processed_results;
                 continue;
             }
 
@@ -426,28 +459,6 @@ private:
         distant_lod_center_initialized_ = true;
     }
 
-    void RequestChunkBuild(ChunkCoord coord) {
-        const std::uint64_t key = PackChunkCoord(coord);
-        if (chunk_lookup_.find(key) != chunk_lookup_.end()) {
-            return;
-        }
-
-        const std::size_t chunk_index = chunks_.size();
-        Chunk &chunk = chunks_.emplace_back();
-        chunk.coord = coord;
-        chunk.build_pending = true;
-        chunk_lookup_[key] = chunk_index;
-
-        {
-            std::lock_guard<std::mutex> lock(chunk_worker_mutex_);
-            pending_builds_.push_back(ChunkBuildRequest{
-                .kind = TerrainBuildKind::Chunk,
-                .coord = coord,
-            });
-        }
-        chunk_worker_cv_.notify_one();
-    }
-
     void RequestDistantLodBuild(ChunkCoord center) {
         if (distant_lod_build_pending_ &&
             distant_lod_center_initialized_ &&
@@ -462,6 +473,12 @@ private:
 
         {
             std::lock_guard<std::mutex> lock(chunk_worker_mutex_);
+            pending_builds_.erase(std::remove_if(pending_builds_.begin(),
+                                                 pending_builds_.end(),
+                                                 [](const ChunkBuildRequest &request) noexcept {
+                                                     return request.kind == TerrainBuildKind::DistantLod;
+                                                 }),
+                                  pending_builds_.end());
             pending_builds_.push_back(ChunkBuildRequest{
                 .kind = TerrainBuildKind::DistantLod,
                 .coord = center,
@@ -473,12 +490,62 @@ private:
 
     void LoadMissingChunksAround(ChunkCoord center) {
         const int radius = config_.view_radius_chunks;
+        std::vector<ChunkCoord> missing_chunks;
+        missing_chunks.reserve(static_cast<std::size_t>((radius * 2 + 1) * (radius * 2 + 1)));
+
         for (int z = center.z - radius; z <= center.z + radius; ++z) {
             for (int x = center.x - radius; x <= center.x + radius; ++x) {
                 const ChunkCoord coord{.x = x, .z = z};
-                RequestChunkBuild(coord);
+                if (chunk_lookup_.find(PackChunkCoord(coord)) == chunk_lookup_.end()) {
+                    missing_chunks.push_back(coord);
+                }
             }
         }
+
+        std::sort(missing_chunks.begin(), missing_chunks.end(), [center](ChunkCoord lhs, ChunkCoord rhs) noexcept {
+            const int lhs_distance = ChunkDistanceSquared(lhs, center);
+            const int rhs_distance = ChunkDistanceSquared(rhs, center);
+            if (lhs_distance != rhs_distance) {
+                return lhs_distance < rhs_distance;
+            }
+
+            if (lhs.z != rhs.z) {
+                return lhs.z < rhs.z;
+            }
+
+            return lhs.x < rhs.x;
+        });
+
+        std::vector<ChunkBuildRequest> build_requests;
+        build_requests.reserve(missing_chunks.size());
+        for (ChunkCoord coord: missing_chunks) {
+            const std::uint64_t key = PackChunkCoord(coord);
+            if (chunk_lookup_.find(key) != chunk_lookup_.end()) {
+                continue;
+            }
+
+            const std::size_t chunk_index = chunks_.size();
+            Chunk &chunk = chunks_.emplace_back();
+            chunk.coord = coord;
+            chunk.build_pending = true;
+            chunk_lookup_[key] = chunk_index;
+            build_requests.push_back(ChunkBuildRequest{
+                .kind = TerrainBuildKind::Chunk,
+                .coord = coord,
+            });
+        }
+
+        if (build_requests.empty()) {
+            return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(chunk_worker_mutex_);
+            for (const ChunkBuildRequest &request: build_requests) {
+                pending_builds_.push_back(request);
+            }
+        }
+        chunk_worker_cv_.notify_all();
     }
 
     void StartChunkWorkers() {
@@ -489,7 +556,9 @@ private:
 
         const unsigned int hardware_threads = std::thread::hardware_concurrency();
         const int automatic_workers = hardware_threads > 1u
-                                          ? std::clamp(static_cast<int>(hardware_threads) - 1, 1, 4)
+                                          ? std::clamp(static_cast<int>(hardware_threads) - 1,
+                                                       1,
+                                                       MaxChunkWorkerCount)
                                           : 1;
         const int worker_count = config_.chunk_worker_count > 0
                                      ? config_.chunk_worker_count
@@ -789,38 +858,42 @@ private:
         return TerrainHeight(world_x, world_z);
     }
 
-    [[nodiscard]] BlockId BlockAtHeight(int y, int surface_height) const noexcept {
-        if (surface_height < 0 || y > surface_height) {
-            return BlockId::Air;
-        }
-
-        if (y == surface_height) {
-            return BlockId::Grass;
-        }
-
-        const int dirt_depth = std::max(1, 3 * config_.voxels_per_world_unit);
-        return y >= surface_height - dirt_depth ? BlockId::Dirt : BlockId::Stone;
-    }
-
-    void AddFace(std::vector<CoreEngine::StaticMeshVertex> &vertices,
-                 std::vector<std::uint32_t> &indices,
-                 const CoreEngine::Math::Vec3 &block_position,
-                 const FaceDesc &face,
-                 BlockId block) const {
-        // Each visible face is emitted as an independent quad. Sharing vertices
-        // is not useful here because adjacent cube faces need different normals
-        // and potentially different shading/UVs.
+    void AddVoxelQuad(std::vector<CoreEngine::StaticMeshVertex> &vertices,
+                      std::vector<std::uint32_t> &indices,
+                      const CoreEngine::Math::Vec3 &p0,
+                      const CoreEngine::Math::Vec3 &p1,
+                      const CoreEngine::Math::Vec3 &p2,
+                      const CoreEngine::Math::Vec3 &p3,
+                      const CoreEngine::Math::Vec3 &normal,
+                      BlockId block) const {
+        // Inputs are in voxel-grid coordinates. Scaling once here lets meshing
+        // merge many blocks into larger quads without losing world-size stability.
         const std::uint32_t base_index = static_cast<std::uint32_t>(vertices.size());
-        const CoreEngine::Math::Vec3 color = BlockColor(block, face.normal);
-
-        for (std::size_t i = 0; i < face.corners.size(); ++i) {
-            vertices.push_back(CoreEngine::StaticMeshVertex{
-                .position = (block_position + face.corners[i]) * voxel_size_,
-                .normal = face.normal,
-                .color = color,
-                .uv = FaceUvs[i],
-            });
-        }
+        const CoreEngine::Math::Vec3 color = BlockColor(block, normal);
+        vertices.push_back(CoreEngine::StaticMeshVertex{
+            .position = p0 * voxel_size_,
+            .normal = normal,
+            .color = color,
+            .uv = FaceUvs[0],
+        });
+        vertices.push_back(CoreEngine::StaticMeshVertex{
+            .position = p1 * voxel_size_,
+            .normal = normal,
+            .color = color,
+            .uv = FaceUvs[1],
+        });
+        vertices.push_back(CoreEngine::StaticMeshVertex{
+            .position = p2 * voxel_size_,
+            .normal = normal,
+            .color = color,
+            .uv = FaceUvs[2],
+        });
+        vertices.push_back(CoreEngine::StaticMeshVertex{
+            .position = p3 * voxel_size_,
+            .normal = normal,
+            .color = color,
+            .uv = FaceUvs[3],
+        });
 
         // Two triangles, matching the face corner order above and the renderer's
         // expected winding.
@@ -830,6 +903,120 @@ private:
         indices.push_back(base_index + 2u);
         indices.push_back(base_index + 3u);
         indices.push_back(base_index + 0u);
+    }
+
+    void AddTopRun(std::vector<CoreEngine::StaticMeshVertex> &vertices,
+                   std::vector<std::uint32_t> &indices,
+                   int x0,
+                   int x1,
+                   int z,
+                   int height) const {
+        const float left = static_cast<float>(x0);
+        const float right = static_cast<float>(x1);
+        const float z0 = static_cast<float>(z);
+        const float z1 = static_cast<float>(z + 1);
+        const float y = static_cast<float>(height + 1);
+        AddVoxelQuad(vertices,
+                     indices,
+                     CoreEngine::Math::Vec3{left, y, z1},
+                     CoreEngine::Math::Vec3{right, y, z1},
+                     CoreEngine::Math::Vec3{right, y, z0},
+                     CoreEngine::Math::Vec3{left, y, z0},
+                     Faces[2].normal,
+                     BlockId::Grass);
+    }
+
+    void AddSideSpan(std::vector<CoreEngine::StaticMeshVertex> &vertices,
+                     std::vector<std::uint32_t> &indices,
+                     int x,
+                     int z,
+                     int y_start,
+                     int y_end,
+                     std::size_t face_index,
+                     BlockId block) const {
+        if (y_start >= y_end) {
+            return;
+        }
+
+        const float x0 = static_cast<float>(x);
+        const float x1 = static_cast<float>(x + 1);
+        const float z0 = static_cast<float>(z);
+        const float z1 = static_cast<float>(z + 1);
+        const float y0 = static_cast<float>(y_start);
+        const float y1 = static_cast<float>(y_end);
+
+        switch (face_index) {
+            case 0:
+                AddVoxelQuad(vertices,
+                             indices,
+                             CoreEngine::Math::Vec3{x1, y1, z0},
+                             CoreEngine::Math::Vec3{x1, y1, z1},
+                             CoreEngine::Math::Vec3{x1, y0, z1},
+                             CoreEngine::Math::Vec3{x1, y0, z0},
+                             Faces[0].normal,
+                             block);
+                break;
+            case 1:
+                AddVoxelQuad(vertices,
+                             indices,
+                             CoreEngine::Math::Vec3{x0, y1, z1},
+                             CoreEngine::Math::Vec3{x0, y1, z0},
+                             CoreEngine::Math::Vec3{x0, y0, z0},
+                             CoreEngine::Math::Vec3{x0, y0, z1},
+                             Faces[1].normal,
+                             block);
+                break;
+            case 4:
+                AddVoxelQuad(vertices,
+                             indices,
+                             CoreEngine::Math::Vec3{x1, y1, z1},
+                             CoreEngine::Math::Vec3{x0, y1, z1},
+                             CoreEngine::Math::Vec3{x0, y0, z1},
+                             CoreEngine::Math::Vec3{x1, y0, z1},
+                             Faces[4].normal,
+                             block);
+                break;
+            case 5:
+                AddVoxelQuad(vertices,
+                             indices,
+                             CoreEngine::Math::Vec3{x0, y1, z0},
+                             CoreEngine::Math::Vec3{x1, y1, z0},
+                             CoreEngine::Math::Vec3{x1, y0, z0},
+                             CoreEngine::Math::Vec3{x0, y0, z0},
+                             Faces[5].normal,
+                             block);
+                break;
+            default:
+                break;
+        }
+    }
+
+    void AddColumnSide(std::vector<CoreEngine::StaticMeshVertex> &vertices,
+                       std::vector<std::uint32_t> &indices,
+                       int x,
+                       int z,
+                       int height,
+                       int neighbor_height,
+                       std::size_t face_index) const {
+        if (neighbor_height >= height) {
+            return;
+        }
+
+        const int y_start = std::max(0, neighbor_height + 1);
+        const int y_end = height + 1;
+        const int dirt_start = std::max(0, height - std::max(1, 3 * config_.voxels_per_world_unit));
+        const int grass_start = height;
+
+        AddSideSpan(vertices, indices, x, z, y_start, std::min(y_end, dirt_start), face_index, BlockId::Stone);
+        AddSideSpan(vertices,
+                    indices,
+                    x,
+                    z,
+                    std::max(y_start, dirt_start),
+                    std::min(y_end, grass_start),
+                    face_index,
+                    BlockId::Dirt);
+        AddSideSpan(vertices, indices, x, z, std::max(y_start, grass_start), y_end, face_index, BlockId::Grass);
     }
 
     static void AddDistantLodQuad(std::vector<CoreEngine::StaticMeshVertex> &vertices,
@@ -1081,20 +1268,21 @@ private:
         result.indices.reserve(static_cast<std::size_t>(chunk_size_x * chunk_size_z * 6));
 
         for (int z = 0; z < chunk_size_z; ++z) {
+            for (int x = 0; x < chunk_size_x;) {
+                const int height = result.surface_heights[ColumnIndex(x, z)];
+                int run_end = x + 1;
+                while (run_end < chunk_size_x && result.surface_heights[ColumnIndex(run_end, z)] == height) {
+                    ++run_end;
+                }
+
+                AddTopRun(result.vertices, result.indices, x, run_end, z, height);
+                x = run_end;
+            }
+
             for (int x = 0; x < chunk_size_x; ++x) {
                 const int height = result.surface_heights[ColumnIndex(x, z)];
                 const int world_x = coord.x * chunk_size_x + x;
                 const int world_z = coord.z * chunk_size_z + z;
-
-                AddFace(result.vertices,
-                        result.indices,
-                        CoreEngine::Math::Vec3{
-                            static_cast<float>(x),
-                            static_cast<float>(height),
-                            static_cast<float>(z),
-                        },
-                        Faces[2],
-                        BlockId::Grass);
 
                 for (const SideDesc &side: SideFaces) {
                     const int neighbor_height = GetGeneratedSurfaceHeight(result.surface_heights,
@@ -1102,21 +1290,13 @@ private:
                                                                           z + side.dz,
                                                                           world_x + side.dx,
                                                                           world_z + side.dz);
-                    if (neighbor_height >= height) {
-                        continue;
-                    }
-
-                    for (int y = std::max(0, neighbor_height + 1); y <= height; ++y) {
-                        AddFace(result.vertices,
-                                result.indices,
-                                CoreEngine::Math::Vec3{
-                                    static_cast<float>(x),
-                                    static_cast<float>(y),
-                                    static_cast<float>(z),
-                                },
-                                Faces[side.face_index],
-                                BlockAtHeight(y, height));
-                    }
+                    AddColumnSide(result.vertices,
+                                  result.indices,
+                                  x,
+                                  z,
+                                  height,
+                                  neighbor_height,
+                                  side.face_index);
                 }
             }
         }
