@@ -14,7 +14,19 @@
       "architecture": "x64",
       "toolset": "v143",
       "cacheVariables": {
-        "CORE_ENGINE_ENABLE_DILIGENT": "ON"
+        "CORE_ENGINE_ENABLE_DILIGENT": "ON",
+        "CORE_ENGINE_ENABLE_STEAM": "OFF"
+      }
+    },
+    {
+      "name": "ninja-debug-offline",
+      "displayName": "Ninja Debug Offline",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/ninja-debug-offline",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CORE_ENGINE_ENABLE_DILIGENT": "OFF",
+        "CORE_ENGINE_ENABLE_STEAM": "OFF"
       }
     }
   ],
@@ -24,6 +36,15 @@
       "configurePreset": "windows-msvc-vs2022-debug",
       "configuration": "Debug",
       "jobs": 32,
+      "targets": [
+        "sandbox"
+      ]
+    },
+    {
+      "name": "ninja-debug-offline",
+      "configurePreset": "ninja-debug-offline",
+      "configuration": "Debug",
+      "jobs": 8,
       "targets": [
         "sandbox"
       ]
