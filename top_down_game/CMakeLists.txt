@@ -12,9 +12,10 @@ file(GLOB_RECURSE GAME_HDR_FILES
 
 add_executable(TopDownGame
         ${GAME_SRC_FILES}
+        ${GAME_HDR_FILES}
 )
 
-target_include_directories(TopDownGame PRIVATE ${GAME_HDR_FILES})
+target_include_directories(TopDownGame PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(TopDownGame PRIVATE CoreEngine)
 target_compile_features(TopDownGame PRIVATE cxx_std_23)
 

@@ -1,4 +1,8 @@
 #pragma once
+
+#include <memory>
+
+#include "controller/controller.h"
 #include "core/i_game_app.h"
 
 namespace TopDownGame {
@@ -13,5 +17,8 @@ namespace TopDownGame {
         void Update(const CoreEngine::FrameContext &frame) override;
 
         void Shutdown(const CoreEngine::EngineContext &context) override;
+
+    private:
+        std::unique_ptr<Controller> controller_;
     };
 } // namespace TopDownGame
