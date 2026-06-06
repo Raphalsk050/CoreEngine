@@ -384,6 +384,24 @@ function(copy_required_dlls TARGET_NAME)
         list(APPEND RUNTIME_DLLS "$<TARGET_FILE:SDL3-shared>")
     endif ()
 
+    if (TARGET Assimp)
+        get_target_property(ASSIMP_RUNTIME_LIBRARY Assimp CORE_ENGINE_RUNTIME_LIBRARY)
+        if (ASSIMP_RUNTIME_LIBRARY AND EXISTS "${ASSIMP_RUNTIME_LIBRARY}")
+            list(APPEND RUNTIME_DLLS "${ASSIMP_RUNTIME_LIBRARY}")
+        endif ()
+    endif ()
+
+    if (CORE_ENGINE_ENABLE_DILIGENT)
+        foreach (DILIGENT_RUNTIME_TARGET IN ITEMS
+                Diligent-GraphicsEngineD3D11-shared
+                Diligent-GraphicsEngineD3D12-shared
+                Diligent-GraphicsEngineVk-shared)
+            if (TARGET ${DILIGENT_RUNTIME_TARGET})
+                list(APPEND RUNTIME_DLLS "$<TARGET_FILE:${DILIGENT_RUNTIME_TARGET}>")
+            endif ()
+        endforeach ()
+    endif ()
+
     if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.21)
         list(APPEND RUNTIME_DLLS "$<TARGET_RUNTIME_DLLS:${TARGET_NAME}>")
     endif ()

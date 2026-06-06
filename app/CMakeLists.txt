@@ -9,6 +9,6 @@ add_executable(sandbox
 target_link_libraries(sandbox PRIVATE CoreEngine)
 target_compile_features(sandbox PRIVATE cxx_std_23)
 
-if(COMMAND copy_steam_runtime_dlls)
-    copy_steam_runtime_dlls(sandbox)
+if(COMMAND copy_core_engine_runtime_dlls)
+    copy_core_engine_runtime_dlls(sandbox)
 endif()

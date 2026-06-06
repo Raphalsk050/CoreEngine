@@ -159,3 +159,15 @@ function(copy_steam_runtime_dlls target)
         COMMENT "Copying Steamworks runtime files"
     )
 endfunction()
+
+function(copy_core_engine_runtime_dlls target)
+    if(NOT TARGET ${target})
+        message(FATAL_ERROR "CoreEngine runtime DLLs requested for unknown target: ${target}")
+    endif()
+
+    if(COMMAND copy_required_dlls)
+        copy_required_dlls(${target})
+    endif()
+
+    copy_steam_runtime_dlls(${target})
+endfunction()
