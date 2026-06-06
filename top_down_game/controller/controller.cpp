@@ -1,5 +1,6 @@
 #include "controller.h"
 
+#include <string>
 #include "core/application/engine_context.h"
 #include "core/application/frame_context.h"
 #include "core/log/log.h"
@@ -21,7 +22,8 @@ namespace TopDownGame {
     void Controller::Update(const CoreEngine::FrameContext &frame) {
         if (camera_ != nullptr) {
             mouse_delta_ = frame.input_system.MouseDelta();
-            UpdateCamera(frame);
+            UpdateCamera();
+            UpdatePossessed();
         }
     }
 
@@ -33,15 +35,20 @@ namespace TopDownGame {
         return success;
     }
 
-    void Controller::UpdateCamera(const CoreEngine::FrameContext &frame) const {
+    void Controller::UpdateCamera() const {
         const auto camera_info = camera_->GetCameraInfo();
-        auto camera_yaw = mouse_delta_.x * camera_info.camera_mouse_look_speed * frame.delta_time;
-        auto camera_pitch = mouse_delta_.y * camera_info.camera_mouse_look_speed * frame.delta_time;
 
-        camera_yaw = CoreEngine::Math::Deg2Rad(camera_yaw);
-        camera_pitch = CoreEngine::Math::Deg2Rad(camera_pitch);
+        const float camera_yaw =
+                CoreEngine::Math::Deg2Rad(mouse_delta_.x * camera_info.camera_mouse_look_speed_degrees);
+        const float camera_pitch =
+                CoreEngine::Math::Deg2Rad(-mouse_delta_.y * camera_info.camera_mouse_look_speed_degrees);
 
         camera_->AddLookDelta(camera_yaw, camera_pitch);
+    }
+    void Controller::UpdatePossessed() {
+        if (possessed_ != nullptr) {
+            possessed_->AddMovementInput(context_.input_system.GetAxis2D(MoveAction));
+        }
     }
     void Controller::Possess(IPossessable &possessable) {
 

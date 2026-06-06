@@ -7,9 +7,9 @@ namespace TopDownGame {
     struct CameraInfo {
         float camera_yaw = 0.0f;
         float camera_pitch = 0.0f;
-        float camera_mouse_look_speed = 2.0f;
-        float camera_max_pitch = 80.0f;
-        float camera_min_pitch = -80.0f;
+        float camera_mouse_look_speed_degrees = 0.15f;
+        float camera_max_pitch = CoreEngine::Math::Deg2Rad(80.0f);
+        float camera_min_pitch = CoreEngine::Math::Deg2Rad(-80.0f);
     };
 
     class Camera {

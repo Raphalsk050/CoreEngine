@@ -4,6 +4,9 @@
 namespace TopDownGame {
     void GameApp::Init(const CoreEngine::EngineContext &context) {
         controller_ = std::make_unique<Controller>(context);
+        player_ = std::make_unique<Player>(context);
+
+        controller_->Possess(*player_);
     }
 
     void GameApp::Update(const CoreEngine::FrameContext &frame) {

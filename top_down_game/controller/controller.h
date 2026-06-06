@@ -25,12 +25,13 @@ namespace TopDownGame {
         explicit Controller(const CoreEngine::EngineContext &context);
 
         void Update(const CoreEngine::FrameContext &frame);
+        void Possess(IPossessable &possessable);
+        void Unpossess();
 
     private:
         bool BindControls() const;
-        void UpdateCamera(const CoreEngine::FrameContext &frame) const;
-        void Possess(IPossessable &possessable);
-        void Unpossess();
+        void UpdateCamera() const;
+        void UpdatePossessed();
 
     private:
         const CoreEngine::EngineContext &context_;

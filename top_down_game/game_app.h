@@ -4,6 +4,7 @@
 
 #include "controller/controller.h"
 #include "core/i_game_app.h"
+#include "player/player.h"
 
 namespace TopDownGame {
     class GameApp final : public CoreEngine::IGameApp {
@@ -20,5 +21,6 @@ namespace TopDownGame {
 
     private:
         std::unique_ptr<Controller> controller_;
+        std::unique_ptr<Player> player_;
     };
 } // namespace TopDownGame
