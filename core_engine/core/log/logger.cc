@@ -12,9 +12,7 @@ namespace CoreEngine {
         sinks = std::move(updatedSinks);
     }
 
-    void Logger::SetMinLevel(LogLevel level) {
-        minLevel.store(level, std::memory_order_release);
-    }
+    void Logger::SetMinLevel(LogLevel level) { minLevel.store(level, std::memory_order_release); }
 
     void Logger::Log(LogLevel level, std::string_view category, std::string_view message) {
         if (level < minLevel.load(std::memory_order_acquire)) {
@@ -35,13 +33,14 @@ namespace CoreEngine {
         const auto threadId = std::this_thread::get_id();
 
         LogMessage logMessage{
-            .metadata = {
-                .timestamp = now,
-                .level = level,
-                .category = safeCategory,
-                .threadId = threadId,
-            },
-            .text = std::string(message),
+                .metadata =
+                        {
+                                .timestamp = now,
+                                .level = level,
+                                .category = safeCategory,
+                                .threadId = threadId,
+                        },
+                .text = std::string(message),
         };
 
         for (const auto &sink: *localSinks) {
@@ -50,4 +49,4 @@ namespace CoreEngine {
             }
         }
     }
-}
+} // namespace CoreEngine

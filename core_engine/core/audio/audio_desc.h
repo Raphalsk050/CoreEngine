@@ -9,4 +9,4 @@ namespace CoreEngine {
         AudioSampleFormat sample_format = AudioSampleFormat::Float32;
         bool start_paused = false;
     };
-}
+} // namespace CoreEngine

@@ -54,33 +54,19 @@ namespace CoreEngine {
 
         [[nodiscard]] const NetworkPeer *FindPeer(PeerId peer_id) const noexcept;
 
-        [[nodiscard]] std::span<const NetworkPeer> Peers() const noexcept {
-            return peers_;
-        }
+        [[nodiscard]] std::span<const NetworkPeer> Peers() const noexcept { return peers_; }
 
-        [[nodiscard]] NetworkRole Role() const noexcept {
-            return role_;
-        }
+        [[nodiscard]] NetworkRole Role() const noexcept { return role_; }
 
-        [[nodiscard]] NetworkSessionState State() const noexcept {
-            return state_;
-        }
+        [[nodiscard]] NetworkSessionState State() const noexcept { return state_; }
 
-        [[nodiscard]] std::uint64_t LobbyId() const noexcept {
-            return lobby_id_;
-        }
+        [[nodiscard]] std::uint64_t LobbyId() const noexcept { return lobby_id_; }
 
-        [[nodiscard]] std::uint64_t LobbyOwnerSteamId() const noexcept {
-            return lobby_owner_steam_id_;
-        }
+        [[nodiscard]] std::uint64_t LobbyOwnerSteamId() const noexcept { return lobby_owner_steam_id_; }
 
-        [[nodiscard]] std::uint64_t LocalSteamId() const noexcept {
-            return local_steam_id_;
-        }
+        [[nodiscard]] std::uint64_t LocalSteamId() const noexcept { return local_steam_id_; }
 
-        [[nodiscard]] NetworkDisconnectReason LastDisconnectReason() const noexcept {
-            return last_disconnect_reason_;
-        }
+        [[nodiscard]] NetworkDisconnectReason LastDisconnectReason() const noexcept { return last_disconnect_reason_; }
 
     private:
         NetworkRole role_ = NetworkRole::Offline;

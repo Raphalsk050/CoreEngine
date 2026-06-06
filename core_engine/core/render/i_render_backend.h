@@ -24,8 +24,7 @@ namespace CoreEngine {
     public:
         virtual ~IRenderBackend() = default;
 
-        [[nodiscard]] virtual bool Initialize(const RenderDesc &desc,
-                                              NativeWindowHandle native_window) = 0;
+        [[nodiscard]] virtual bool Initialize(const RenderDesc &desc, NativeWindowHandle native_window) = 0;
 
         virtual void BeginFrame() = 0;
 

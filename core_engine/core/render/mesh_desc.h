@@ -6,13 +6,9 @@
 #include "core/render/vertex.h"
 
 namespace CoreEngine {
-    enum class MeshUsage {
-        Static
-    };
+    enum class MeshUsage { Static };
 
-    enum class IndexFormat {
-        UInt32
-    };
+    enum class IndexFormat { UInt32 };
 
     struct MeshDesc {
         std::span<const StaticMeshVertex> vertices;
@@ -20,8 +16,6 @@ namespace CoreEngine {
         MeshUsage usage = MeshUsage::Static;
         IndexFormat index_format = IndexFormat::UInt32;
 
-        [[nodiscard]] bool IsValid() const {
-            return !vertices.empty() && !indices.empty();
-        }
+        [[nodiscard]] bool IsValid() const { return !vertices.empty() && !indices.empty(); }
     };
-}
+} // namespace CoreEngine

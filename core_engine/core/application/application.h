@@ -21,4 +21,4 @@ namespace CoreEngine {
 
         static bool IsShutdownRequested();
     };
-}
+} // namespace CoreEngine

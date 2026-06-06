@@ -33,8 +33,7 @@ namespace CoreEngine {
 
         ~DiligentRenderBackend() override;
 
-        [[nodiscard]] bool Initialize(const RenderDesc &desc,
-                                      NativeWindowHandle native_window) override;
+        [[nodiscard]] bool Initialize(const RenderDesc &desc, NativeWindowHandle native_window) override;
 
         void BeginFrame() override;
 

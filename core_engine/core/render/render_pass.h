@@ -4,13 +4,13 @@
 #include <span>
 #include <string_view>
 
-#include "render_frame_resources.h"
 #include "core/render/frame_buffer.h"
 #include "core/render/i_render_backend.h"
 #include "core/render/render_batch.h"
 #include "core/render/render_clear_color.h"
 #include "core/render/render_handle.h"
 #include "debug/depth_visualization.h"
+#include "render_frame_resources.h"
 
 namespace CoreEngine {
     class FrameClock;
@@ -18,17 +18,17 @@ namespace CoreEngine {
 
     //clang-format off
     enum class RenderPassStage {
-        FrameSetup,                 // Per-frame setup before any scene rendering.
-        Shadow,                     // Renders shadows maps and other light-space depth resources
-        DepthPrePass,               // Fills scene depth before color rendering
-        GBuffer,                    // Writes deferred rendering geometry buffers
-        Lighting,                   // Computes lighting from scene/material buffers
-        ForwardOpaque,              // Renders opaque forward geometry
-        ForwardTransparent,         // Renders transparent forward geometry after opaque
-        PostProcess,                // Applies fullscreen effects after scene rendering
-        Debug,                      // Produces debug overlays or debug textures
-        UI,                         // renders the ui, generally imgui
-        Present                     // the final rendering
+        FrameSetup,         // Per-frame setup before any scene rendering.
+        Shadow,             // Renders shadows maps and other light-space depth resources
+        DepthPrePass,       // Fills scene depth before color rendering
+        GBuffer,            // Writes deferred rendering geometry buffers
+        Lighting,           // Computes lighting from scene/material buffers
+        ForwardOpaque,      // Renders opaque forward geometry
+        ForwardTransparent, // Renders transparent forward geometry after opaque
+        PostProcess,        // Applies fullscreen effects after scene rendering
+        Debug,              // Produces debug overlays or debug textures
+        UI,                 // renders the ui, generally imgui
+        Present             // the final rendering
     };
     //clang-format on
 
@@ -46,17 +46,11 @@ namespace CoreEngine {
 
     class RenderPassContext final {
     public:
-        RenderPassContext(IRenderBackend &backend,
-                          World &world,
-                          const FrameClock &frame_clock,
-                          RenderFrameTiming timing,
-                          RenderFrameResources &frame_resources,
-                          int surface_width,
-                          int surface_height)
-            : backend_(backend), world_(world), frame_clock_(frame_clock), timing_(timing),
-              frame_resources_(frame_resources), surface_width_(surface_width),
-              surface_height_(surface_height) {
-        }
+        RenderPassContext(IRenderBackend &backend, World &world, const FrameClock &frame_clock,
+                          RenderFrameTiming timing, RenderFrameResources &frame_resources, int surface_width,
+                          int surface_height) :
+            backend_(backend), world_(world), frame_clock_(frame_clock), timing_(timing),
+            frame_resources_(frame_resources), surface_width_(surface_width), surface_height_(surface_height) {}
 
         [[nodiscard]] World &GetWorld() const { return world_; }
 
@@ -74,29 +68,19 @@ namespace CoreEngine {
             return backend_.CreateFrameBuffer(desc);
         }
 
-        void DestroyFrameBuffer(FrameBufferHandle handle) const {
-            backend_.DestroyFrameBuffer(handle);
-        }
+        void DestroyFrameBuffer(FrameBufferHandle handle) const { backend_.DestroyFrameBuffer(handle); }
 
-        void SetFrameBuffer(FrameBufferHandle handle) const {
-            backend_.SetFrameBuffer(handle);
-        }
+        void SetFrameBuffer(FrameBufferHandle handle) const { backend_.SetFrameBuffer(handle); }
 
-        void SetSwapChainFrameBuffer() const {
-            backend_.SetSwapChainFrameBuffer();
-        }
+        void SetSwapChainFrameBuffer() const { backend_.SetSwapChainFrameBuffer(); }
 
         [[nodiscard]] ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) const {
             return backend_.CreateShaderProgram(desc);
         }
 
-        void DestroyShaderProgram(ShaderProgramHandle handle) const {
-            backend_.DestroyShaderProgram(handle);
-        }
+        void DestroyShaderProgram(ShaderProgramHandle handle) const { backend_.DestroyShaderProgram(handle); }
 
-        void UseShaderProgram(ShaderProgramHandle handle) const {
-            backend_.UseShaderProgram(handle);
-        }
+        void UseShaderProgram(ShaderProgramHandle handle) const { backend_.UseShaderProgram(handle); }
 
         void BindTexture(std::string_view name, TextureHandle handle) const {
             backend_.BindShaderTexture(name, handle);
@@ -116,19 +100,14 @@ namespace CoreEngine {
 
         template<typename T>
         void BindUniform(std::string_view name, const T &data) const {
-            BindUniform(name,
-                        std::span<const std::uint8_t>(
-                            reinterpret_cast<const std::uint8_t *>(&data),
-                            sizeof(T)));
+            BindUniform(name, std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t *>(&data), sizeof(T)));
         }
 
         void Draw(std::uint32_t vertex_count, std::uint32_t instance_count = 1) const {
             backend_.Draw(vertex_count, instance_count);
         }
 
-        void DrawFullscreenTriangle() const {
-            Draw(3u, 1u);
-        }
+        void DrawFullscreenTriangle() const { Draw(3u, 1u); }
 
         void SetGlobalColorTexture(GlobalTextureSlot slot, FrameBufferColorView view) {
             frame_resources_.SetColorTexture(slot, view);
@@ -151,17 +130,11 @@ namespace CoreEngine {
             backend_.RenderDepthToColor(source, destination, desc);
         }
 
-        [[nodiscard]] int SurfaceWidth() const {
-            return surface_width_;
-        }
+        [[nodiscard]] int SurfaceWidth() const { return surface_width_; }
 
-        [[nodiscard]] int SurfaceHeight() const {
-            return surface_height_;
-        }
+        [[nodiscard]] int SurfaceHeight() const { return surface_height_; }
 
-        void Clear(const RenderClearColor &clear_color) const {
-            backend_.Clear(clear_color);
-        }
+        void Clear(const RenderClearColor &clear_color) const { backend_.Clear(clear_color); }
 
         [[nodiscard]] FrameBufferColorView GetFrameBufferColorView(FrameBufferHandle handle) const {
             return backend_.GetFrameBufferColorView(handle);
@@ -171,13 +144,9 @@ namespace CoreEngine {
             return backend_.GetFrameBufferDepthView(handle);
         }
 
-        void SetPerFrameProps(PerFrameProps props) const {
-            backend_.SetPerFrameProps(props);
-        }
+        void SetPerFrameProps(PerFrameProps props) const { backend_.SetPerFrameProps(props); }
 
-        void SubmitBatch(const RenderBatch &batch) const {
-            backend_.SubmitBatch(batch);
-        }
+        void SubmitBatch(const RenderBatch &batch) const { backend_.SubmitBatch(batch); }
 
     private:
         IRenderBackend &backend_;
@@ -193,9 +162,7 @@ namespace CoreEngine {
     public:
         virtual ~IRenderPass() = default;
 
-        virtual void ReleaseResources(IRenderBackend &backend) {
-            (void) backend;
-        }
+        virtual void ReleaseResources(IRenderBackend &backend) { (void) backend; }
 
         [[nodiscard]] virtual RenderPassDesc Describe() const = 0;
 

@@ -12,15 +12,11 @@ namespace CoreEngine {
     namespace {
         constexpr std::uint32_t kNetworkBuildHash = 0;
         constexpr std::uint64_t kHandshakeNonce = 0;
-    }
+    } // namespace
 
-    NetworkSystem::NetworkSystem(SteamOnlineSystem &online_system)
-        : online_system_(online_system) {
-    }
+    NetworkSystem::NetworkSystem(SteamOnlineSystem &online_system) : online_system_(online_system) {}
 
-    NetworkSystem::~NetworkSystem() {
-        Shutdown();
-    }
+    NetworkSystem::~NetworkSystem() { Shutdown(); }
 
     bool NetworkSystem::Initialize() {
         if (initialized_) {
@@ -90,8 +86,7 @@ namespace CoreEngine {
         }
     }
 
-    void NetworkSystem::EndFrame() {
-    }
+    void NetworkSystem::EndFrame() {}
 
     bool NetworkSystem::CreateFriendsLobby(int max_players) {
         if (!initialized_ || lobby_service_ == nullptr || max_players <= 0) {
@@ -169,7 +164,8 @@ namespace CoreEngine {
         switch (event.type) {
             case NetworkEventType::LobbyCreated:
                 session_.BeginHostLobby(event.lobby_id, online_system_.LocalSteamId());
-                if (transport_ != nullptr && !transport_->StartHost(0, static_cast<std::uint32_t>(requested_max_players_))) {
+                if (transport_ != nullptr &&
+                    !transport_->StartHost(0, static_cast<std::uint32_t>(requested_max_players_))) {
                     session_.SetDisconnectReason(NetworkDisconnectReason::TransportError);
                     session_.SetState(NetworkSessionState::Disconnecting);
                 }
@@ -188,13 +184,9 @@ namespace CoreEngine {
                 }
                 break;
 
-            case NetworkEventType::LobbyJoinRequested:
-                JoinLobbyById(event.lobby_id);
-                break;
+            case NetworkEventType::LobbyJoinRequested: JoinLobbyById(event.lobby_id); break;
 
-            case NetworkEventType::LobbyLeft:
-                LeaveLobby();
-                break;
+            case NetworkEventType::LobbyLeft: LeaveLobby(); break;
 
             case NetworkEventType::PeerConnecting:
                 session_.AddOrUpdatePeer(event.peer, event.remote_steam_id, NetworkPeerState::Connecting);
@@ -231,12 +223,9 @@ namespace CoreEngine {
                 SendAuthRejected(event.peer, event.disconnect_reason);
                 break;
 
-            case NetworkEventType::PacketReceived:
-                HandleProtocolMessage(event);
-                break;
+            case NetworkEventType::PacketReceived: HandleProtocolMessage(event); break;
 
-            case NetworkEventType::None:
-                break;
+            case NetworkEventType::None: break;
         }
     }
 
@@ -275,11 +264,8 @@ namespace CoreEngine {
                 std::uint32_t build_hash = 0;
                 std::uint64_t nonce = 0;
 
-                if (!reader.ReadUInt64(steam_id) ||
-                    !reader.ReadUInt16(protocol) ||
-                    !reader.ReadUInt32(build_hash) ||
-                    !reader.ReadUInt64(nonce) ||
-                    protocol != kNetworkProtocolVersion ||
+                if (!reader.ReadUInt64(steam_id) || !reader.ReadUInt16(protocol) || !reader.ReadUInt32(build_hash) ||
+                    !reader.ReadUInt64(nonce) || protocol != kNetworkProtocolVersion ||
                     build_hash != kNetworkBuildHash) {
                     SendAuthRejected(event.peer, NetworkDisconnectReason::ProtocolMismatch);
                     return;
@@ -324,8 +310,7 @@ namespace CoreEngine {
             case NetMessageType::WorldSnapshot:
             case NetMessageType::EntitySpawn:
             case NetMessageType::EntityDespawn:
-            case NetMessageType::Disconnect:
-                break;
+            case NetMessageType::Disconnect:    break;
         }
     }
 
@@ -340,12 +325,9 @@ namespace CoreEngine {
 
     bool NetworkSystem::SendHello(PeerId peer, NetMessageType type) {
         MessageWriter writer;
-        if (!writer.Begin(type, NextSequence(), 0, local_tick_) ||
-            !writer.WriteUInt64(online_system_.LocalSteamId()) ||
-            !writer.WriteUInt16(kNetworkProtocolVersion) ||
-            !writer.WriteUInt32(kNetworkBuildHash) ||
-            !writer.WriteUInt64(kHandshakeNonce) ||
-            !writer.Finalize()) {
+        if (!writer.Begin(type, NextSequence(), 0, local_tick_) || !writer.WriteUInt64(online_system_.LocalSteamId()) ||
+            !writer.WriteUInt16(kNetworkProtocolVersion) || !writer.WriteUInt32(kNetworkBuildHash) ||
+            !writer.WriteUInt64(kHandshakeNonce) || !writer.Finalize()) {
             return false;
         }
 
@@ -364,8 +346,7 @@ namespace CoreEngine {
         MessageWriter writer;
         if (!writer.Begin(NetMessageType::AuthTicket, NextSequence(), 0, local_tick_) ||
             !writer.WriteUInt64(online_system_.LocalSteamId()) ||
-            !writer.WriteSizedBytes(auth_service_->LocalTicket()) ||
-            !writer.Finalize()) {
+            !writer.WriteSizedBytes(auth_service_->LocalTicket()) || !writer.Finalize()) {
             return false;
         }
 
@@ -379,8 +360,7 @@ namespace CoreEngine {
     bool NetworkSystem::SendAuthRejected(PeerId peer, NetworkDisconnectReason reason) {
         MessageWriter writer;
         if (!writer.Begin(NetMessageType::AuthRejected, NextSequence(), 0, local_tick_) ||
-            !writer.WriteUInt16(static_cast<std::uint16_t>(reason)) ||
-            !writer.Finalize()) {
+            !writer.WriteUInt16(static_cast<std::uint16_t>(reason)) || !writer.Finalize()) {
             return false;
         }
 

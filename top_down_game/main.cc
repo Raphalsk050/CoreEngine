@@ -6,15 +6,15 @@ using namespace CoreEngine;
 
 int main() {
     EngineConfig config{
-        .window_width = 1280,
-        .window_height = 720,
-        .fullscreen = false,
-        .resizable = true,
-        .decorated = true,
-        .high_dpi = true,
-        .vsync = false,
-        .render_backend = RenderBackendType::DiligentD3D11,
-        .window_title = "Third person game",
+            .window_width = 1280,
+            .window_height = 720,
+            .fullscreen = false,
+            .resizable = true,
+            .decorated = true,
+            .high_dpi = true,
+            .vsync = false,
+            .render_backend = RenderBackendType::DiligentD3D11,
+            .window_title = "Third person game",
     };
 
     auto app = std::make_unique<TopDownGame::GameApp>();

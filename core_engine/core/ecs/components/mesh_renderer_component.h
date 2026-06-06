@@ -1,7 +1,7 @@
 #pragma once
 
-#include "core/render/render_handle.h"
 #include "core/render/primitive_topology.h"
+#include "core/render/render_handle.h"
 
 namespace CoreEngine {
     struct MeshRendererComponent {
@@ -11,4 +11,4 @@ namespace CoreEngine {
         bool cast_shadows = true;
         PrimitiveTopology topology = PrimitiveTopology::TriangleList;
     };
-}
+} // namespace CoreEngine

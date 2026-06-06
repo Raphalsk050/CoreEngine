@@ -4,13 +4,9 @@
 #include "core/network/network_system.h"
 
 namespace CoreEngine {
-    OnlineSystem::OnlineSystem(std::uint32_t steam_app_id) noexcept
-        : steam_app_id_(steam_app_id) {
-    }
+    OnlineSystem::OnlineSystem(std::uint32_t steam_app_id) noexcept : steam_app_id_(steam_app_id) {}
 
-    OnlineSystem::~OnlineSystem() {
-        Shutdown();
-    }
+    OnlineSystem::~OnlineSystem() { Shutdown(); }
 
     bool OnlineSystem::Initialize() {
         if (initialized_) {
@@ -18,7 +14,8 @@ namespace CoreEngine {
         }
 
         if (!steam_.Initialize(steam_app_id_)) {
-            Log::Warn("Steam", "Steam online system did not initialize; Steam multiplayer and overlay are disabled.");
+            Log::Warn("Steam", "Steam online system did not initialize; Steam multiplayer and overlay are disabled. "
+                               "Make sure steam is enabled");
         }
 
         network_ = std::make_unique<NetworkSystem>(steam_);
@@ -86,13 +83,9 @@ namespace CoreEngine {
         return network_ != nullptr && network_->JoinLobbyById(lobby_id);
     }
 
-    bool OnlineSystem::OpenSteamOverlay(const char *dialog) {
-        return steam_.OpenOverlay(dialog);
-    }
+    bool OnlineSystem::OpenSteamOverlay(const char *dialog) { return steam_.OpenOverlay(dialog); }
 
-    bool OnlineSystem::OpenInviteOverlay() {
-        return network_ != nullptr && network_->OpenInviteOverlay();
-    }
+    bool OnlineSystem::OpenInviteOverlay() { return network_ != nullptr && network_->OpenInviteOverlay(); }
 
     void OnlineSystem::LeaveLobby() {
         if (network_ != nullptr) {
@@ -140,8 +133,8 @@ namespace CoreEngine {
         lobby_members_.reserve(members.size());
         for (const SteamLobbyMember &member: members) {
             lobby_members_.push_back(OnlineLobbyMember{
-                .user_id = member.steam_id,
-                .display_name = member.persona_name,
+                    .user_id = member.steam_id,
+                    .display_name = member.persona_name,
             });
         }
     }

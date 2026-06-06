@@ -10,15 +10,15 @@ namespace CoreEngine {
         }
 
         const RenderPassHandle handle{
-            .id = next_pass_id_++,
-            .generation = next_generation_++,
+                .id = next_pass_id_++,
+                .generation = next_generation_++,
         };
 
         passes_.push_back(PassEntry{
-            .handle = handle,
-            .desc = pass->Describe(),
-            .pass = std::move(pass),
-            .insertion_index = next_insertion_index_++,
+                .handle = handle,
+                .desc = pass->Describe(),
+                .pass = std::move(pass),
+                .insertion_index = next_insertion_index_++,
         });
 
         SortPasses();
@@ -61,19 +61,16 @@ namespace CoreEngine {
     }
 
     void RenderGraph::SortPasses() {
-        std::stable_sort(
-            passes_.begin(),
-            passes_.end(),
-            [](const PassEntry &left, const PassEntry &right) {
-                if (left.desc.stage != right.desc.stage) {
-                    return static_cast<int>(left.desc.stage) < static_cast<int>(right.desc.stage);
-                }
+        std::stable_sort(passes_.begin(), passes_.end(), [](const PassEntry &left, const PassEntry &right) {
+            if (left.desc.stage != right.desc.stage) {
+                return static_cast<int>(left.desc.stage) < static_cast<int>(right.desc.stage);
+            }
 
-                if (left.desc.order != right.desc.order) {
-                    return left.desc.order < right.desc.order;
-                }
+            if (left.desc.order != right.desc.order) {
+                return left.desc.order < right.desc.order;
+            }
 
-                return left.insertion_index < right.insertion_index;
-            });
+            return left.insertion_index < right.insertion_index;
+        });
     }
 } // namespace CoreEngine

@@ -2,22 +2,16 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <vector>
-#include <shared_mutex>
 
 #include "log.h"
 
 namespace CoreEngine {
-    enum class LogLevel {
-        Debug,
-        Info,
-        Warn,
-        Error,
-        Fatal
-    };
+    enum class LogLevel { Debug, Info, Warn, Error, Fatal };
 
     struct LogMetadata {
         // TODO(rafael): Create a timestamp class in the future
@@ -48,10 +42,10 @@ namespace CoreEngine {
         void SetMinLevel(LogLevel level);
 
     private:
-        using SinkList = std::vector<std::shared_ptr<ILogSink> >;
+        using SinkList = std::vector<std::shared_ptr<ILogSink>>;
 
         std::atomic<LogLevel> minLevel{LogLevel::Debug};
         mutable std::shared_mutex sinksMutex;
         std::shared_ptr<const SinkList> sinks{std::make_shared<SinkList>()};
     };
-}
+} // namespace CoreEngine

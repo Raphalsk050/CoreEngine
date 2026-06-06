@@ -25,8 +25,6 @@ namespace CoreEngine {
         bool flip_vertically = false;
         bool premultiply_alpha = false;
 
-        [[nodiscard]] bool IsValid() const {
-            return !path.empty() || !data.empty();
-        }
+        [[nodiscard]] bool IsValid() const { return !path.empty() || !data.empty(); }
     };
 } // namespace CoreEngine

@@ -13,17 +13,17 @@
 
 #include <tsl/robin_map.h>
 
+#include "core/ecs/components/camera_component.h"
 #include "core/ecs/components/hierarchy_component.h"
 #include "core/ecs/components/mesh_renderer_component.h"
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/node.h"
 #include "core/ecs/world.h"
-#include "core/time/frame_clock.h"
-#include "core/ecs/components/camera_component.h"
 #include "core/log/logger.h"
 #include "core/render/material.h"
 #include "core/render/primitives.h"
 #include "core/render/render_pass/default_scene_render_pass.h"
+#include "core/time/frame_clock.h"
 
 namespace CoreEngine {
     struct RenderSystem::AsyncModelLoadRequest {
@@ -39,9 +39,7 @@ namespace CoreEngine {
         std::vector<ModelNodeAsset> nodes;
         std::string error_message;
 
-        [[nodiscard]] bool IsSuccess() const {
-            return error_message.empty() && !meshes.empty() && !materials.empty();
-        }
+        [[nodiscard]] bool IsSuccess() const { return error_message.empty() && !meshes.empty() && !materials.empty(); }
     };
 
     struct RenderSystem::ModelRegistry {
@@ -135,11 +133,9 @@ namespace CoreEngine {
             return "ModelMesh_" + std::to_string(mesh_index);
         }
 
-        [[nodiscard]] Math::Mat4 ResolveCachedWorldMatrix(
-            World &world,
-            entt::entity entity,
-            std::unordered_map<entt::entity, Math::Mat4> &cache,
-            std::uint32_t depth = 0) {
+        [[nodiscard]] Math::Mat4 ResolveCachedWorldMatrix(World &world, entt::entity entity,
+                                                          std::unordered_map<entt::entity, Math::Mat4> &cache,
+                                                          std::uint32_t depth = 0) {
             constexpr std::uint32_t kMaxHierarchyDepth = 1024u;
             if (entity == entt::null || !world.Registry().valid(entity) || depth >= kMaxHierarchyDepth) {
                 return Math::Identity();
@@ -156,36 +152,34 @@ namespace CoreEngine {
 
             Math::Mat4 world_matrix = transform->WorldMatrix();
             const HierarchyComponent *hierarchy = world.TryGetComponent<HierarchyComponent>(entity);
-            if (hierarchy != nullptr && hierarchy->parent != entt::null &&
-                hierarchy->parent != entity && world.Registry().valid(hierarchy->parent)) {
+            if (hierarchy != nullptr && hierarchy->parent != entt::null && hierarchy->parent != entity &&
+                world.Registry().valid(hierarchy->parent)) {
                 world_matrix = ResolveCachedWorldMatrix(world, hierarchy->parent, cache, depth + 1u) * world_matrix;
             }
 
             cache.emplace(entity, world_matrix);
             return world_matrix;
         }
-    }
+    } // namespace
 
     //clang-format off
     constexpr RenderPassStage kScenePassStages[] = {
-        RenderPassStage::FrameSetup,            // Per-frame setup before any scene rendering.
-        RenderPassStage::Shadow,                // Renders shadows maps and other light-space depth resources
-        RenderPassStage::DepthPrePass,          // Fills scene depth before color rendering
-        RenderPassStage::GBuffer,               // Writes deferred rendering geometry buffers
-        RenderPassStage::Lighting,              // Computes lighting from scene/material buffers
-        RenderPassStage::ForwardOpaque,         // Renders opaque forward geometry
-        RenderPassStage::ForwardTransparent,    // Renders transparent forward geometry after opaque
-        RenderPassStage::PostProcess,           // Applies fullscreen effects after scene rendering
-        RenderPassStage::Debug,                 // Produces debug overlays or debug textures
+            RenderPassStage::FrameSetup,         // Per-frame setup before any scene rendering.
+            RenderPassStage::Shadow,             // Renders shadows maps and other light-space depth resources
+            RenderPassStage::DepthPrePass,       // Fills scene depth before color rendering
+            RenderPassStage::GBuffer,            // Writes deferred rendering geometry buffers
+            RenderPassStage::Lighting,           // Computes lighting from scene/material buffers
+            RenderPassStage::ForwardOpaque,      // Renders opaque forward geometry
+            RenderPassStage::ForwardTransparent, // Renders transparent forward geometry after opaque
+            RenderPassStage::PostProcess,        // Applies fullscreen effects after scene rendering
+            RenderPassStage::Debug,              // Produces debug overlays or debug textures
     };
     //clang-format on
 
     RenderSystem::RenderSystem(std::unique_ptr<IRenderBackend> backend,
-                               std::unique_ptr<IModelImporter> model_importer)
-        : backend_(std::move(backend)),
-          model_importer_(std::move(model_importer)),
-          models_(std::make_unique<ModelRegistry>()) {
-    }
+                               std::unique_ptr<IModelImporter> model_importer) :
+        backend_(std::move(backend)), model_importer_(std::move(model_importer)),
+        models_(std::make_unique<ModelRegistry>()) {}
 
     RenderSystem::~RenderSystem() {
         if (initialized_ && backend_ != nullptr) {
@@ -199,14 +193,10 @@ namespace CoreEngine {
         surface_width_ = desc.width > 0 ? desc.width : 1;
         surface_height_ = desc.height > 0 ? desc.height : 1;
 
-        default_camera_ = Camera{}
-                .LookAt({0.f, 0.f, -5.f}, {0.f, 0.f, 0.f})
-                .Perspective(60.f,
-                             static_cast<float>(surface_width_),
-                             static_cast<float>(surface_height_),
-                             0.01f,
-                             1000.f)
-                .GetCameraData();
+        default_camera_ = Camera{}.LookAt({0.f, 0.f, -5.f}, {0.f, 0.f, 0.f})
+                                  .Perspective(60.f, static_cast<float>(surface_width_),
+                                               static_cast<float>(surface_height_), 0.01f, 1000.f)
+                                  .GetCameraData();
 
         initialized_ = backend_ != nullptr && backend_->Initialize(desc, native_window);
         if (initialized_) {
@@ -237,15 +227,14 @@ namespace CoreEngine {
         backend_->BeginFrame();
 
         const RenderFrameTiming timing{
-            .delta_seconds = delta_seconds,
-            .total_seconds = frame_clock.TotalSeconds(),
-            .frame_index = frame_clock.FrameIndex(),
+                .delta_seconds = delta_seconds,
+                .total_seconds = frame_clock.TotalSeconds(),
+                .frame_index = frame_clock.FrameIndex(),
         };
 
         // preserves the time snapshot to pass to all the render passes equally
-        RenderPassContext pass_context{
-            *backend_, world, frame_clock, timing, render_frame_resources_, surface_width_, surface_height_
-        };
+        RenderPassContext pass_context{*backend_,      world,          frame_clock, timing, render_frame_resources_,
+                                       surface_width_, surface_height_};
 
         for (const RenderPassStage &stage: kScenePassStages) {
             render_graph_.Execute(stage, pass_context);
@@ -374,9 +363,7 @@ namespace CoreEngine {
         return ModelHandle{.id = id, .generation = generation};
     }
 
-    ModelHandle RenderSystem::LoadModelAsync(const ModelLoadDesc &desc) {
-        return StartModelLoadAsync(desc).handle;
-    }
+    ModelHandle RenderSystem::LoadModelAsync(const ModelLoadDesc &desc) { return StartModelLoadAsync(desc).handle; }
 
     Future<ModelHandle> RenderSystem::LoadModelAsyncFuture(const ModelLoadDesc &desc) {
         return StartModelLoadAsync(desc).future;
@@ -386,8 +373,8 @@ namespace CoreEngine {
         if (!initialized_ || backend_ == nullptr || model_importer_ == nullptr || models_ == nullptr ||
             !desc.IsValid()) {
             return AsyncModelLoadRequest{
-                .handle = {},
-                .future = Future<ModelHandle>::Failed("Invalid asynchronous model load request"),
+                    .handle = {},
+                    .future = Future<ModelHandle>::Failed("Invalid asynchronous model load request"),
             };
         }
 
@@ -396,8 +383,8 @@ namespace CoreEngine {
         {
             std::lock_guard lock{models_->mutex};
             handle = ModelHandle{
-                .id = models_->next_model_id++,
-                .generation = models_->model_generation++,
+                    .id = models_->next_model_id++,
+                    .generation = models_->model_generation++,
             };
 
             ModelRegistry::Record record;
@@ -411,15 +398,15 @@ namespace CoreEngine {
         {
             std::lock_guard lock{models_->load_queue_mutex};
             models_->load_queue.push_back(ModelRegistry::LoadTask{
-                .handle = handle,
-                .desc = desc,
+                    .handle = handle,
+                    .desc = desc,
             });
         }
         models_->load_event.notify_one();
 
         return AsyncModelLoadRequest{
-            .handle = handle,
-            .future = future,
+                .handle = handle,
+                .future = future,
         };
     }
 
@@ -442,11 +429,7 @@ namespace CoreEngine {
                 {
                     std::unique_lock queue_lock{registry->load_queue_mutex};
                     const bool has_task = registry->load_event.wait(
-                        queue_lock,
-                        stop_token,
-                        [registry] {
-                            return !registry->load_queue.empty();
-                        });
+                            queue_lock, stop_token, [registry] { return !registry->load_queue.empty(); });
 
                     if (!has_task || stop_token.stop_requested()) {
                         return;
@@ -604,13 +587,10 @@ namespace CoreEngine {
         return it.value().materials[material_index];
     }
 
-    ModelInstance RenderSystem::InstantiateModel(World &world,
-                                                 ModelHandle handle,
-                                                 Node parent,
+    ModelInstance RenderSystem::InstantiateModel(World &world, ModelHandle handle, Node parent,
                                                  const ModelInstantiationDesc &desc) const {
         ModelInstance instance;
-        if (!handle.IsValid() || models_ == nullptr ||
-            (parent.IsValid() && parent.OwnerWorld() != &world)) {
+        if (!handle.IsValid() || models_ == nullptr || (parent.IsValid() && parent.OwnerWorld() != &world)) {
             return instance;
         }
 
@@ -652,8 +632,8 @@ namespace CoreEngine {
             Node node = world.CreateNode(MakeModelNodeName(node_asset, node_index));
             node.SetLocalMatrix(node_asset.local_transform);
 
-            const bool has_valid_parent = node_asset.parent_index < created_nodes.size() &&
-                                          created_nodes[node_asset.parent_index].IsValid();
+            const bool has_valid_parent =
+                    node_asset.parent_index < created_nodes.size() && created_nodes[node_asset.parent_index].IsValid();
             node.SetParent(has_valid_parent ? created_nodes[node_asset.parent_index] : instance.root);
 
             created_nodes[node_index] = node;
@@ -679,9 +659,9 @@ namespace CoreEngine {
                 Node mesh_node = world.CreateNode(MakeModelMeshNodeName(mesh_names[mesh_index], mesh_index));
                 mesh_node.SetParent(parent_node);
                 mesh_node.AddComponent<MeshRendererComponent>(MeshRendererComponent{
-                    .mesh = meshes[mesh_index],
-                    .material = materials[material_index],
-                    .visible = desc.visible,
+                        .mesh = meshes[mesh_index],
+                        .material = materials[material_index],
+                        .visible = desc.visible,
                 });
                 instance.mesh_nodes.push_back(mesh_node);
             }
@@ -701,9 +681,9 @@ namespace CoreEngine {
                 Node mesh_node = world.CreateNode(MakeModelMeshNodeName(mesh_names[mesh_index], mesh_index));
                 mesh_node.SetParent(instance.root);
                 mesh_node.AddComponent<MeshRendererComponent>(MeshRendererComponent{
-                    .mesh = meshes[mesh_index],
-                    .material = materials[material_index],
-                    .visible = desc.visible,
+                        .mesh = meshes[mesh_index],
+                        .material = materials[material_index],
+                        .visible = desc.visible,
                 });
                 instance.mesh_nodes.push_back(mesh_node);
             }
@@ -837,9 +817,7 @@ namespace CoreEngine {
         return render_graph_.AddPass(std::move(pass));
     }
 
-    void RenderSystem::RemoveRenderPass(RenderPassHandle handle) {
-        render_graph_.RemovePass(handle, backend_.get());
-    }
+    void RenderSystem::RemoveRenderPass(RenderPassHandle handle) { render_graph_.RemovePass(handle, backend_.get()); }
 
     void RenderSystem::SetCamera(const Camera &camera) {
         manual_camera_override_ = camera.GetCameraData();
@@ -851,9 +829,7 @@ namespace CoreEngine {
         has_manual_camera_override_ = true;
     }
 
-    void RenderSystem::ClearCameraOverride() {
-        has_manual_camera_override_ = false;
-    }
+    void RenderSystem::ClearCameraOverride() { has_manual_camera_override_ = false; }
 
     void RenderSystem::Resize(int width, int height) {
         if (!initialized_ || backend_ == nullptr) {
@@ -881,9 +857,7 @@ namespace CoreEngine {
         initialized_ = false;
     }
 
-    bool RenderSystem::IsInitialized() const {
-        return initialized_;
-    }
+    bool RenderSystem::IsInitialized() const { return initialized_; }
 
     std::string_view RenderSystem::LastError() const {
         if (backend_ == nullptr) {
@@ -893,13 +867,9 @@ namespace CoreEngine {
         return backend_->LastError();
     }
 
-    IRenderContext &RenderSystem::Context() {
-        return *this;
-    }
+    IRenderContext &RenderSystem::Context() { return *this; }
 
-    RenderGraph &RenderSystem::Graph() {
-        return render_graph_;
-    }
+    RenderGraph &RenderSystem::Graph() { return render_graph_; }
 
     void RenderSystem::ExecuteDefaultScenePass(RenderPassContext &context) {
         World &world = context.GetWorld();
@@ -916,21 +886,17 @@ namespace CoreEngine {
 
             const HierarchyComponent *hierarchy = world.TryGetComponent<HierarchyComponent>(entity);
             const Math::Mat4 world_matrix = hierarchy == nullptr || hierarchy->parent == entt::null
-                                                ? transform.WorldMatrix()
-                                                : ResolveCachedWorldMatrix(world, entity, world_transform_cache_);
+                                                    ? transform.WorldMatrix()
+                                                    : ResolveCachedWorldMatrix(world, entity, world_transform_cache_);
             accumulator_.Add(renderer.material, renderer.mesh, world_matrix);
         }
 
-        const CameraData active_camera = has_manual_camera_override_
-                                             ? manual_camera_override_
-                                             : ResolveWorldCamera(world);
+        const CameraData active_camera =
+                has_manual_camera_override_ ? manual_camera_override_ : ResolveWorldCamera(world);
 
-        PerFrameProps props{
-            .camera = active_camera,
-            .frame_clock = Math::Vec4(
-                context.DeltaSeconds(),
-                static_cast<float>(context.TotalSeconds()), 0.0f, 0.0f)
-        };
+        PerFrameProps props{.camera = active_camera,
+                            .frame_clock = Math::Vec4(context.DeltaSeconds(),
+                                                      static_cast<float>(context.TotalSeconds()), 0.0f, 0.0f)};
 
         context.SetPerFrameProps(props);
         context.SetFrameBuffer(scene_framebuffer_);
@@ -961,9 +927,9 @@ namespace CoreEngine {
                 }
 
                 pending_uploads.push_back(PendingModelUpload{
-                    .handle = ModelHandle{.id = it.key(), .generation = record.generation},
-                    .result = std::move(*record.decoded_result),
-                    .completion = record.completion,
+                        .handle = ModelHandle{.id = it.key(), .generation = record.generation},
+                        .result = std::move(*record.decoded_result),
+                        .completion = record.completion,
                 });
                 record.decoded_result.reset();
             }
@@ -972,8 +938,8 @@ namespace CoreEngine {
         for (PendingModelUpload &upload: pending_uploads) {
             if (!upload.result.IsSuccess()) {
                 std::string error_message = upload.result.error_message.empty()
-                                                ? "Failed to import model"
-                                                : std::move(upload.result.error_message);
+                                                    ? "Failed to import model"
+                                                    : std::move(upload.result.error_message);
                 bool reject_future = false;
                 {
                     std::lock_guard lock{models_->mutex};
@@ -1078,12 +1044,12 @@ namespace CoreEngine {
         }
 
         const TextureLoadDesc desc{
-            .path = texture.path,
-            .data = texture.data,
-            .format = texture.srgb ? TextureFormat::RGBA8UnormSrgb : TextureFormat::RGBA8Unorm,
-            .generate_mipmaps = true,
-            .flip_vertically = false,
-            .premultiply_alpha = false,
+                .path = texture.path,
+                .data = texture.data,
+                .format = texture.srgb ? TextureFormat::RGBA8UnormSrgb : TextureFormat::RGBA8Unorm,
+                .generate_mipmaps = true,
+                .flip_vertically = false,
+                .premultiply_alpha = false,
         };
 
         TextureHandle loaded_texture = LoadTexture2DAsync(desc);
@@ -1106,9 +1072,7 @@ namespace CoreEngine {
         if (base_color_texture != nullptr) {
             const TextureHandle albedo = LoadModelTexture(*base_color_texture);
             if (albedo.IsValid()) {
-                return Material::TexturedUnlit(
-                    albedo,
-                    TexturedUnlitProps{.color = material.base_color}).Resolve(*this);
+                return Material::TexturedUnlit(albedo, TexturedUnlitProps{.color = material.base_color}).Resolve(*this);
             }
         }
 
@@ -1131,9 +1095,8 @@ namespace CoreEngine {
         if (asset.materials.empty()) {
             const MaterialHandle material = Material::Unlit().Resolve(*this);
             if (!material.IsValid()) {
-                resources.error_message = backend_->LastError().empty()
-                                              ? "Failed to resolve default model material"
-                                              : std::string{backend_->LastError()};
+                resources.error_message = backend_->LastError().empty() ? "Failed to resolve default model material"
+                                                                        : std::string{backend_->LastError()};
                 return resources;
             }
             resources.materials.push_back(material);
@@ -1141,9 +1104,8 @@ namespace CoreEngine {
             for (const ModelMaterialAsset &material_asset: asset.materials) {
                 const MaterialHandle material = ResolveModelMaterial(material_asset);
                 if (!material.IsValid()) {
-                    resources.error_message = backend_->LastError().empty()
-                                                  ? "Failed to resolve model material"
-                                                  : std::string{backend_->LastError()};
+                    resources.error_message = backend_->LastError().empty() ? "Failed to resolve model material"
+                                                                            : std::string{backend_->LastError()};
                     return resources;
                 }
                 resources.materials.push_back(material);
@@ -1152,34 +1114,32 @@ namespace CoreEngine {
 
         for (const ModelMeshAsset &mesh: asset.meshes) {
             const MeshDesc mesh_desc{
-                .vertices = mesh.vertices,
-                .indices = mesh.indices,
+                    .vertices = mesh.vertices,
+                    .indices = mesh.indices,
             };
 
             MeshHandle mesh_handle = backend_->UploadMesh(mesh_desc);
             if (!mesh_handle.IsValid()) {
-                resources.error_message = backend_->LastError().empty()
-                                              ? "Failed to upload model mesh"
-                                              : std::string{backend_->LastError()};
+                resources.error_message = backend_->LastError().empty() ? "Failed to upload model mesh"
+                                                                        : std::string{backend_->LastError()};
                 DestroyUploadedMeshes(*backend_, resources.meshes);
                 return resources;
             }
 
             resources.meshes.push_back(mesh_handle);
             resources.mesh_names.push_back(mesh.name);
-            resources.mesh_material_indices.push_back(NormalizeModelMaterialIndex(
-                mesh.material_index,
-                resources.materials.size()));
+            resources.mesh_material_indices.push_back(
+                    NormalizeModelMaterialIndex(mesh.material_index, resources.materials.size()));
         }
 
         if (resources.nodes.empty()) {
             resources.nodes.reserve(resources.meshes.size());
             for (std::uint32_t mesh_index = 0; mesh_index < resources.meshes.size(); ++mesh_index) {
                 resources.nodes.push_back(ModelNodeAsset{
-                    .name = MakeModelMeshNodeName(resources.mesh_names[mesh_index], mesh_index),
-                    .parent_index = kInvalidModelNodeIndex,
-                    .local_transform = Math::Identity(),
-                    .mesh_indices = {mesh_index},
+                        .name = MakeModelMeshNodeName(resources.mesh_names[mesh_index], mesh_index),
+                        .parent_index = kInvalidModelNodeIndex,
+                        .local_transform = Math::Identity(),
+                        .mesh_indices = {mesh_index},
                 });
             }
         }
@@ -1239,15 +1199,14 @@ namespace CoreEngine {
         return BuildCameraData(camera_node.GetWorldPosition(), camera_node.GetWorldRotation(), *best_camera);
     }
 
-    CameraData RenderSystem::BuildCameraData(const Math::Vec3 &position,
-                                             const Math::Quat &rotation,
+    CameraData RenderSystem::BuildCameraData(const Math::Vec3 &position, const Math::Quat &rotation,
                                              const CameraComponent &camera) const {
         const int width = surface_width_ > 0 ? surface_width_ : 1;
         const int height = surface_height_ > 0 ? surface_height_ : 1;
 
         const float aspect_ratio = camera.aspect_mode == CameraAspectMode::Fixed
-                                       ? camera.fixed_aspect_ratio
-                                       : static_cast<float>(width) / static_cast<float>(height);
+                                           ? camera.fixed_aspect_ratio
+                                           : static_cast<float>(width) / static_cast<float>(height);
 
         const Math::Vec3 forward = rotation * Math::Vec3{0.f, 0.f, 1.f};
         const Math::Vec3 up = rotation * Math::Vec3{0.f, 1.f, 0.f};
@@ -1256,21 +1215,16 @@ namespace CoreEngine {
         data.view = Math::LookAtLH(position, position + forward, up);
 
         if (camera.projection_type == CameraProjectionType::Perspective) {
-            data.projection = Math::PerspectiveLH(Math::Deg2Rad(camera.fov_y_degrees), aspect_ratio, camera.near_z,
-                                                  camera.far_z);
+            data.projection =
+                    Math::PerspectiveLH(Math::Deg2Rad(camera.fov_y_degrees), aspect_ratio, camera.near_z, camera.far_z);
             return data;
         }
 
         const float half_height = camera.orthographic_height * 0.5f;
         const float half_width = half_height * aspect_ratio;
 
-        data.projection = Math::OrthoLH(
-            -half_width,
-            half_width,
-            -half_height,
-            half_height,
-            camera.near_z,
-            camera.far_z);
+        data.projection =
+                Math::OrthoLH(-half_width, half_width, -half_height, half_height, camera.near_z, camera.far_z);
 
         return data;
     }

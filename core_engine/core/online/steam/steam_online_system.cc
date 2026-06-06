@@ -22,8 +22,8 @@ namespace CoreEngine {
 #endif
 
         if (!SteamAPI_Init()) {
-            Log::Warn("Steam",
-                      "SteamAPI_Init failed. Check that Steam is running, steam_appid.txt is next to the executable, steam_api64.dll is present, and the account owns the AppID.");
+            Log::Warn("Steam", "SteamAPI_Init failed. Check that Steam is running, steam_appid.txt is next to the "
+                               "executable, steam_api64.dll is present, and the account owns the AppID.");
             return false;
         }
 
@@ -37,7 +37,8 @@ namespace CoreEngine {
         return true;
 #else
         (void) app_id;
-        Log::Warn("Steam", "Steamworks support was not compiled into this build. Rebuild with CORE_ENGINE_ENABLE_STEAM=ON.");
+        Log::Warn("Steam",
+                  "Steamworks support was not compiled into this build. Rebuild with CORE_ENGINE_ENABLE_STEAM=ON.");
         initialized_ = false;
         local_steam_id_ = 0;
         return false;
@@ -62,9 +63,7 @@ namespace CoreEngine {
         local_steam_id_ = 0;
     }
 
-    std::uint64_t SteamOnlineSystem::LocalSteamId() const noexcept {
-        return local_steam_id_;
-    }
+    std::uint64_t SteamOnlineSystem::LocalSteamId() const noexcept { return local_steam_id_; }
 
     const char *SteamOnlineSystem::PersonaName() const noexcept {
 #if CORE_ENGINE_ENABLE_STEAM
@@ -138,7 +137,8 @@ namespace CoreEngine {
         }
 
         if (!IsOverlayEnabled()) {
-            Log::Warn("Steam", "Steam overlay is not enabled for this process yet; Shift+Tab will not work until Steam injects the overlay.");
+            Log::Warn("Steam", "Steam overlay is not enabled for this process yet; Shift+Tab will not work until Steam "
+                               "injects the overlay.");
             return false;
         }
 

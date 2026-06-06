@@ -12,10 +12,8 @@ namespace CoreEngine {
 
         // this is just to guarantee a good error log
         template<typename T>
-        concept DebugStringWritable = requires(std::string &output, const T &value)
-        {
-            AppendDebugString(output, value);
-        };
+        concept DebugStringWritable =
+                requires(std::string &output, const T &value) { AppendDebugString(output, value); };
 
         template<DebugStringWritable T>
         [[nodiscard]] std::string ToString(const T &value) {
@@ -23,5 +21,5 @@ namespace CoreEngine {
             AppendDebugString(output, value);
             return output;
         }
-    }
-}
+    } // namespace Debug
+} // namespace CoreEngine

@@ -35,9 +35,9 @@ namespace CoreEngine {
             const Math::Vec3 basis_z{matrix.data[8], matrix.data[9], matrix.data[10]};
 
             result.scale = {
-                Math::Length(basis_x),
-                Math::Length(basis_y),
-                Math::Length(basis_z),
+                    Math::Length(basis_x),
+                    Math::Length(basis_y),
+                    Math::Length(basis_z),
             };
 
             Math::Mat4 rotation_matrix{1.f};
@@ -138,12 +138,9 @@ namespace CoreEngine {
         }
     } // namespace
 
-    Node::Node(entt::entity handle, World *world) : handle_(handle), world_(world) {
-    }
+    Node::Node(entt::entity handle, World *world) : handle_(handle), world_(world) {}
 
-    std::string Node::GetName() const {
-        return GetComponent<NameComponent>().name;
-    }
+    std::string Node::GetName() const { return GetComponent<NameComponent>().name; }
 
     void Node::Destroy() {
         if (IsValid()) {
@@ -153,17 +150,13 @@ namespace CoreEngine {
         }
     }
 
-    bool Node::IsValid() const {
-        return world_ != nullptr && world_->IsValid(*this);
-    }
+    bool Node::IsValid() const { return world_ != nullptr && world_->IsValid(*this); }
 
     uint32_t Node::Id() const { return static_cast<uint32_t>(handle_); }
 
     Node::operator bool() const { return IsValid(); }
 
-    bool Node::operator==(const Node &other) const {
-        return handle_ == other.handle_ && world_ == other.world_;
-    }
+    bool Node::operator==(const Node &other) const { return handle_ == other.handle_ && world_ == other.world_; }
 
     bool Node::operator!=(const Node &other) const { return !(*this == other); }
 
@@ -173,8 +166,7 @@ namespace CoreEngine {
         }
 
         const HierarchyComponent *hierarchy = TryGetComponent<HierarchyComponent>();
-        if (hierarchy == nullptr || hierarchy->parent == entt::null ||
-            !world_->Registry().valid(hierarchy->parent)) {
+        if (hierarchy == nullptr || hierarchy->parent == entt::null || !world_->Registry().valid(hierarchy->parent)) {
             return {};
         }
 
@@ -221,13 +213,9 @@ namespace CoreEngine {
         return hierarchy == nullptr ? 0u : hierarchy->child_count;
     }
 
-    bool Node::HasParent() const {
-        return GetParent().IsValid();
-    }
+    bool Node::HasParent() const { return GetParent().IsValid(); }
 
-    bool Node::IsChildOf(Node parent) const {
-        return parent.IsAncestorOf(*this);
-    }
+    bool Node::IsChildOf(Node parent) const { return parent.IsAncestorOf(*this); }
 
     bool Node::IsAncestorOf(Node child) const {
         if (!IsValid() || !child.IsValid() || world_ != child.world_) {
@@ -289,26 +277,18 @@ namespace CoreEngine {
         }
     }
 
-    void Node::SetPosition(const Math::Vec3 &position) {
-        GetComponent<TransformComponent>().SetPosition(position);
-    }
+    void Node::SetPosition(const Math::Vec3 &position) { GetComponent<TransformComponent>().SetPosition(position); }
 
-    void Node::SetRotation(const Math::Quat &rotation) {
-        GetComponent<TransformComponent>().SetRotation(rotation);
-    }
+    void Node::SetRotation(const Math::Quat &rotation) { GetComponent<TransformComponent>().SetRotation(rotation); }
 
-    void Node::SetScale(const Math::Vec3 &scale) {
-        GetComponent<TransformComponent>().SetScale(scale);
-    }
+    void Node::SetScale(const Math::Vec3 &scale) { GetComponent<TransformComponent>().SetScale(scale); }
 
     void Node::Rotate(const Math::Quat &delta_rotation) {
         TransformComponent &transform = GetComponent<TransformComponent>();
         transform.SetRotation(Math::Normalize(transform.Rotation() * delta_rotation));
     }
 
-    void Node::Rotate(float angle_radians, const Math::Vec3 &axis) {
-        Rotate(Math::AngleAxis(angle_radians, axis));
-    }
+    void Node::Rotate(float angle_radians, const Math::Vec3 &axis) { Rotate(Math::AngleAxis(angle_radians, axis)); }
 
     void Node::RotateEuler(const Math::Vec3 &euler_angles) {
         const Math::Quat yaw = Math::AngleAxis(Math::Deg2Rad(euler_angles.y), {0.f, 1.f, 0.f});
@@ -317,21 +297,13 @@ namespace CoreEngine {
         Rotate(yaw * pitch * roll);
     }
 
-    void Node::SetLocalMatrix(const Math::Mat4 &matrix) {
-        ApplyLocalTransform(*this, matrix);
-    }
+    void Node::SetLocalMatrix(const Math::Mat4 &matrix) { ApplyLocalTransform(*this, matrix); }
 
-    Math::Vec3 Node::GetPosition() const {
-        return GetComponent<TransformComponent>().Position();
-    }
+    Math::Vec3 Node::GetPosition() const { return GetComponent<TransformComponent>().Position(); }
 
-    Math::Quat Node::GetRotation() const {
-        return GetComponent<TransformComponent>().Rotation();
-    }
+    Math::Quat Node::GetRotation() const { return GetComponent<TransformComponent>().Rotation(); }
 
-    Math::Vec3 Node::GetScale() const {
-        return GetComponent<TransformComponent>().Scale();
-    }
+    Math::Vec3 Node::GetScale() const { return GetComponent<TransformComponent>().Scale(); }
 
     Math::Mat4 Node::GetLocalMatrix() const {
         if (!IsValid()) {
@@ -366,15 +338,9 @@ namespace CoreEngine {
         return world_matrix;
     }
 
-    Math::Vec3 Node::GetWorldPosition() const {
-        return DecomposeTransform(GetWorldMatrix()).position;
-    }
+    Math::Vec3 Node::GetWorldPosition() const { return DecomposeTransform(GetWorldMatrix()).position; }
 
-    Math::Quat Node::GetWorldRotation() const {
-        return DecomposeTransform(GetWorldMatrix()).rotation;
-    }
+    Math::Quat Node::GetWorldRotation() const { return DecomposeTransform(GetWorldMatrix()).rotation; }
 
-    Math::Vec3 Node::GetWorldScale() const {
-        return DecomposeTransform(GetWorldMatrix()).scale;
-    }
+    Math::Vec3 Node::GetWorldScale() const { return DecomposeTransform(GetWorldMatrix()).scale; }
 } // namespace CoreEngine

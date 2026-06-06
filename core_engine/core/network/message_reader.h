@@ -35,7 +35,6 @@ namespace CoreEngine {
         std::size_t offset_ = 0;
     };
 
-    [[nodiscard]] bool ParsePacket(std::span<const std::byte> bytes,
-                                   PacketHeader &out_header,
+    [[nodiscard]] bool ParsePacket(std::span<const std::byte> bytes, PacketHeader &out_header,
                                    std::span<const std::byte> &out_payload) noexcept;
 } // namespace CoreEngine

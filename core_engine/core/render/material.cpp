@@ -10,8 +10,8 @@
 #include <utility>
 
 #include "core/log/log.h"
-#include "core/render/i_render_context.h"
 #include "core/render/builtin_shaders.h"
+#include "core/render/i_render_context.h"
 
 namespace CoreEngine {
     namespace {
@@ -75,10 +75,9 @@ namespace CoreEngine {
 
             return h;
         }
-    }
+    } // namespace
 
-    Material::Material(MaterialDesc desc) : desc_(std::move(desc)) {
-    }
+    Material::Material(MaterialDesc desc) : desc_(std::move(desc)) {}
 
     Material Material::Unlit(const UnlitProps &props) {
         MaterialDesc desc;
@@ -87,10 +86,8 @@ namespace CoreEngine {
 
         const auto *bytes = reinterpret_cast<const uint8_t *>(&props);
         desc.properties_data.assign(bytes, bytes + sizeof(UnlitProps));
-        desc.uniforms.push_back(MakeShaderUniformData(
-            "PerMaterial",
-            ShaderStage::Pixel,
-            std::span<const uint8_t>(bytes, sizeof(UnlitProps))));
+        desc.uniforms.push_back(MakeShaderUniformData("PerMaterial", ShaderStage::Pixel,
+                                                      std::span<const uint8_t>(bytes, sizeof(UnlitProps))));
         desc.hash = HashDesc(desc);
 
         return Material{std::move(desc)};
@@ -103,34 +100,28 @@ namespace CoreEngine {
 
         const auto *bytes = reinterpret_cast<const uint8_t *>(&props);
         desc.properties_data.assign(bytes, bytes + sizeof(TexturedUnlitProps));
-        desc.uniforms.push_back(MakeShaderUniformData(
-            "PerMaterial",
-            ShaderStage::Pixel,
-            std::span<const uint8_t>(bytes, sizeof(TexturedUnlitProps))));
+        desc.uniforms.push_back(MakeShaderUniformData("PerMaterial", ShaderStage::Pixel,
+                                                      std::span<const uint8_t>(bytes, sizeof(TexturedUnlitProps))));
 
         if (albedo.IsValid()) {
             constexpr std::string_view kTextureName = "g_Albedo";
             constexpr std::string_view kSamplerName = "g_Albedo_sampler";
 
             desc.textures.push_back(ShaderTextureData{
-                .name = std::string{kTextureName},
-                .texture = albedo,
-                .stages = ShaderStage::Pixel,
-                .sampler_name = std::string{kSamplerName},
+                    .name = std::string{kTextureName},
+                    .texture = albedo,
+                    .stages = ShaderStage::Pixel,
+                    .sampler_name = std::string{kSamplerName},
             });
-            desc.bindings.push_back(ShaderBindingDesc::Texture(
-                std::string{kTextureName},
-                ShaderBindingScope::Material,
-                ShaderStage::Pixel,
-                std::string{kSamplerName}));
+            desc.bindings.push_back(ShaderBindingDesc::Texture(std::string{kTextureName}, ShaderBindingScope::Material,
+                                                               ShaderStage::Pixel, std::string{kSamplerName}));
         }
 
         desc.hash = HashDesc(desc);
         return Material{std::move(desc)};
     }
 
-    Material Material::Custom(const std::string &vs_source,
-                              const std::string &ps_source,
+    Material Material::Custom(const std::string &vs_source, const std::string &ps_source,
                               std::span<const uint8_t> raw_props) {
         MaterialDesc desc;
         desc.vertex_shader_source = vs_source;
@@ -174,33 +165,27 @@ namespace CoreEngine {
         return *this;
     }
 
-    MaterialBuilder &MaterialBuilder::Uniform(std::string name,
-                                              ShaderStage stages,
+    MaterialBuilder &MaterialBuilder::Uniform(std::string name, ShaderStage stages,
                                               std::span<const std::uint8_t> raw_data) {
         uniforms_.push_back(MakeShaderUniformData(std::move(name), stages, raw_data));
         return *this;
     }
 
-    MaterialBuilder &MaterialBuilder::Texture(std::string name,
-                                              TextureHandle texture,
-                                              ShaderStage stages,
+    MaterialBuilder &MaterialBuilder::Texture(std::string name, TextureHandle texture, ShaderStage stages,
                                               std::string sampler_name) {
         if (sampler_name.empty()) {
             sampler_name = name + "_sampler";
         }
 
         textures_.push_back(ShaderTextureData{
-            .name = name,
-            .texture = texture,
-            .stages = stages,
-            .sampler_name = sampler_name,
+                .name = name,
+                .texture = texture,
+                .stages = stages,
+                .sampler_name = sampler_name,
         });
 
-        bindings_.push_back(ShaderBindingDesc::Texture(
-            std::move(name),
-            ShaderBindingScope::Material,
-            stages,
-            std::move(sampler_name)));
+        bindings_.push_back(ShaderBindingDesc::Texture(std::move(name), ShaderBindingScope::Material, stages,
+                                                       std::move(sampler_name)));
 
         return *this;
     }
@@ -215,18 +200,13 @@ namespace CoreEngine {
         desc.textures = textures_;
 
         if (!desc.properties_data.empty()) {
-            const bool has_legacy_uniform = std::any_of(
-                desc.uniforms.begin(),
-                desc.uniforms.end(),
-                [](const ShaderUniformData &uniform) {
-                    return uniform.name == "PerMaterial";
-                });
+            const bool has_legacy_uniform =
+                    std::any_of(desc.uniforms.begin(), desc.uniforms.end(),
+                                [](const ShaderUniformData &uniform) { return uniform.name == "PerMaterial"; });
 
             if (!has_legacy_uniform) {
-                desc.uniforms.push_back(MakeShaderUniformData(
-                    "PerMaterial",
-                    ShaderStage::Pixel,
-                    std::span<const uint8_t>(desc.properties_data)));
+                desc.uniforms.push_back(MakeShaderUniformData("PerMaterial", ShaderStage::Pixel,
+                                                              std::span<const uint8_t>(desc.properties_data)));
             }
         }
 

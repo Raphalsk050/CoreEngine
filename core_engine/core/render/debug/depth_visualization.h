@@ -7,4 +7,4 @@ namespace CoreEngine {
         float exponent = 1.0f;
         bool invert = false;
     };
-}
+} // namespace CoreEngine

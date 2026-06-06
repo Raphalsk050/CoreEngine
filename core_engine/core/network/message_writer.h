@@ -20,10 +20,7 @@ namespace CoreEngine {
 
         void Reset();
 
-        bool Begin(NetMessageType message_type,
-                   std::uint32_t sequence,
-                   std::uint32_t ack,
-                   std::uint32_t tick);
+        bool Begin(NetMessageType message_type, std::uint32_t sequence, std::uint32_t ack, std::uint32_t tick);
 
         bool Finalize();
 
@@ -36,13 +33,9 @@ namespace CoreEngine {
         bool WriteBytes(std::span<const std::byte> bytes);
         bool WriteSizedBytes(std::span<const std::byte> bytes);
 
-        [[nodiscard]] std::span<const std::byte> Bytes() const noexcept {
-            return buffer_;
-        }
+        [[nodiscard]] std::span<const std::byte> Bytes() const noexcept { return buffer_; }
 
-        [[nodiscard]] std::vector<std::byte> TakeBytes() {
-            return std::move(buffer_);
-        }
+        [[nodiscard]] std::vector<std::byte> TakeBytes() { return std::move(buffer_); }
 
     private:
         bool CanWrite(std::size_t bytes) const noexcept;

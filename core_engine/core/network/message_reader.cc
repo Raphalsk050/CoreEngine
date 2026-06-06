@@ -4,14 +4,10 @@
 
 namespace CoreEngine {
     namespace {
-        [[nodiscard]] std::uint8_t ToUInt8(std::byte value) noexcept {
-            return static_cast<std::uint8_t>(value);
-        }
-    }
+        [[nodiscard]] std::uint8_t ToUInt8(std::byte value) noexcept { return static_cast<std::uint8_t>(value); }
+    } // namespace
 
-    MessageReader::MessageReader(std::span<const std::byte> bytes) noexcept
-        : bytes_(bytes) {
-    }
+    MessageReader::MessageReader(std::span<const std::byte> bytes) noexcept : bytes_(bytes) {}
 
     bool MessageReader::ReadUInt8(std::uint8_t &value) noexcept {
         if (!CanRead(sizeof(value))) {
@@ -107,8 +103,7 @@ namespace CoreEngine {
         return offset_ <= bytes_.size() && bytes <= bytes_.size() - offset_;
     }
 
-    bool ParsePacket(std::span<const std::byte> bytes,
-                     PacketHeader &out_header,
+    bool ParsePacket(std::span<const std::byte> bytes, PacketHeader &out_header,
                      std::span<const std::byte> &out_payload) noexcept {
         if (bytes.size() < kPacketHeaderWireSize) {
             return false;
@@ -116,18 +111,14 @@ namespace CoreEngine {
 
         MessageReader reader(bytes);
         std::uint16_t message_type = 0;
-        if (!reader.ReadUInt32(out_header.magic) ||
-            !reader.ReadUInt16(out_header.protocol_version) ||
-            !reader.ReadUInt16(message_type) ||
-            !reader.ReadUInt32(out_header.sequence) ||
-            !reader.ReadUInt32(out_header.ack) ||
-            !reader.ReadUInt32(out_header.tick) ||
+        if (!reader.ReadUInt32(out_header.magic) || !reader.ReadUInt16(out_header.protocol_version) ||
+            !reader.ReadUInt16(message_type) || !reader.ReadUInt32(out_header.sequence) ||
+            !reader.ReadUInt32(out_header.ack) || !reader.ReadUInt32(out_header.tick) ||
             !reader.ReadUInt16(out_header.payload_size)) {
             return false;
         }
 
-        if (out_header.magic != kNetworkMagic ||
-            out_header.protocol_version != kNetworkProtocolVersion ||
+        if (out_header.magic != kNetworkMagic || out_header.protocol_version != kNetworkProtocolVersion ||
             out_header.payload_size > kMaxPacketPayloadBytes ||
             bytes.size() != kPacketHeaderWireSize + out_header.payload_size) {
             return false;

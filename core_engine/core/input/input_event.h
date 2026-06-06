@@ -3,15 +3,7 @@
 #include "core/input/input_codes.h"
 
 namespace CoreEngine {
-    enum class InputEventType {
-        KeyDown,
-        KeyUp,
-        MouseButtonDown,
-        MouseButtonUp,
-        MouseMoved,
-        MouseWheel,
-        FocusLost
-    };
+    enum class InputEventType { KeyDown, KeyUp, MouseButtonDown, MouseButtonUp, MouseMoved, MouseWheel, FocusLost };
 
     struct InputEvent {
         InputEventType type = InputEventType::FocusLost;

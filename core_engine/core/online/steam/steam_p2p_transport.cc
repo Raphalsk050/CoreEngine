@@ -12,32 +12,29 @@ namespace CoreEngine {
     namespace {
         [[nodiscard]] int ToSteamSendFlags(SendMode mode) noexcept {
             switch (mode) {
-                case SendMode::Unreliable:
-                    return k_nSteamNetworkingSend_Unreliable;
+                case SendMode::Unreliable: return k_nSteamNetworkingSend_Unreliable;
                 case SendMode::UnreliableNoDelay:
                     return k_nSteamNetworkingSend_Unreliable | k_nSteamNetworkingSend_NoDelay;
-                case SendMode::Reliable:
-                    return k_nSteamNetworkingSend_Reliable;
-                case SendMode::ReliableNoNagle:
-                    return k_nSteamNetworkingSend_Reliable | k_nSteamNetworkingSend_NoNagle;
+                case SendMode::Reliable:        return k_nSteamNetworkingSend_Reliable;
+                case SendMode::ReliableNoNagle: return k_nSteamNetworkingSend_Reliable | k_nSteamNetworkingSend_NoNagle;
             }
 
             return k_nSteamNetworkingSend_Unreliable;
         }
-    }
+    } // namespace
 #endif
 
     SteamP2PTransport::SteamP2PTransport(SteamOnlineSystem &online_system)
 #if CORE_ENGINE_ENABLE_STEAM
-        : connection_status_callback_(this, &SteamP2PTransport::OnConnectionStatusChanged),
-          online_system_(online_system) {
-    }
+        :
+        connection_status_callback_(this, &SteamP2PTransport::OnConnectionStatusChanged),
+        online_system_(online_system){}
 #else
         : online_system_(online_system) {
     }
 #endif
 
-    SteamP2PTransport::~SteamP2PTransport() {
+        SteamP2PTransport::~SteamP2PTransport() {
         Shutdown();
     }
 
@@ -137,8 +134,7 @@ namespace CoreEngine {
     }
 
     void SteamP2PTransport::PollEvents(NetworkEventQueue &out_events) {
-        out_events.insert(out_events.end(),
-                          std::make_move_iterator(pending_events_.begin()),
+        out_events.insert(out_events.end(), std::make_move_iterator(pending_events_.begin()),
                           std::make_move_iterator(pending_events_.end()));
         pending_events_.clear();
 
@@ -151,10 +147,8 @@ namespace CoreEngine {
         std::array<SteamNetworkingMessage_t *, 64> messages{};
         int count = 0;
         do {
-            count = SteamNetworkingSockets()->ReceiveMessagesOnPollGroup(
-                poll_group_,
-                messages.data(),
-                static_cast<int>(messages.size()));
+            count = SteamNetworkingSockets()->ReceiveMessagesOnPollGroup(poll_group_, messages.data(),
+                                                                         static_cast<int>(messages.size()));
 
             for (int i = 0; i < count; ++i) {
                 SteamNetworkingMessage_t *message = messages[static_cast<std::size_t>(i)];
@@ -166,7 +160,8 @@ namespace CoreEngine {
                 NetworkEvent event;
                 event.type = NetworkEventType::PacketReceived;
                 event.peer = peer_it != conn_to_peer_.end() ? peer_it->second : kInvalidPeerId;
-                event.remote_steam_id = conn_to_steam_id_.contains(message->m_conn) ? conn_to_steam_id_[message->m_conn] : 0;
+                event.remote_steam_id =
+                        conn_to_steam_id_.contains(message->m_conn) ? conn_to_steam_id_[message->m_conn] : 0;
 
                 if (message->m_cbSize > 0 && message->m_pData != nullptr) {
                     event.payload.resize(static_cast<std::size_t>(message->m_cbSize));
@@ -192,11 +187,8 @@ namespace CoreEngine {
         }
 
         const EResult result = SteamNetworkingSockets()->SendMessageToConnection(
-            it->second,
-            payload.data(),
-            static_cast<std::uint32_t>(payload.size()),
-            ToSteamSendFlags(mode),
-            nullptr);
+                it->second, payload.data(), static_cast<std::uint32_t>(payload.size()), ToSteamSendFlags(mode),
+                nullptr);
         return result == k_EResultOK;
 #else
         (void) peer;
@@ -226,9 +218,7 @@ namespace CoreEngine {
 #endif
     }
 
-    void SteamP2PTransport::QueueEvent(NetworkEvent event) {
-        pending_events_.push_back(std::move(event));
-    }
+    void SteamP2PTransport::QueueEvent(NetworkEvent event) { pending_events_.push_back(std::move(event)); }
 
     bool SteamP2PTransport::CanAcceptMorePeers() const noexcept {
 #if CORE_ENGINE_ENABLE_STEAM
@@ -258,9 +248,10 @@ namespace CoreEngine {
         conn_to_steam_id_[connection] = remote_steam_id;
 
         QueueEvent(NetworkEvent{
-            .type = state == NetworkPeerState::Connected ? NetworkEventType::PeerConnected : NetworkEventType::PeerConnecting,
-            .peer = peer,
-            .remote_steam_id = remote_steam_id,
+                .type = state == NetworkPeerState::Connected ? NetworkEventType::PeerConnected
+                                                             : NetworkEventType::PeerConnecting,
+                .peer = peer,
+                .remote_steam_id = remote_steam_id,
         });
         return peer;
 #else
@@ -273,11 +264,11 @@ namespace CoreEngine {
 
     void SteamP2PTransport::DisconnectConnection(
 #if CORE_ENGINE_ENABLE_STEAM
-        HSteamNetConnection connection,
+            HSteamNetConnection connection,
 #else
-        std::uint32_t connection,
+            std::uint32_t connection,
 #endif
-        NetworkDisconnectReason reason) {
+            NetworkDisconnectReason reason) {
 #if CORE_ENGINE_ENABLE_STEAM
         const auto peer_it = conn_to_peer_.find(connection);
         const PeerId peer = peer_it != conn_to_peer_.end() ? peer_it->second : kInvalidPeerId;
@@ -291,10 +282,10 @@ namespace CoreEngine {
         conn_to_steam_id_.erase(connection);
 
         QueueEvent(NetworkEvent{
-            .type = NetworkEventType::PeerDisconnected,
-            .peer = peer,
-            .remote_steam_id = steam_id,
-            .disconnect_reason = reason,
+                .type = NetworkEventType::PeerDisconnected,
+                .peer = peer,
+                .remote_steam_id = steam_id,
+                .disconnect_reason = reason,
         });
 #else
         (void) connection;
@@ -336,9 +327,9 @@ namespace CoreEngine {
                 const auto existing = conn_to_peer_.find(connection);
                 if (existing != conn_to_peer_.end()) {
                     QueueEvent(NetworkEvent{
-                        .type = NetworkEventType::PeerConnected,
-                        .peer = existing->second,
-                        .remote_steam_id = remote_steam_id,
+                            .type = NetworkEventType::PeerConnected,
+                            .peer = existing->second,
+                            .remote_steam_id = remote_steam_id,
                     });
                 }
                 break;
@@ -354,8 +345,7 @@ namespace CoreEngine {
                 SteamNetworkingSockets()->CloseConnection(connection, 0, nullptr, false);
                 break;
 
-            default:
-                break;
+            default: break;
         }
     }
 #endif

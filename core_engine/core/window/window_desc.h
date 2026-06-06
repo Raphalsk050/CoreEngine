@@ -3,10 +3,7 @@
 #include <string>
 
 namespace CoreEngine {
-    enum class WindowSurfaceType {
-        Default,
-        Metal
-    };
+    enum class WindowSurfaceType { Default, Metal };
 
     struct WindowDesc {
         int width = 1280;

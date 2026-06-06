@@ -1,8 +1,8 @@
 #pragma once
 
-#include "engine.h"
 #include "application/engine_context.h"
 #include "application/frame_context.h"
+#include "engine.h"
 
 namespace CoreEngine {
     class IGameApp {
@@ -15,4 +15,4 @@ namespace CoreEngine {
 
         virtual void Shutdown(const EngineContext &context) = 0;
     };
-}
+} // namespace CoreEngine

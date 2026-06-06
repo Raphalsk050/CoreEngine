@@ -19,8 +19,6 @@ namespace CoreEngine {
         bool local_authority = false;
         bool replicated = true;
 
-        [[nodiscard]] bool IsNetworked() const noexcept {
-            return replicated && network_id != 0;
-        }
+        [[nodiscard]] bool IsNetworked() const noexcept { return replicated && network_id != 0; }
     };
 } // namespace CoreEngine

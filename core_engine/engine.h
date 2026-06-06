@@ -6,21 +6,19 @@
 
 namespace CoreEngine {
     struct EngineConfig {
-        EngineConfig() = default;
-
-        int windowWidth = 800;
-        int windowHeight = 600;
+        int window_width = 800;
+        int window_height = 600;
         bool fullscreen = false;
         bool resizable = false;
         bool decorated = true;
-        bool highDPI = true;
+        bool high_dpi = true;
         bool vsync = true;
-        bool enableImGui = false;
-        RenderBackendType renderBackend = RenderBackendType::None;
-        std::string windowTitle = "Sample game";
+        bool enable_imgui = false;
+        RenderBackendType render_backend = RenderBackendType::None;
+        std::string window_title = "Sample game";
     };
 
     class IGameApp;
 
     int RunEngine(std::unique_ptr<IGameApp> app, const EngineConfig &config);
-}
+} // namespace CoreEngine

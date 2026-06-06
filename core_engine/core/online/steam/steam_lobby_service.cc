@@ -8,16 +8,15 @@
 namespace CoreEngine {
     SteamLobbyService::SteamLobbyService(SteamOnlineSystem &online_system)
 #if CORE_ENGINE_ENABLE_STEAM
-        : lobby_join_requested_callback_(this, &SteamLobbyService::OnGameLobbyJoinRequested),
-          lobby_chat_update_callback_(this, &SteamLobbyService::OnLobbyChatUpdated),
-          online_system_(online_system) {
-    }
+        :
+        lobby_join_requested_callback_(this, &SteamLobbyService::OnGameLobbyJoinRequested),
+        lobby_chat_update_callback_(this, &SteamLobbyService::OnLobbyChatUpdated), online_system_(online_system){}
 #else
         : online_system_(online_system) {
     }
 #endif
 
-    SteamLobbyService::~SteamLobbyService() {
+        SteamLobbyService::~SteamLobbyService() {
         LeaveLobby();
     }
 
@@ -61,7 +60,8 @@ namespace CoreEngine {
 
     bool SteamLobbyService::OpenInviteOverlay() const {
 #if CORE_ENGINE_ENABLE_STEAM
-        if (!online_system_.IsAvailable() || !online_system_.IsOverlayEnabled() || SteamFriends() == nullptr || current_lobby_id_ == 0) {
+        if (!online_system_.IsAvailable() || !online_system_.IsOverlayEnabled() || SteamFriends() == nullptr ||
+            current_lobby_id_ == 0) {
             if (online_system_.IsAvailable() && !online_system_.IsOverlayEnabled()) {
                 Log::Warn("Steam", "Steam invite overlay requested before the overlay was enabled for this process.");
             }
@@ -97,9 +97,9 @@ namespace CoreEngine {
 
         if (current_lobby_id_ != 0) {
             QueueEvent(NetworkEvent{
-                .type = NetworkEventType::LobbyLeft,
-                .lobby_id = current_lobby_id_,
-                .lobby_owner_id = lobby_owner_id_,
+                    .type = NetworkEventType::LobbyLeft,
+                    .lobby_id = current_lobby_id_,
+                    .lobby_owner_id = lobby_owner_id_,
             });
         }
 
@@ -109,8 +109,7 @@ namespace CoreEngine {
     }
 
     void SteamLobbyService::PollEvents(NetworkEventQueue &out_events) {
-        out_events.insert(out_events.end(),
-                          std::make_move_iterator(pending_events_.begin()),
+        out_events.insert(out_events.end(), std::make_move_iterator(pending_events_.begin()),
                           std::make_move_iterator(pending_events_.end()));
         pending_events_.clear();
     }
@@ -131,9 +130,7 @@ namespace CoreEngine {
 #endif
     }
 
-    void SteamLobbyService::QueueEvent(NetworkEvent event) {
-        pending_events_.push_back(std::move(event));
-    }
+    void SteamLobbyService::QueueEvent(NetworkEvent event) { pending_events_.push_back(std::move(event)); }
 
     void SteamLobbyService::UpdateMembers() {
         members_.clear();
@@ -176,9 +173,9 @@ namespace CoreEngine {
         UpdateMembers();
 
         QueueEvent(NetworkEvent{
-            .type = NetworkEventType::LobbyCreated,
-            .lobby_id = current_lobby_id_,
-            .lobby_owner_id = lobby_owner_id_,
+                .type = NetworkEventType::LobbyCreated,
+                .lobby_id = current_lobby_id_,
+                .lobby_owner_id = lobby_owner_id_,
         });
     }
 
@@ -192,9 +189,9 @@ namespace CoreEngine {
         UpdateMembers();
 
         QueueEvent(NetworkEvent{
-            .type = NetworkEventType::LobbyEntered,
-            .lobby_id = current_lobby_id_,
-            .lobby_owner_id = lobby_owner_id_,
+                .type = NetworkEventType::LobbyEntered,
+                .lobby_id = current_lobby_id_,
+                .lobby_owner_id = lobby_owner_id_,
         });
     }
 
@@ -204,9 +201,9 @@ namespace CoreEngine {
         }
 
         QueueEvent(NetworkEvent{
-            .type = NetworkEventType::LobbyJoinRequested,
-            .remote_steam_id = result->m_steamIDFriend.ConvertToUint64(),
-            .lobby_id = result->m_steamIDLobby.ConvertToUint64(),
+                .type = NetworkEventType::LobbyJoinRequested,
+                .remote_steam_id = result->m_steamIDFriend.ConvertToUint64(),
+                .lobby_id = result->m_steamIDLobby.ConvertToUint64(),
         });
     }
 

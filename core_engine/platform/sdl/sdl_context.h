@@ -17,4 +17,4 @@ namespace CoreEngine {
         bool video_initialized_ = false;
         bool audio_initialized_ = false;
     };
-}
+} // namespace CoreEngine

@@ -11,6 +11,6 @@ namespace CoreEngine {
 #if defined(CENGINE_DEBUG_BUILD) && CENGINE_DEBUG_BUILD
 #define CENGINE_ASSERT(condition, message) assert((condition) && (message))
 #else
-#define CENGINE_ASSERT(condition, message) ((void)sizeof(condition))
+#define CENGINE_ASSERT(condition, message) ((void) sizeof(condition))
 #endif
-}
+} // namespace CoreEngine

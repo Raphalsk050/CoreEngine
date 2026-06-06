@@ -1,9 +1,9 @@
 #pragma once
 
-#include "core/input/input_codes.h"
-#include "core/input/input_system.h"
 #include "SDL3/SDL_events.h"
 #include "SDL3/SDL_scancode.h"
+#include "core/input/input_codes.h"
+#include "core/input/input_system.h"
 
 namespace CoreEngine {
     class SdlInputBackend final {

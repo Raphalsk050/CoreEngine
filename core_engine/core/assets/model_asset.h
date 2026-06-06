@@ -46,9 +46,7 @@ namespace CoreEngine {
         ModelMergeMode merge_mode = ModelMergeMode::None;
         bool load_materials = true;
 
-        [[nodiscard]] bool IsValid() const {
-            return !path.empty();
-        }
+        [[nodiscard]] bool IsValid() const { return !path.empty(); }
     };
 
     struct ModelTextureAsset {
@@ -57,9 +55,7 @@ namespace CoreEngine {
         std::vector<unsigned char> data;
         bool srgb = true;
 
-        [[nodiscard]] bool IsValid() const {
-            return !path.empty() || !data.empty();
-        }
+        [[nodiscard]] bool IsValid() const { return !path.empty() || !data.empty(); }
     };
 
     struct ModelMaterialAsset {
@@ -76,9 +72,7 @@ namespace CoreEngine {
         std::vector<StaticMeshVertex> vertices;
         std::vector<std::uint32_t> indices;
 
-        [[nodiscard]] bool IsValid() const {
-            return !vertices.empty() && !indices.empty();
-        }
+        [[nodiscard]] bool IsValid() const { return !vertices.empty() && !indices.empty(); }
     };
 
     struct ModelNodeAsset {
@@ -87,9 +81,7 @@ namespace CoreEngine {
         Math::Mat4 local_transform{1.f};
         std::vector<std::uint32_t> mesh_indices;
 
-        [[nodiscard]] bool IsRoot() const {
-            return parent_index == kInvalidModelNodeIndex;
-        }
+        [[nodiscard]] bool IsRoot() const { return parent_index == kInvalidModelNodeIndex; }
     };
 
     struct ModelAsset {
@@ -97,17 +89,13 @@ namespace CoreEngine {
         std::vector<ModelMaterialAsset> materials;
         std::vector<ModelNodeAsset> nodes;
 
-        [[nodiscard]] bool IsValid() const {
-            return !meshes.empty();
-        }
+        [[nodiscard]] bool IsValid() const { return !meshes.empty(); }
     };
 
     struct ModelLoadResult {
         ModelAsset asset;
         std::string error_message;
 
-        [[nodiscard]] bool IsSuccess() const {
-            return error_message.empty() && asset.IsValid();
-        }
+        [[nodiscard]] bool IsSuccess() const { return error_message.empty() && asset.IsValid(); }
     };
 } // namespace CoreEngine

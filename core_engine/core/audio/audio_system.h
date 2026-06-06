@@ -25,4 +25,4 @@ namespace CoreEngine {
     private:
         std::unique_ptr<IAudioBackend> backend_;
     };
-} // CoreEngine
+} // namespace CoreEngine

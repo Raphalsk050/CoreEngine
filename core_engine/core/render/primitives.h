@@ -15,4 +15,4 @@ namespace CoreEngine::Primitives {
     [[nodiscard]] std::span<const uint32_t> QuadIndices();
 
     [[nodiscard]] MeshDesc MeshFor(PrimitiveType type);
-}
+} // namespace CoreEngine::Primitives

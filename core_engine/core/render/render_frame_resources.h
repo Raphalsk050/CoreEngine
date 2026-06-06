@@ -30,4 +30,4 @@ namespace CoreEngine {
         std::array<FrameBufferColorView, kTextureSlotCount> color_textures_{};
         std::array<FrameBufferDepthView, kTextureSlotCount> depth_textures_{};
     };
-} // CoreEngine
+} // namespace CoreEngine

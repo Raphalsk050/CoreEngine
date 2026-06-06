@@ -40,17 +40,16 @@ namespace CoreEngine {
         std::uint32_t byte_size = 0;
         std::string sampler_name;
 
-        [[nodiscard]] static ShaderBindingDesc UniformBuffer(std::string name,
-                                                             std::uint32_t byte_size,
+        [[nodiscard]] static ShaderBindingDesc UniformBuffer(std::string name, std::uint32_t byte_size,
                                                              ShaderBindingScope scope = ShaderBindingScope::Pass,
                                                              ShaderStage stages = ShaderStage::Pixel) {
             return {
-                .name = std::move(name),
-                .type = ShaderBindingType::UniformBuffer,
-                .scope = scope,
-                .stages = stages,
-                .byte_size = byte_size,
-                .sampler_name = {},
+                    .name = std::move(name),
+                    .type = ShaderBindingType::UniformBuffer,
+                    .scope = scope,
+                    .stages = stages,
+                    .byte_size = byte_size,
+                    .sampler_name = {},
             };
         }
 
@@ -63,11 +62,11 @@ namespace CoreEngine {
             }
 
             return {
-                .name = std::move(name),
-                .type = ShaderBindingType::Texture,
-                .scope = scope,
-                .stages = stages,
-                .sampler_name = std::move(sampler_name),
+                    .name = std::move(name),
+                    .type = ShaderBindingType::Texture,
+                    .scope = scope,
+                    .stages = stages,
+                    .sampler_name = std::move(sampler_name),
             };
         }
 
@@ -89,9 +88,7 @@ namespace CoreEngine {
         ShaderStage stages = ShaderStage::Pixel;
         std::vector<std::uint8_t> data;
 
-        [[nodiscard]] bool IsValid() const {
-            return !name.empty() && !data.empty();
-        }
+        [[nodiscard]] bool IsValid() const { return !name.empty() && !data.empty(); }
     };
 
     struct ShaderProgramDesc {
@@ -116,12 +113,9 @@ namespace CoreEngine {
             for (std::size_t i = 0; i < bindings.size(); ++i) {
                 for (std::size_t j = i + 1; j < bindings.size(); ++j) {
                     if (bindings[i].name == bindings[j].name ||
-                        (!bindings[i].sampler_name.empty() &&
-                         bindings[i].sampler_name == bindings[j].name) ||
-                        (!bindings[j].sampler_name.empty() &&
-                         bindings[j].sampler_name == bindings[i].name) ||
-                        (!bindings[i].sampler_name.empty() &&
-                         !bindings[j].sampler_name.empty() &&
+                        (!bindings[i].sampler_name.empty() && bindings[i].sampler_name == bindings[j].name) ||
+                        (!bindings[j].sampler_name.empty() && bindings[j].sampler_name == bindings[i].name) ||
+                        (!bindings[i].sampler_name.empty() && !bindings[j].sampler_name.empty() &&
                          bindings[i].sampler_name == bindings[j].sampler_name)) {
                         return false;
                     }
@@ -132,8 +126,7 @@ namespace CoreEngine {
         }
     };
 
-    [[nodiscard]] inline ShaderUniformData MakeShaderUniformData(std::string name,
-                                                                 ShaderStage stages,
+    [[nodiscard]] inline ShaderUniformData MakeShaderUniformData(std::string name, ShaderStage stages,
                                                                  std::span<const std::uint8_t> data) {
         ShaderUniformData uniform;
         uniform.name = std::move(name);

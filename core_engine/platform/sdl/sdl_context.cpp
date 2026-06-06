@@ -2,9 +2,7 @@
 #include <SDL3/SDL.h>
 
 namespace CoreEngine {
-    SdlContext::~SdlContext() {
-        Shutdown();
-    }
+    SdlContext::~SdlContext() { Shutdown(); }
 
     bool SdlContext::InitializeVideo() {
         if (video_initialized_) {
@@ -43,4 +41,4 @@ namespace CoreEngine {
 
         SDL_Quit();
     }
-}
+} // namespace CoreEngine

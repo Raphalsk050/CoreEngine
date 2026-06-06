@@ -2,11 +2,11 @@
 
 #include <string>
 
+#include "SDL3/SDL_events.h"
+#include "SDL3/SDL_video.h"
 #include "core/window/i_window_backend.h"
 #include "core/window/window_event.h"
 #include "platform/sdl/sdl_context.h"
-#include "SDL3/SDL_events.h"
-#include "SDL3/SDL_video.h"
 
 namespace CoreEngine {
     class SdlWindowBackend final : public IWindowBackend {

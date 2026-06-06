@@ -15,9 +15,7 @@ namespace CoreEngine {
         std::uint32_t height = 0;
         std::vector<std::uint8_t> rgba;
 
-        [[nodiscard]] bool IsValid() const noexcept {
-            return user_id != 0 && width > 0 && height > 0 && !rgba.empty();
-        }
+        [[nodiscard]] bool IsValid() const noexcept { return user_id != 0 && width > 0 && height > 0 && !rgba.empty(); }
     };
 
     struct OnlineLobbyMember {

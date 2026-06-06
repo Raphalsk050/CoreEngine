@@ -14,8 +14,6 @@ namespace CoreEngine {
         int ping_ms = -1;
         float packet_loss = 0.0f;
 
-        void Reset() noexcept {
-            *this = NetworkStats{};
-        }
+        void Reset() noexcept { *this = NetworkStats{}; }
     };
 } // namespace CoreEngine

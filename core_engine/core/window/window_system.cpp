@@ -1,17 +1,13 @@
 #include "core/window/window_system.h"
 
 namespace CoreEngine {
-    WindowSystem::WindowSystem(std::unique_ptr<IWindowBackend> backend)
-        : backend_(std::move(backend)) {
-    }
+    WindowSystem::WindowSystem(std::unique_ptr<IWindowBackend> backend) : backend_(std::move(backend)) {}
 
     bool WindowSystem::Initialize(const WindowDesc &desc) const {
         return backend_ != nullptr && backend_->Initialize(desc);
     }
 
-    void WindowSystem::BeginFrame() {
-        events_.Clear();
-    }
+    void WindowSystem::BeginFrame() { events_.Clear(); }
 
     void WindowSystem::PollEvents() {
         BeginFrame();
@@ -21,9 +17,7 @@ namespace CoreEngine {
         }
     }
 
-    bool WindowSystem::PushEvent(const WindowEvent &event) {
-        return events_.Push(event);
-    }
+    bool WindowSystem::PushEvent(const WindowEvent &event) { return events_.Push(event); }
 
     void WindowSystem::Shutdown() const {
         if (backend_ != nullptr) {
@@ -31,9 +25,7 @@ namespace CoreEngine {
         }
     }
 
-    bool WindowSystem::ShouldClose() const {
-        return backend_ == nullptr || backend_->ShouldClose();
-    }
+    bool WindowSystem::ShouldClose() const { return backend_ == nullptr || backend_->ShouldClose(); }
 
     NativeWindowHandle WindowSystem::GetNativeHandle() const {
         return backend_ != nullptr ? backend_->GetNativeHandle() : NativeWindowHandle{};
@@ -44,17 +36,11 @@ namespace CoreEngine {
         return backend_ != nullptr ? backend_->GetState() : empty_state;
     }
 
-    WindowExtent WindowSystem::LogicalSize() const {
-        return State().logical_size;
-    }
+    WindowExtent WindowSystem::LogicalSize() const { return State().logical_size; }
 
-    WindowExtent WindowSystem::PixelSize() const {
-        return State().pixel_size;
-    }
+    WindowExtent WindowSystem::PixelSize() const { return State().pixel_size; }
 
-    std::span<const WindowEvent> WindowSystem::Events() const {
-        return events_.Events();
-    }
+    std::span<const WindowEvent> WindowSystem::Events() const { return events_.Events(); }
 
     std::string_view WindowSystem::LastError() const {
         if (backend_ == nullptr) {

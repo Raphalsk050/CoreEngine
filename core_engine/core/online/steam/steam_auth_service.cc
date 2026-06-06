@@ -7,15 +7,15 @@
 namespace CoreEngine {
     SteamAuthService::SteamAuthService(SteamOnlineSystem &online_system)
 #if CORE_ENGINE_ENABLE_STEAM
-        : validate_auth_ticket_callback_(this, &SteamAuthService::OnValidateAuthTicketResponse),
-          online_system_(online_system) {
-    }
+        :
+        validate_auth_ticket_callback_(this, &SteamAuthService::OnValidateAuthTicketResponse),
+        online_system_(online_system){}
 #else
         : online_system_(online_system) {
     }
 #endif
 
-    SteamAuthService::~SteamAuthService() {
+        SteamAuthService::~SteamAuthService() {
         Shutdown();
     }
 
@@ -30,10 +30,7 @@ namespace CoreEngine {
         std::array<std::byte, 2048> ticket_buffer{};
         std::uint32_t ticket_size = 0;
         local_ticket_handle_ = SteamUser()->GetAuthSessionTicket(
-            ticket_buffer.data(),
-            static_cast<int>(ticket_buffer.size()),
-            &ticket_size,
-            nullptr);
+                ticket_buffer.data(), static_cast<int>(ticket_buffer.size()), &ticket_size, nullptr);
 
         if (local_ticket_handle_ == k_HAuthTicketInvalid || ticket_size == 0) {
             local_ticket_.clear();
@@ -59,22 +56,20 @@ namespace CoreEngine {
 
     bool SteamAuthService::BeginAuthSession(PeerId peer, std::uint64_t steam_id, std::span<const std::byte> ticket) {
 #if CORE_ENGINE_ENABLE_STEAM
-        if (!online_system_.IsAvailable() || SteamUser() == nullptr || peer == kInvalidPeerId ||
-            steam_id == 0 || ticket.empty()) {
+        if (!online_system_.IsAvailable() || SteamUser() == nullptr || peer == kInvalidPeerId || steam_id == 0 ||
+            ticket.empty()) {
             return false;
         }
 
-        const EBeginAuthSessionResult result = SteamUser()->BeginAuthSession(
-            ticket.data(),
-            static_cast<int>(ticket.size()),
-            CSteamID(steam_id));
+        const EBeginAuthSessionResult result =
+                SteamUser()->BeginAuthSession(ticket.data(), static_cast<int>(ticket.size()), CSteamID(steam_id));
 
         if (result != k_EBeginAuthSessionResultOK) {
             QueueEvent(NetworkEvent{
-                .type = NetworkEventType::AuthRejected,
-                .peer = peer,
-                .remote_steam_id = steam_id,
-                .disconnect_reason = NetworkDisconnectReason::AuthenticationFailed,
+                    .type = NetworkEventType::AuthRejected,
+                    .peer = peer,
+                    .remote_steam_id = steam_id,
+                    .disconnect_reason = NetworkDisconnectReason::AuthenticationFailed,
             });
             return false;
         }
@@ -117,15 +112,12 @@ namespace CoreEngine {
     }
 
     void SteamAuthService::PollEvents(NetworkEventQueue &out_events) {
-        out_events.insert(out_events.end(),
-                          std::make_move_iterator(pending_events_.begin()),
+        out_events.insert(out_events.end(), std::make_move_iterator(pending_events_.begin()),
                           std::make_move_iterator(pending_events_.end()));
         pending_events_.clear();
     }
 
-    void SteamAuthService::QueueEvent(NetworkEvent event) {
-        pending_events_.push_back(std::move(event));
-    }
+    void SteamAuthService::QueueEvent(NetworkEvent event) { pending_events_.push_back(std::move(event)); }
 
 #if CORE_ENGINE_ENABLE_STEAM
     void SteamAuthService::OnValidateAuthTicketResponse(ValidateAuthTicketResponse_t *callback) {
@@ -141,10 +133,11 @@ namespace CoreEngine {
 
         const bool accepted = callback->m_eAuthSessionResponse == k_EAuthSessionResponseOK;
         QueueEvent(NetworkEvent{
-            .type = accepted ? NetworkEventType::AuthAccepted : NetworkEventType::AuthRejected,
-            .peer = it->second,
-            .remote_steam_id = steam_id,
-            .disconnect_reason = accepted ? NetworkDisconnectReason::None : NetworkDisconnectReason::AuthenticationFailed,
+                .type = accepted ? NetworkEventType::AuthAccepted : NetworkEventType::AuthRejected,
+                .peer = it->second,
+                .remote_steam_id = steam_id,
+                .disconnect_reason =
+                        accepted ? NetworkDisconnectReason::None : NetworkDisconnectReason::AuthenticationFailed,
         });
 
         if (!accepted) {

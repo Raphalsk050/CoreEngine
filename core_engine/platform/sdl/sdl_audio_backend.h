@@ -1,9 +1,9 @@
 #pragma once
 #include <string>
 
-#include "sdl_context.h"
-#include "core/audio/i_audio_backend.h"
 #include "SDL3/SDL_audio.h"
+#include "core/audio/i_audio_backend.h"
+#include "sdl_context.h"
 
 namespace CoreEngine {
     class SdlAudioBackend final : public IAudioBackend {
@@ -29,4 +29,4 @@ namespace CoreEngine {
         SDL_AudioStream *stream_ = nullptr;
         std::string last_error_;
     };
-} // CoreEngine
+} // namespace CoreEngine

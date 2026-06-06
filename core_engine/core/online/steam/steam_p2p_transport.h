@@ -39,9 +39,7 @@ namespace CoreEngine {
 
         bool Send(PeerId peer, std::span<const std::byte> payload, SendMode mode);
 
-        [[nodiscard]] bool IsHost() const noexcept {
-            return is_host_;
-        }
+        [[nodiscard]] bool IsHost() const noexcept { return is_host_; }
 
         [[nodiscard]] std::string DetailedConnectionStatus(PeerId peer) const;
 
@@ -60,16 +58,14 @@ namespace CoreEngine {
 
         void DisconnectConnection(
 #if CORE_ENGINE_ENABLE_STEAM
-            HSteamNetConnection connection,
+                HSteamNetConnection connection,
 #else
-            std::uint32_t connection,
+                std::uint32_t connection,
 #endif
-            NetworkDisconnectReason reason);
+                NetworkDisconnectReason reason);
 
 #if CORE_ENGINE_ENABLE_STEAM
-        STEAM_CALLBACK(SteamP2PTransport,
-                       OnConnectionStatusChanged,
-                       SteamNetConnectionStatusChangedCallback_t,
+        STEAM_CALLBACK(SteamP2PTransport, OnConnectionStatusChanged, SteamNetConnectionStatusChangedCallback_t,
                        connection_status_callback_);
 #endif
 

@@ -28,17 +28,13 @@ namespace CoreEngine {
             return true;
         }
 
-        [[nodiscard]] std::span<const WindowEvent> Events() const noexcept {
-            return {events_.data(), size_};
-        }
+        [[nodiscard]] std::span<const WindowEvent> Events() const noexcept { return {events_.data(), size_}; }
 
         [[nodiscard]] bool Empty() const noexcept { return size_ == 0; }
 
         [[nodiscard]] std::size_t Size() const noexcept { return size_; }
 
-        [[nodiscard]] std::size_t DroppedEvents() const noexcept {
-            return droppedEvents_;
-        }
+        [[nodiscard]] std::size_t DroppedEvents() const noexcept { return droppedEvents_; }
 
     private:
         std::array<WindowEvent, MaxEvents> events_{};

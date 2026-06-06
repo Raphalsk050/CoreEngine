@@ -14,4 +14,4 @@ namespace TopDownGame {
 
         void Shutdown(const CoreEngine::EngineContext &context) override;
     };
-} // TopDownGame
+} // namespace TopDownGame

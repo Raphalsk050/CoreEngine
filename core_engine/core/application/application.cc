@@ -6,18 +6,14 @@ namespace CoreEngine {
     namespace {
         std::atomic<IApplicationService *> applicationService{nullptr};
 
-        IApplicationService *GetApplicationService() {
-            return applicationService.load(std::memory_order_acquire);
-        }
-    }
+        IApplicationService *GetApplicationService() { return applicationService.load(std::memory_order_acquire); }
+    } // namespace
 
     void Application::Bind(IApplicationService &service) {
         applicationService.store(&service, std::memory_order_release);
     }
 
-    void Application::Unbind() {
-        applicationService.store(nullptr, std::memory_order_release);
-    }
+    void Application::Unbind() { applicationService.store(nullptr, std::memory_order_release); }
 
     void Application::RequestShutdown() {
         IApplicationService *service = GetApplicationService();
@@ -36,4 +32,4 @@ namespace CoreEngine {
 
         return service->IsShutdownRequested();
     }
-}
+} // namespace CoreEngine

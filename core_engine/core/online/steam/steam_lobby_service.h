@@ -42,17 +42,11 @@ namespace CoreEngine {
 
         bool SetLobbyData(std::string_view key, std::string_view value) const;
 
-        [[nodiscard]] SteamLobbyId CurrentLobbyId() const noexcept {
-            return current_lobby_id_;
-        }
+        [[nodiscard]] SteamLobbyId CurrentLobbyId() const noexcept { return current_lobby_id_; }
 
-        [[nodiscard]] SteamId LobbyOwnerId() const noexcept {
-            return lobby_owner_id_;
-        }
+        [[nodiscard]] SteamId LobbyOwnerId() const noexcept { return lobby_owner_id_; }
 
-        [[nodiscard]] std::span<const SteamLobbyMember> Members() const noexcept {
-            return members_;
-        }
+        [[nodiscard]] std::span<const SteamLobbyMember> Members() const noexcept { return members_; }
 
     private:
         void QueueEvent(NetworkEvent event);
@@ -64,7 +58,8 @@ namespace CoreEngine {
 
         void OnLobbyEntered(LobbyEnter_t *result, bool io_failure);
 
-        STEAM_CALLBACK(SteamLobbyService, OnGameLobbyJoinRequested, GameLobbyJoinRequested_t, lobby_join_requested_callback_);
+        STEAM_CALLBACK(SteamLobbyService, OnGameLobbyJoinRequested, GameLobbyJoinRequested_t,
+                       lobby_join_requested_callback_);
 
         STEAM_CALLBACK(SteamLobbyService, OnLobbyChatUpdated, LobbyChatUpdate_t, lobby_chat_update_callback_);
 #endif

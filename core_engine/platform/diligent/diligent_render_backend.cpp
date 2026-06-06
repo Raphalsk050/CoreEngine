@@ -167,11 +167,10 @@ namespace CoreEngine {
             uint32_t height = 0;
             uint32_t generation = 0;
         };
-    }
+    } // namespace
 
     struct DiligentRenderBackend::Impl {
-        explicit Impl(DiligentRenderBackendApi api_type) : api(api_type) {
-        }
+        explicit Impl(DiligentRenderBackendApi api_type) : api(api_type) {}
 
         DiligentRenderBackendApi api;
         RenderDesc desc{};
@@ -224,14 +223,11 @@ namespace CoreEngine {
     namespace {
         bool IsBackendApiAvailable(DiligentRenderBackendApi api) {
             switch (api) {
-                case DiligentRenderBackendApi::D3D11:
-                    return PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D11;
-                case DiligentRenderBackendApi::D3D12:
-                    return PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D12;
+                case DiligentRenderBackendApi::D3D11: return PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D11;
+                case DiligentRenderBackendApi::D3D12: return PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D12;
                 case DiligentRenderBackendApi::Vulkan:
                     return CORE_ENGINE_HAS_DILIGENT_VULKAN && (PLATFORM_WIN32 || PLATFORM_MACOS);
-                case DiligentRenderBackendApi::Metal:
-                    return PLATFORM_MACOS;
+                case DiligentRenderBackendApi::Metal: return PLATFORM_MACOS;
             }
 
             return false;
@@ -239,14 +235,10 @@ namespace CoreEngine {
 
         const char *UnavailableBackendMessage(DiligentRenderBackendApi api) {
             switch (api) {
-                case DiligentRenderBackendApi::D3D11:
-                    return "D3D11 backend is not available in this build";
-                case DiligentRenderBackendApi::D3D12:
-                    return "D3D12 backend is not available in this build";
-                case DiligentRenderBackendApi::Vulkan:
-                    return "Vulkan backend is not available in this build";
-                case DiligentRenderBackendApi::Metal:
-                    return "Metal backend is not available in this build";
+                case DiligentRenderBackendApi::D3D11:  return "D3D11 backend is not available in this build";
+                case DiligentRenderBackendApi::D3D12:  return "D3D12 backend is not available in this build";
+                case DiligentRenderBackendApi::Vulkan: return "Vulkan backend is not available in this build";
+                case DiligentRenderBackendApi::Metal:  return "Metal backend is not available in this build";
             }
 
             return "Requested render backend is not available in this build";
@@ -294,18 +286,15 @@ namespace CoreEngine {
 
         const char *UnsupportedWindowMessage(DiligentRenderBackendApi api) {
             switch (api) {
-                case DiligentRenderBackendApi::D3D11:
-                    return "Diligent D3D backend requires a valid Win32 HWND";
-                case DiligentRenderBackendApi::D3D12:
-                    return "Diligent D3D12 backend requires a valid Win32 HWND";
+                case DiligentRenderBackendApi::D3D11: return "Diligent D3D backend requires a valid Win32 HWND";
+                case DiligentRenderBackendApi::D3D12: return "Diligent D3D12 backend requires a valid Win32 HWND";
                 case DiligentRenderBackendApi::Vulkan:
 #if PLATFORM_MACOS
                     return "Diligent Vulkan backend requires a valid macOS NSView";
 #else
                     return "Diligent Vulkan backend requires a valid native window";
 #endif
-                case DiligentRenderBackendApi::Metal:
-                    return "Diligent Metal backend is not implemented";
+                case DiligentRenderBackendApi::Metal: return "Diligent Metal backend is not implemented";
             }
 
             return "Unsupported render backend window";
@@ -328,8 +317,8 @@ namespace CoreEngine {
             return desc;
         }
 
-        Diligent::RefCntAutoPtr<Diligent::IBuffer> CreateConstantBuffer(
-            Diligent::IRenderDevice *device, uint32_t byte_size, const char *name) {
+        Diligent::RefCntAutoPtr<Diligent::IBuffer> CreateConstantBuffer(Diligent::IRenderDevice *device,
+                                                                        uint32_t byte_size, const char *name) {
             Diligent::BufferDesc desc;
             desc.Name = name;
             desc.Size = byte_size;
@@ -348,12 +337,9 @@ namespace CoreEngine {
             return impl.per_frame_cb && impl.per_object_cb;
         }
 
-        Diligent::RefCntAutoPtr<Diligent::IBuffer> CreateGpuBuffer(
-            Diligent::IRenderDevice *device,
-            const void *data,
-            uint32_t byte_size,
-            Diligent::BIND_FLAGS flags,
-            const char *name) {
+        Diligent::RefCntAutoPtr<Diligent::IBuffer> CreateGpuBuffer(Diligent::IRenderDevice *device, const void *data,
+                                                                   uint32_t byte_size, Diligent::BIND_FLAGS flags,
+                                                                   const char *name) {
             Diligent::BufferDesc desc;
             desc.Name = name;
             desc.Size = byte_size;
@@ -376,12 +362,9 @@ namespace CoreEngine {
 
         Diligent::TEXTURE_FORMAT ToDiligentTextureFormat(TextureFormat format) {
             switch (format) {
-                case TextureFormat::Auto:
-                    return Diligent::TEX_FORMAT_UNKNOWN;
-                case TextureFormat::RGBA8Unorm:
-                    return Diligent::TEX_FORMAT_RGBA8_UNORM;
-                case TextureFormat::RGBA8UnormSrgb:
-                    return Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB;
+                case TextureFormat::Auto:           return Diligent::TEX_FORMAT_UNKNOWN;
+                case TextureFormat::RGBA8Unorm:     return Diligent::TEX_FORMAT_RGBA8_UNORM;
+                case TextureFormat::RGBA8UnormSrgb: return Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB;
             }
             return Diligent::TEX_FORMAT_UNKNOWN;
         }
@@ -421,12 +404,7 @@ namespace CoreEngine {
             Diligent::RefCntAutoPtr<Diligent::ITextureLoader> loader;
 
             if (!desc.data.empty()) {
-                Diligent::CreateTextureLoaderFromMemory(
-                    desc.data.data(),
-                    desc.data.size(),
-                    true,
-                    info,
-                    &loader);
+                Diligent::CreateTextureLoaderFromMemory(desc.data.data(), desc.data.size(), true, info, &loader);
 
                 if (!loader) {
                     error_message = "Failed to create texture loader from memory: " + desc.path;
@@ -434,11 +412,8 @@ namespace CoreEngine {
                 return loader;
             }
 
-            Diligent::CreateTextureLoaderFromFile(
-                desc.path.c_str(),
-                Diligent::IMAGE_FILE_FORMAT_UNKNOWN,
-                info,
-                &loader);
+            Diligent::CreateTextureLoaderFromFile(desc.path.c_str(), Diligent::IMAGE_FILE_FORMAT_UNKNOWN, info,
+                                                  &loader);
 
             if (!loader) {
                 error_message = "Failed to create texture loader from file: " + desc.path;
@@ -447,8 +422,7 @@ namespace CoreEngine {
             return loader;
         }
 
-        DiligentTextureData CreateTextureFromLoader(Diligent::IRenderDevice *device,
-                                                    Diligent::ITextureLoader *loader,
+        DiligentTextureData CreateTextureFromLoader(Diligent::IRenderDevice *device, Diligent::ITextureLoader *loader,
                                                     std::string_view debug_name) {
             DiligentTextureData data;
             if (!loader) {
@@ -525,15 +499,13 @@ namespace CoreEngine {
             }
 
             return DiligentTextureSnapshot{
-                .texture_view = it.value().texture_view,
-                .state = it.value().state,
-                .revision = it.value().revision,
+                    .texture_view = it.value().texture_view,
+                    .state = it.value().state,
+                    .revision = it.value().revision,
             };
         }
 
-        void MarkTextureLoadFailed(DiligentRenderBackend::Impl &impl,
-                                   TextureHandle handle,
-                                   std::string error_message) {
+        void MarkTextureLoadFailed(DiligentRenderBackend::Impl &impl, TextureHandle handle, std::string error_message) {
             std::lock_guard lock{impl.texture_registry_mutex};
             const auto it = impl.texture_registry.find(handle.id);
             if (it == impl.texture_registry.end() || it.value().generation != handle.generation) {
@@ -544,9 +516,7 @@ namespace CoreEngine {
             it.value().error_message = std::move(error_message);
         }
 
-        void PublishLoadedTexture(DiligentRenderBackend::Impl &impl,
-                                  TextureHandle handle,
-                                  DiligentTextureData loaded) {
+        void PublishLoadedTexture(DiligentRenderBackend::Impl &impl, TextureHandle handle, DiligentTextureData loaded) {
             std::lock_guard lock{impl.texture_registry_mutex};
             const auto it = impl.texture_registry.find(handle.id);
             if (it == impl.texture_registry.end() || it.value().generation != handle.generation) {
@@ -565,8 +535,7 @@ namespace CoreEngine {
             ++it.value().revision;
         }
 
-        void ProcessTextureLoadTask(DiligentRenderBackend::Impl &impl,
-                                    const DiligentTextureLoadTask &task,
+        void ProcessTextureLoadTask(DiligentRenderBackend::Impl &impl, const DiligentTextureLoadTask &task,
                                     const std::stop_token &stop_token) {
             try {
                 std::string error_message;
@@ -583,9 +552,9 @@ namespace CoreEngine {
 
                 std::lock_guard lock{impl.texture_upload_queue_mutex};
                 impl.texture_upload_queue.push_back(DiligentTextureUploadTask{
-                    .handle = task.handle,
-                    .loader = std::move(loader),
-                    .error_message = {},
+                        .handle = task.handle,
+                        .loader = std::move(loader),
+                        .error_message = {},
                 });
             } catch (const std::exception &ex) {
                 MarkTextureLoadFailed(impl, task.handle, ex.what());
@@ -598,11 +567,7 @@ namespace CoreEngine {
                 {
                     std::unique_lock lock{impl.texture_load_queue_mutex};
                     const bool has_task = impl.texture_load_event.wait(
-                        lock,
-                        stop_token,
-                        [&impl] {
-                            return !impl.texture_load_queue.empty();
-                        });
+                            lock, stop_token, [&impl] { return !impl.texture_load_queue.empty(); });
 
                     if (!has_task || stop_token.stop_requested()) {
                         return;
@@ -624,9 +589,7 @@ namespace CoreEngine {
 
             impl.texture_load_workers_started = true;
             impl.texture_load_workers.emplace_back(
-                [&impl](std::stop_token stop_token) {
-                    TextureLoadWorker(impl, stop_token);
-                });
+                    [&impl](std::stop_token stop_token) { TextureLoadWorker(impl, stop_token); });
         }
 
         void PumpTextureUploads(DiligentRenderBackend::Impl &impl) {
@@ -662,8 +625,7 @@ namespace CoreEngine {
             return static_cast<Diligent::SHADER_TYPE>(result);
         }
 
-        Diligent::IShaderResourceVariable *FindSrbVariable(Diligent::IShaderResourceBinding *srb,
-                                                           ShaderStage stages,
+        Diligent::IShaderResourceVariable *FindSrbVariable(Diligent::IShaderResourceBinding *srb, ShaderStage stages,
                                                            const std::string &name) {
             if (srb == nullptr || name.empty()) {
                 return nullptr;
@@ -682,8 +644,7 @@ namespace CoreEngine {
             return nullptr;
         }
 
-        Diligent::IShaderResourceVariable *FindStaticVariable(Diligent::IPipelineState *pso,
-                                                              ShaderStage stages,
+        Diligent::IShaderResourceVariable *FindStaticVariable(Diligent::IPipelineState *pso, ShaderStage stages,
                                                               const std::string &name) {
             if (pso == nullptr || name.empty()) {
                 return nullptr;
@@ -702,10 +663,9 @@ namespace CoreEngine {
             return nullptr;
         }
 
-        Diligent::RefCntAutoPtr<Diligent::IBuffer> CreateImmutableConstantBuffer(
-            Diligent::IRenderDevice *device,
-            std::span<const uint8_t> data,
-            const char *name) {
+        Diligent::RefCntAutoPtr<Diligent::IBuffer> CreateImmutableConstantBuffer(Diligent::IRenderDevice *device,
+                                                                                 std::span<const uint8_t> data,
+                                                                                 const char *name) {
             if (data.empty()) {
                 return {};
             }
@@ -733,28 +693,20 @@ namespace CoreEngine {
             mesh.index_count = static_cast<uint32_t>(desc.indices.size());
             mesh.index_format = desc.index_format;
 
-            mesh.vertex_buffer = CreateGpuBuffer(
-                device,
-                desc.vertices.data(),
-                static_cast<uint32_t>(desc.vertices.size_bytes()),
-                Diligent::BIND_VERTEX_BUFFER,
-                "StaticMeshVB");
+            mesh.vertex_buffer =
+                    CreateGpuBuffer(device, desc.vertices.data(), static_cast<uint32_t>(desc.vertices.size_bytes()),
+                                    Diligent::BIND_VERTEX_BUFFER, "StaticMeshVB");
 
-            mesh.index_buffer = CreateGpuBuffer(
-                device,
-                desc.indices.data(),
-                static_cast<uint32_t>(desc.indices.size_bytes()),
-                Diligent::BIND_INDEX_BUFFER,
-                "StaticMeshIB");
+            mesh.index_buffer =
+                    CreateGpuBuffer(device, desc.indices.data(), static_cast<uint32_t>(desc.indices.size_bytes()),
+                                    Diligent::BIND_INDEX_BUFFER, "StaticMeshIB");
 
             return mesh;
         }
 
-        Diligent::RefCntAutoPtr<Diligent::IShader> CompileShader(
-            Diligent::IRenderDevice *device,
-            Diligent::SHADER_TYPE type,
-            const char *source,
-            const char *name) {
+        Diligent::RefCntAutoPtr<Diligent::IShader> CompileShader(Diligent::IRenderDevice *device,
+                                                                 Diligent::SHADER_TYPE type, const char *source,
+                                                                 const char *name) {
             Diligent::ShaderCreateInfo sci;
             sci.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_HLSL;
             sci.Desc.ShaderType = type;
@@ -767,48 +719,32 @@ namespace CoreEngine {
             return shader;
         }
 
-        DiligentMaterialData CreateMaterial(
-            DiligentRenderBackend::Impl &impl,
-            const MaterialDesc &desc) {
+        DiligentMaterialData CreateMaterial(DiligentRenderBackend::Impl &impl, const MaterialDesc &desc) {
             std::vector<ShaderUniformData> uniforms = desc.uniforms;
             if (uniforms.empty() && !desc.properties_data.empty()) {
-                uniforms.push_back(MakeShaderUniformData(
-                    "PerMaterial",
-                    ShaderStage::Pixel,
-                    std::span<const uint8_t>(desc.properties_data)));
+                uniforms.push_back(MakeShaderUniformData("PerMaterial", ShaderStage::Pixel,
+                                                         std::span<const uint8_t>(desc.properties_data)));
             }
 
-            auto vs = CompileShader(impl.device, Diligent::SHADER_TYPE_VERTEX,
-                                    desc.vertex_shader_source.c_str(), "VS");
-            auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL,
-                                    desc.pixel_shader_source.c_str(), "PS");
+            auto vs = CompileShader(impl.device, Diligent::SHADER_TYPE_VERTEX, desc.vertex_shader_source.c_str(), "VS");
+            auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL, desc.pixel_shader_source.c_str(), "PS");
 
             // Explicit offsets keep the vertex contract stable if math type packing changes.
             constexpr Diligent::Uint32 kStride = sizeof(StaticMeshVertex);
 
             Diligent::LayoutElement layout[] = {
-                // InputIndex, BufferSlot, NumComponents, ValueType, IsNormalized,
-                //   RelativeOffset, Stride
-                {
-                    0, 0, 3, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, position)), kStride
-                },
-                {
-                    1, 0, 3, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, normal)), kStride
-                },
-                {
-                    2, 0, 3, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, color)), kStride
-                },
-                {
-                    3, 0, 2, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, uv)), kStride
-                },
-                {
-                    4, 0, 4, Diligent::VT_FLOAT32, false,
-                    static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, custom0)), kStride
-                },
+                    // InputIndex, BufferSlot, NumComponents, ValueType, IsNormalized,
+                    //   RelativeOffset, Stride
+                    {0, 0, 3, Diligent::VT_FLOAT32, false,
+                     static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, position)), kStride},
+                    {1, 0, 3, Diligent::VT_FLOAT32, false,
+                     static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, normal)), kStride},
+                    {2, 0, 3, Diligent::VT_FLOAT32, false,
+                     static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, color)), kStride},
+                    {3, 0, 2, Diligent::VT_FLOAT32, false,
+                     static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, uv)), kStride},
+                    {4, 0, 4, Diligent::VT_FLOAT32, false,
+                     static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, custom0)), kStride},
             };
 
             Diligent::GraphicsPipelineStateCreateInfo pci;
@@ -827,21 +763,13 @@ namespace CoreEngine {
 
             std::vector<Diligent::ShaderResourceVariableDesc> vars;
             vars.reserve(2u + uniforms.size() + desc.bindings.size() * 2u);
-            vars.push_back({
-                Diligent::SHADER_TYPE_VERTEX, "PerFrame",
-                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC
-            });
-            vars.push_back({
-                Diligent::SHADER_TYPE_VERTEX, "PerObject",
-                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC
-            });
+            vars.push_back({Diligent::SHADER_TYPE_VERTEX, "PerFrame", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
+            vars.push_back({Diligent::SHADER_TYPE_VERTEX, "PerObject", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
 
             for (const ShaderUniformData &uniform: uniforms) {
                 if (uniform.IsValid()) {
-                    vars.push_back({
-                        ToDiligentShaderStages(uniform.stages), uniform.name.c_str(),
-                        Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC
-                    });
+                    vars.push_back({ToDiligentShaderStages(uniform.stages), uniform.name.c_str(),
+                                    Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
                 }
             }
 
@@ -850,16 +778,12 @@ namespace CoreEngine {
                     continue;
                 }
 
-                vars.push_back({
-                    ToDiligentShaderStages(binding.stages), binding.name.c_str(),
-                    Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC
-                });
+                vars.push_back({ToDiligentShaderStages(binding.stages), binding.name.c_str(),
+                                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
 
                 if (!binding.sampler_name.empty()) {
-                    vars.push_back({
-                        ToDiligentShaderStages(binding.stages), binding.sampler_name.c_str(),
-                        Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC
-                    });
+                    vars.push_back({ToDiligentShaderStages(binding.stages), binding.sampler_name.c_str(),
+                                    Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
                 }
             }
 
@@ -890,10 +814,7 @@ namespace CoreEngine {
                 binding.name = uniform.name;
                 binding.stages = uniform.stages;
                 binding.byte_size = static_cast<uint32_t>(uniform.data.size());
-                binding.buffer = CreateImmutableConstantBuffer(
-                    impl.device,
-                    uniform.data,
-                    uniform.name.c_str());
+                binding.buffer = CreateImmutableConstantBuffer(impl.device, uniform.data, uniform.name.c_str());
 
                 binding.variable = FindStaticVariable(mat.pso, uniform.stages, uniform.name);
                 if (binding.buffer && binding.variable != nullptr) {
@@ -980,17 +901,12 @@ namespace CoreEngine {
         Diligent::TEXTURE_FORMAT ResolveFrameBufferColorFormat(FrameBufferFormat format,
                                                                Diligent::TEXTURE_FORMAT swap_chain_format) {
             switch (format) {
-                case FrameBufferFormat::SwapChainColor:
-                    return swap_chain_format;
-                case FrameBufferFormat::RGBA8Unorm:
-                    return Diligent::TEX_FORMAT_RGBA8_UNORM;
-                case FrameBufferFormat::RGBA16Float:
-                    return Diligent::TEX_FORMAT_RGBA16_FLOAT;
-                case FrameBufferFormat::R32Float:
-                    return Diligent::TEX_FORMAT_R32_FLOAT;
+                case FrameBufferFormat::SwapChainColor: return swap_chain_format;
+                case FrameBufferFormat::RGBA8Unorm:     return Diligent::TEX_FORMAT_RGBA8_UNORM;
+                case FrameBufferFormat::RGBA16Float:    return Diligent::TEX_FORMAT_RGBA16_FLOAT;
+                case FrameBufferFormat::R32Float:       return Diligent::TEX_FORMAT_R32_FLOAT;
                 case FrameBufferFormat::SwapChainDepth:
-                case FrameBufferFormat::Depth32Float:
-                    return Diligent::TEX_FORMAT_UNKNOWN;
+                case FrameBufferFormat::Depth32Float:   return Diligent::TEX_FORMAT_UNKNOWN;
             }
 
             return Diligent::TEX_FORMAT_UNKNOWN;
@@ -999,25 +915,20 @@ namespace CoreEngine {
         Diligent::TEXTURE_FORMAT ResolveFrameBufferDepthFormat(FrameBufferFormat format,
                                                                Diligent::TEXTURE_FORMAT swap_chain_format) {
             switch (format) {
-                case FrameBufferFormat::SwapChainDepth:
-                    return swap_chain_format;
-                case FrameBufferFormat::Depth32Float:
-                    return Diligent::TEX_FORMAT_D32_FLOAT;
+                case FrameBufferFormat::SwapChainDepth: return swap_chain_format;
+                case FrameBufferFormat::Depth32Float:   return Diligent::TEX_FORMAT_D32_FLOAT;
                 case FrameBufferFormat::SwapChainColor:
                 case FrameBufferFormat::RGBA8Unorm:
                 case FrameBufferFormat::RGBA16Float:
-                case FrameBufferFormat::R32Float:
-                    return Diligent::TEX_FORMAT_UNKNOWN;
+                case FrameBufferFormat::R32Float:       return Diligent::TEX_FORMAT_UNKNOWN;
             }
 
             return Diligent::TEX_FORMAT_UNKNOWN;
         }
 
-        DiligentFrameBufferData CreateFrameBufferData(
-            Diligent::IRenderDevice *device,
-            const FrameBufferDesc &desc,
-            Diligent::TEXTURE_FORMAT swap_chain_color_format,
-            Diligent::TEXTURE_FORMAT swap_chain_depth_format) {
+        DiligentFrameBufferData CreateFrameBufferData(Diligent::IRenderDevice *device, const FrameBufferDesc &desc,
+                                                      Diligent::TEXTURE_FORMAT swap_chain_color_format,
+                                                      Diligent::TEXTURE_FORMAT swap_chain_depth_format) {
             DiligentFrameBufferData frame_buffer;
             frame_buffer.width = static_cast<uint32_t>(desc.width);
             frame_buffer.height = static_cast<uint32_t>(desc.height);
@@ -1035,9 +946,8 @@ namespace CoreEngine {
                 color_desc.Width = frame_buffer.width;
                 color_desc.Height = frame_buffer.height;
                 color_desc.Format = color_format;
-                color_desc.BindFlags = desc.sample_color
-                                           ? Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE
-                                           : Diligent::BIND_RENDER_TARGET;
+                color_desc.BindFlags = desc.sample_color ? Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE
+                                                         : Diligent::BIND_RENDER_TARGET;
 
                 device->CreateTexture(color_desc, nullptr, &frame_buffer.color_texture);
                 if (frame_buffer.color_texture) {
@@ -1064,9 +974,8 @@ namespace CoreEngine {
                 depth_desc.Width = frame_buffer.width;
                 depth_desc.Height = frame_buffer.height;
                 depth_desc.Format = depth_format;
-                depth_desc.BindFlags = desc.sample_depth
-                                           ? Diligent::BIND_DEPTH_STENCIL | Diligent::BIND_SHADER_RESOURCE
-                                           : Diligent::BIND_DEPTH_STENCIL;
+                depth_desc.BindFlags = desc.sample_depth ? Diligent::BIND_DEPTH_STENCIL | Diligent::BIND_SHADER_RESOURCE
+                                                         : Diligent::BIND_DEPTH_STENCIL;
 
                 device->CreateTexture(depth_desc, nullptr, &frame_buffer.depth_texture);
                 if (frame_buffer.depth_texture) {
@@ -1084,10 +993,10 @@ namespace CoreEngine {
         }
 
         bool CreateCompositePipeline(DiligentRenderBackend::Impl &impl) {
-            auto vs = CompileShader(impl.device, Diligent::SHADER_TYPE_VERTEX,
-                                    BuiltinShaders::kCompositeVS, "CompositeVS");
-            auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL,
-                                    BuiltinShaders::kCompositePS, "CompositePS");
+            auto vs = CompileShader(impl.device, Diligent::SHADER_TYPE_VERTEX, BuiltinShaders::kCompositeVS,
+                                    "CompositeVS");
+            auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL, BuiltinShaders::kCompositePS,
+                                    "CompositePS");
 
             if (!vs || !ps) {
                 return false;
@@ -1106,8 +1015,9 @@ namespace CoreEngine {
             pci.pPS = ps;
 
             Diligent::ShaderResourceVariableDesc vars[] = {
-                {Diligent::SHADER_TYPE_PIXEL, "g_SceneColor", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
-                {Diligent::SHADER_TYPE_PIXEL, "g_SceneColor_sampler", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+                    {Diligent::SHADER_TYPE_PIXEL, "g_SceneColor", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+                    {Diligent::SHADER_TYPE_PIXEL, "g_SceneColor_sampler",
+                     Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
             };
             pci.PSODesc.ResourceLayout.Variables = vars;
             pci.PSODesc.ResourceLayout.NumVariables = 2;
@@ -1151,14 +1061,12 @@ namespace CoreEngine {
                 return program;
             }
 
-            const char *vertex_source = desc.vertex_shader_source.empty()
-                                            ? BuiltinShaders::kCompositeVS
-                                            : desc.vertex_shader_source.c_str();
+            const char *vertex_source = desc.vertex_shader_source.empty() ? BuiltinShaders::kCompositeVS
+                                                                          : desc.vertex_shader_source.c_str();
 
-            auto vs = CompileShader(impl.device, Diligent::SHADER_TYPE_VERTEX,
-                                    vertex_source, "ShaderProgramVS");
-            auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL,
-                                    desc.pixel_shader_source.c_str(), "ShaderProgramPS");
+            auto vs = CompileShader(impl.device, Diligent::SHADER_TYPE_VERTEX, vertex_source, "ShaderProgramVS");
+            auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL, desc.pixel_shader_source.c_str(),
+                                    "ShaderProgramPS");
 
             if (!vs || !ps) {
                 return program;
@@ -1168,9 +1076,8 @@ namespace CoreEngine {
             const Diligent::TEXTURE_FORMAT color_format =
                     ResolveFrameBufferColorFormat(desc.color_format, swap_desc.ColorBufferFormat);
             const Diligent::TEXTURE_FORMAT depth_format =
-                    desc.depth_test
-                        ? ResolveFrameBufferDepthFormat(desc.depth_format, swap_desc.DepthBufferFormat)
-                        : Diligent::TEX_FORMAT_UNKNOWN;
+                    desc.depth_test ? ResolveFrameBufferDepthFormat(desc.depth_format, swap_desc.DepthBufferFormat)
+                                    : Diligent::TEX_FORMAT_UNKNOWN;
 
             if (color_format == Diligent::TEX_FORMAT_UNKNOWN ||
                 (desc.depth_test && depth_format == Diligent::TEX_FORMAT_UNKNOWN)) {
@@ -1185,16 +1092,12 @@ namespace CoreEngine {
                     continue;
                 }
 
-                vars.push_back({
-                    ToDiligentShaderStages(binding.stages), binding.name.c_str(),
-                    Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC
-                });
+                vars.push_back({ToDiligentShaderStages(binding.stages), binding.name.c_str(),
+                                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
 
                 if (binding.type == ShaderBindingType::Texture && !binding.sampler_name.empty()) {
-                    vars.push_back({
-                        ToDiligentShaderStages(binding.stages), binding.sampler_name.c_str(),
-                        Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC
-                    });
+                    vars.push_back({ToDiligentShaderStages(binding.stages), binding.sampler_name.c_str(),
+                                    Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
                 }
             }
 
@@ -1274,23 +1177,18 @@ namespace CoreEngine {
 
         ShaderProgramDesc MakeDepthVisualizationProgramDesc() {
             return ShaderProgramDesc{
-                .vertex_shader_source = BuiltinShaders::kCompositeVS,
-                .pixel_shader_source = BuiltinShaders::kDepthVisualizationPS,
-                .bindings = {
-                    ShaderBindingDesc::Texture("g_DepthTexture"),
-                    ShaderBindingDesc::UniformBuffer(
-                        "DepthVisualization",
-                        sizeof(DepthVisualizationCB),
-                        ShaderBindingScope::Pass,
-                        ShaderStage::Pixel),
-                },
+                    .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                    .pixel_shader_source = BuiltinShaders::kDepthVisualizationPS,
+                    .bindings =
+                            {
+                                    ShaderBindingDesc::Texture("g_DepthTexture"),
+                                    ShaderBindingDesc::UniformBuffer("DepthVisualization", sizeof(DepthVisualizationCB),
+                                                                     ShaderBindingScope::Pass, ShaderStage::Pixel),
+                            },
             };
         }
 
-        void UpdateBuffer(Diligent::IDeviceContext *ctx,
-                          Diligent::IBuffer *buf,
-                          const void *data,
-                          uint32_t byte_size) {
+        void UpdateBuffer(Diligent::IDeviceContext *ctx, Diligent::IBuffer *buf, const void *data, uint32_t byte_size) {
             void *mapped = nullptr;
             ctx->MapBuffer(buf, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD, mapped);
             if (mapped) {
@@ -1298,7 +1196,7 @@ namespace CoreEngine {
                 ctx->UnmapBuffer(buf, Diligent::MAP_WRITE);
             }
         }
-    }
+    } // namespace
 
     TextureHandle DiligentRenderBackend::LoadTexture2D(const TextureLoadDesc &desc) {
         if (!impl_ || !impl_->device || !desc.IsValid()) {
@@ -1332,9 +1230,8 @@ namespace CoreEngine {
 
         DiligentTextureData fallback = CreateFallbackTexture(impl_->device);
         if (!fallback.texture_view) {
-            impl_->last_error = fallback.error_message.empty()
-                                    ? "Failed to create async texture fallback"
-                                    : fallback.error_message;
+            impl_->last_error =
+                    fallback.error_message.empty() ? "Failed to create async texture fallback" : fallback.error_message;
             return {};
         }
 
@@ -1342,8 +1239,8 @@ namespace CoreEngine {
         {
             std::lock_guard lock{impl_->texture_registry_mutex};
             handle = TextureHandle{
-                .id = impl_->next_texture_id_++,
-                .generation = impl_->texture_generation_++,
+                    .id = impl_->next_texture_id_++,
+                    .generation = impl_->texture_generation_++,
             };
             fallback.generation = handle.generation;
             impl_->texture_registry[handle.id] = std::move(fallback);
@@ -1353,8 +1250,8 @@ namespace CoreEngine {
         {
             std::lock_guard lock{impl_->texture_load_queue_mutex};
             impl_->texture_load_queue.push_back(DiligentTextureLoadTask{
-                .handle = handle,
-                .desc = desc,
+                    .handle = handle,
+                    .desc = desc,
             });
         }
         impl_->texture_load_event.notify_one();
@@ -1422,31 +1319,20 @@ namespace CoreEngine {
         }
 
         const DepthVisualizationCB cb{
-            .params = Math::Vec4(
-                desc.scale,
-                desc.bias,
-                desc.exponent,
-                desc.invert ? 1.0f : 0.0f),
+                .params = Math::Vec4(desc.scale, desc.bias, desc.exponent, desc.invert ? 1.0f : 0.0f),
         };
 
         SetFrameBuffer(destination);
         UseShaderProgram(impl_->depth_visualization_program);
         BindShaderTexture("g_DepthTexture", source);
-        BindShaderUniform(
-            "DepthVisualization",
-            std::span<const std::uint8_t>(
-                reinterpret_cast<const std::uint8_t *>(&cb),
-                sizeof(cb)));
+        BindShaderUniform("DepthVisualization",
+                          std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t *>(&cb), sizeof(cb)));
         Draw(3u, 1u);
     }
 
-    DiligentRenderBackend::DiligentRenderBackend(DiligentRenderBackendApi api)
-        : impl_(std::make_unique<Impl>(api)) {
-    }
+    DiligentRenderBackend::DiligentRenderBackend(DiligentRenderBackendApi api) : impl_(std::make_unique<Impl>(api)) {}
 
-    DiligentRenderBackend::~DiligentRenderBackend() {
-        Shutdown();
-    }
+    DiligentRenderBackend::~DiligentRenderBackend() { Shutdown(); }
 
     bool DiligentRenderBackend::Initialize(const RenderDesc &desc, NativeWindowHandle native_window) {
         impl_->desc = desc;
@@ -1481,8 +1367,8 @@ namespace CoreEngine {
                 }
 
                 const Diligent::FullScreenModeDesc fs_desc = {};
-                factory->CreateSwapChainD3D11(impl_->device, impl_->immediate_context,
-                                              swap_desc, fs_desc, window, &impl_->swap_chain);
+                factory->CreateSwapChainD3D11(impl_->device, impl_->immediate_context, swap_desc, fs_desc, window,
+                                              &impl_->swap_chain);
                 break;
 #else
                 impl_->last_error = "D3D11 backend is not available in this build";
@@ -1506,8 +1392,8 @@ namespace CoreEngine {
                 }
 
                 const Diligent::FullScreenModeDesc fs_desc = {};
-                factory->CreateSwapChainD3D12(impl_->device, impl_->immediate_context,
-                                              swap_desc, fs_desc, window, &impl_->swap_chain);
+                factory->CreateSwapChainD3D12(impl_->device, impl_->immediate_context, swap_desc, fs_desc, window,
+                                              &impl_->swap_chain);
                 break;
 #else
                 impl_->last_error = "D3D12 backend is not available in this build";
@@ -1536,8 +1422,8 @@ namespace CoreEngine {
                     return false;
                 }
 
-                factory->CreateSwapChainVk(impl_->device, impl_->immediate_context,
-                                           swap_desc, window, &impl_->swap_chain);
+                factory->CreateSwapChainVk(impl_->device, impl_->immediate_context, swap_desc, window,
+                                           &impl_->swap_chain);
                 break;
 #else
                 impl_->last_error = "Vulkan backend is not available on this platform";
@@ -1545,9 +1431,7 @@ namespace CoreEngine {
 #endif
             }
 
-            case DiligentRenderBackendApi::Metal:
-                impl_->last_error = "Metal backend is not implemented";
-                return false;
+            case DiligentRenderBackendApi::Metal: impl_->last_error = "Metal backend is not implemented"; return false;
         }
 
         if (!impl_->swap_chain) {
@@ -1575,8 +1459,7 @@ namespace CoreEngine {
             try {
                 Diligent::ImGuiDiligentCreateInfo imgui_ci{impl_->device, impl_->swap_chain->GetDesc()};
                 impl_->imgui = Diligent::ImGuiImplSDL3::Create(
-                    imgui_ci,
-                    static_cast<SDL_Window *>(native_window.platform_window));
+                        imgui_ci, static_cast<SDL_Window *>(native_window.platform_window));
             } catch (const std::exception &error) {
                 impl_->last_error = error.what();
                 impl_->imgui.reset();
@@ -1621,24 +1504,18 @@ namespace CoreEngine {
 
         Diligent::ITextureView *rtvs[] = {rtv};
         const Diligent::Uint32 render_target_count = rtv != nullptr ? 1u : 0u;
-        impl_->immediate_context->SetRenderTargets(
-            render_target_count,
-            rtv != nullptr ? rtvs : nullptr,
-            dsv,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        impl_->immediate_context->SetRenderTargets(render_target_count, rtv != nullptr ? rtvs : nullptr, dsv,
+                                                   Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         if (rtv) {
             const std::array<float, 4> rgba{clear_color.r, clear_color.g, clear_color.b, clear_color.a};
-            impl_->immediate_context->ClearRenderTarget(
-                rtv, rgba.data(), Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            impl_->immediate_context->ClearRenderTarget(rtv, rgba.data(),
+                                                        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         }
 
         if (dsv) {
-            impl_->immediate_context->ClearDepthStencil(
-                dsv,
-                Diligent::CLEAR_DEPTH_FLAG,
-                1.f, 0,
-                Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            impl_->immediate_context->ClearDepthStencil(dsv, Diligent::CLEAR_DEPTH_FLAG, 1.f, 0,
+                                                        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         }
     }
 
@@ -1671,8 +1548,7 @@ namespace CoreEngine {
         if (!impl_->swap_chain || width <= 0 || height <= 0) {
             return;
         }
-        impl_->swap_chain->Resize(static_cast<Diligent::Uint32>(width),
-                                  static_cast<Diligent::Uint32>(height));
+        impl_->swap_chain->Resize(static_cast<Diligent::Uint32>(width), static_cast<Diligent::Uint32>(height));
     }
 
     void DiligentRenderBackend::Shutdown() {
@@ -1726,11 +1602,8 @@ namespace CoreEngine {
         }
 
         const Diligent::SwapChainDesc swap_desc = impl_->swap_chain->GetDesc();
-        DiligentFrameBufferData data = CreateFrameBufferData(
-            impl_->device,
-            desc,
-            swap_desc.ColorBufferFormat,
-            swap_desc.DepthBufferFormat);
+        DiligentFrameBufferData data =
+                CreateFrameBufferData(impl_->device, desc, swap_desc.ColorBufferFormat, swap_desc.DepthBufferFormat);
 
         if ((desc.has_color && (!data.color_texture || !data.color_rtv)) ||
             (desc.has_depth && (!data.depth_texture || !data.depth_dsv))) {
@@ -1784,11 +1657,9 @@ namespace CoreEngine {
         Diligent::ITextureView *rtv = it.value().color_rtv.RawPtr();
         Diligent::ITextureView *rtvs[] = {rtv};
         const Diligent::Uint32 render_target_count = rtv != nullptr ? 1u : 0u;
-        impl_->immediate_context->SetRenderTargets(
-            render_target_count,
-            rtv != nullptr ? rtvs : nullptr,
-            it.value().depth_dsv,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        impl_->immediate_context->SetRenderTargets(render_target_count, rtv != nullptr ? rtvs : nullptr,
+                                                   it.value().depth_dsv,
+                                                   Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         impl_->active_frame_buffer = handle;
     }
 
@@ -1798,11 +1669,8 @@ namespace CoreEngine {
         }
 
         Diligent::ITextureView *rtvs[] = {impl_->swap_chain->GetCurrentBackBufferRTV()};
-        impl_->immediate_context->SetRenderTargets(
-            1,
-            rtvs,
-            impl_->swap_chain->GetDepthBufferDSV(),
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        impl_->immediate_context->SetRenderTargets(1, rtvs, impl_->swap_chain->GetDepthBufferDSV(),
+                                                   Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         impl_->active_frame_buffer = {};
     }
 
@@ -1817,8 +1685,7 @@ namespace CoreEngine {
         }
 
         return FrameBufferColorView{
-            .native_handle = reinterpret_cast<NativeFrameBufferColorView *>(it.value().color_srv.RawPtr())
-        };
+                .native_handle = reinterpret_cast<NativeFrameBufferColorView *>(it.value().color_srv.RawPtr())};
     }
 
     FrameBufferDepthView DiligentRenderBackend::GetFrameBufferDepthView(FrameBufferHandle handle) const {
@@ -1832,8 +1699,7 @@ namespace CoreEngine {
         }
 
         return FrameBufferDepthView{
-            .native_handle = reinterpret_cast<NativeFrameBufferDepthView *>(it.value().depth_srv.RawPtr())
-        };
+                .native_handle = reinterpret_cast<NativeFrameBufferDepthView *>(it.value().depth_srv.RawPtr())};
     }
 
     void DiligentRenderBackend::CompositeFrameBuffer(FrameBufferHandle source) {
@@ -1853,8 +1719,8 @@ namespace CoreEngine {
         impl_->immediate_context->SetPipelineState(impl_->composite_pso);
         impl_->composite_scene_color_var->Set(it.value().color_srv);
         impl_->composite_scene_sampler_var->Set(impl_->composite_sampler);
-        impl_->immediate_context->CommitShaderResources(
-            impl_->composite_srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        impl_->immediate_context->CommitShaderResources(impl_->composite_srb,
+                                                        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         Diligent::DrawAttribs draw;
         draw.NumVertices = 3;
@@ -1961,10 +1827,8 @@ namespace CoreEngine {
         }
 
         const auto it = impl_->shader_program_registry.find(handle.id);
-        if (it == impl_->shader_program_registry.end() ||
-            it.value().generation != handle.generation ||
-            !it.value().pso ||
-            !it.value().srb) {
+        if (it == impl_->shader_program_registry.end() || it.value().generation != handle.generation ||
+            !it.value().pso || !it.value().srb) {
             impl_->active_shader_program = {};
             return;
         }
@@ -2040,11 +1904,7 @@ namespace CoreEngine {
                 continue;
             }
 
-            UpdateBuffer(
-                impl_->immediate_context,
-                uniform.buffer,
-                data.data(),
-                static_cast<uint32_t>(data.size()));
+            UpdateBuffer(impl_->immediate_context, uniform.buffer, data.data(), static_cast<uint32_t>(data.size()));
             uniform.variable->Set(uniform.buffer);
             return;
         }
@@ -2057,17 +1917,14 @@ namespace CoreEngine {
 
 
         PerFrameCB cb{.view_proj = props.camera.projection * props.camera.view, .frame_clock = props.frame_clock};
-        UpdateBuffer(impl_->immediate_context,
-                     impl_->per_frame_cb,
-                     &cb, sizeof(cb));
+        UpdateBuffer(impl_->immediate_context, impl_->per_frame_cb, &cb, sizeof(cb));
     }
 
     void DiligentRenderBackend::SubmitBatch(const RenderBatch &batch) {
         const auto mat_it = impl_->material_registry.find(batch.material.id);
         const auto msh_it = impl_->mesh_registry.find(batch.mesh.id);
 
-        if (mat_it == impl_->material_registry.end() ||
-            msh_it == impl_->mesh_registry.end() ||
+        if (mat_it == impl_->material_registry.end() || msh_it == impl_->mesh_registry.end() ||
             mat_it.value().generation != batch.material.generation ||
             msh_it.value().generation != batch.mesh.generation) {
             return;
@@ -2084,14 +1941,12 @@ namespace CoreEngine {
 
         const uint64_t vb_offset = 0;
         Diligent::IBuffer *vbs[] = {msh.vertex_buffer};
-        impl_->immediate_context->SetVertexBuffers(
-            0, 1, vbs, &vb_offset,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
-            Diligent::SET_VERTEX_BUFFERS_FLAG_RESET);
+        impl_->immediate_context->SetVertexBuffers(0, 1, vbs, &vb_offset,
+                                                   Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                                   Diligent::SET_VERTEX_BUFFERS_FLAG_RESET);
 
-        impl_->immediate_context->SetIndexBuffer(
-            msh.index_buffer, 0,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        impl_->immediate_context->SetIndexBuffer(msh.index_buffer, 0,
+                                                 Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         for (DiligentTextureBinding &texture: mat.textures) {
             if (!texture.texture.IsValid()) {
@@ -2103,20 +1958,15 @@ namespace CoreEngine {
                 continue;
             }
 
-            texture.texture_variable->Set(
-                snapshot.texture_view,
-                Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
+            texture.texture_variable->Set(snapshot.texture_view, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
             texture.bound_revision = snapshot.revision;
         }
 
-        impl_->immediate_context->CommitShaderResources(
-            mat.srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        impl_->immediate_context->CommitShaderResources(mat.srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         const auto draw_instance = [this, &msh](const RenderInstance &inst) {
             PerObjectCB object_cb{inst.transform};
-            UpdateBuffer(impl_->immediate_context,
-                         impl_->per_object_cb,
-                         &object_cb, sizeof(object_cb));
+            UpdateBuffer(impl_->immediate_context, impl_->per_object_cb, &object_cb, sizeof(object_cb));
 
             Diligent::DrawIndexedAttribs draw;
             draw.IndexType = Diligent::VT_UINT32;
@@ -2142,16 +1992,14 @@ namespace CoreEngine {
 
         const auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
         if (program_it == impl_->shader_program_registry.end() ||
-            program_it.value().generation != impl_->active_shader_program.generation ||
-            !program_it.value().pso ||
+            program_it.value().generation != impl_->active_shader_program.generation || !program_it.value().pso ||
             !program_it.value().srb) {
             return;
         }
 
         impl_->immediate_context->SetPipelineState(program_it.value().pso);
-        impl_->immediate_context->CommitShaderResources(
-            program_it.value().srb,
-            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        impl_->immediate_context->CommitShaderResources(program_it.value().srb,
+                                                        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         Diligent::DrawAttribs draw;
         draw.NumVertices = vertex_count;

@@ -4,9 +4,7 @@
 
 namespace CoreEngine {
     namespace {
-        [[nodiscard]] constexpr std::size_t ToIndex(Key key) noexcept {
-            return static_cast<std::size_t>(key);
-        }
+        [[nodiscard]] constexpr std::size_t ToIndex(Key key) noexcept { return static_cast<std::size_t>(key); }
 
         [[nodiscard]] constexpr std::size_t ToIndex(MouseButton button) noexcept {
             return static_cast<std::size_t>(button);
@@ -15,7 +13,7 @@ namespace CoreEngine {
         [[nodiscard]] constexpr float KeyAxisValue(bool negative, bool positive) noexcept {
             return (positive ? 1.0f : 0.0f) - (negative ? 1.0f : 0.0f);
         }
-    }
+    } // namespace
 
     void InputSystem::BeginFrame() noexcept {
         previous_keys_ = current_keys_;
@@ -40,17 +38,13 @@ namespace CoreEngine {
         return queued;
     }
 
-    std::span<const InputEvent> InputSystem::Events() const noexcept {
-        return read_queue_.Events();
-    }
+    std::span<const InputEvent> InputSystem::Events() const noexcept { return read_queue_.Events(); }
 
     std::size_t InputSystem::DroppedEvents() const noexcept {
         return read_queue_.DroppedEvents() + write_queue_.DroppedEvents();
     }
 
-    bool InputSystem::IsKeyDown(Key key) const noexcept {
-        return IsValidKey(key) && current_keys_.test(ToIndex(key));
-    }
+    bool InputSystem::IsKeyDown(Key key) const noexcept { return IsValidKey(key) && current_keys_.test(ToIndex(key)); }
 
     bool InputSystem::WasKeyPressed(Key key) const noexcept {
         return IsValidKey(key) && pressed_keys_.test(ToIndex(key));
@@ -72,17 +66,11 @@ namespace CoreEngine {
         return IsValidMouseButton(button) && released_mouse_buttons_.test(ToIndex(button));
     }
 
-    InputVector2 InputSystem::MousePosition() const noexcept {
-        return mouse_position_;
-    }
+    InputVector2 InputSystem::MousePosition() const noexcept { return mouse_position_; }
 
-    InputVector2 InputSystem::MouseDelta() const noexcept {
-        return mouse_delta_;
-    }
+    InputVector2 InputSystem::MouseDelta() const noexcept { return mouse_delta_; }
 
-    InputVector2 InputSystem::MouseWheel() const noexcept {
-        return mouse_wheel_;
-    }
+    InputVector2 InputSystem::MouseWheel() const noexcept { return mouse_wheel_; }
 
     bool InputSystem::BindButton(InputActionId action, Key key) noexcept {
         if (!IsValidAction(action) || !IsValidKey(key)) {
@@ -90,8 +78,8 @@ namespace CoreEngine {
         }
 
         button_bindings_[ActionIndex(action)] = ButtonBinding{
-            .kind = BindingKind::Key,
-            .key = key,
+                .kind = BindingKind::Key,
+                .key = key,
         };
         return true;
     }
@@ -102,31 +90,25 @@ namespace CoreEngine {
         }
 
         button_bindings_[ActionIndex(action)] = ButtonBinding{
-            .kind = BindingKind::MouseButton,
-            .mouse_button = button,
+                .kind = BindingKind::MouseButton,
+                .mouse_button = button,
         };
         return true;
     }
 
-    bool InputSystem::BindAxis2D(InputActionId action,
-                                 Key negative_x,
-                                 Key positive_x,
-                                 Key negative_y,
+    bool InputSystem::BindAxis2D(InputActionId action, Key negative_x, Key positive_x, Key negative_y,
                                  Key positive_y) noexcept {
-        if (!IsValidAction(action) ||
-            !IsValidKey(negative_x) ||
-            !IsValidKey(positive_x) ||
-            !IsValidKey(negative_y) ||
+        if (!IsValidAction(action) || !IsValidKey(negative_x) || !IsValidKey(positive_x) || !IsValidKey(negative_y) ||
             !IsValidKey(positive_y)) {
             return false;
         }
 
         axis2d_bindings_[ActionIndex(action)] = Axis2DBinding{
-            .enabled = true,
-            .negative_x = negative_x,
-            .positive_x = positive_x,
-            .negative_y = negative_y,
-            .positive_y = positive_y,
+                .enabled = true,
+                .negative_x = negative_x,
+                .positive_x = positive_x,
+                .negative_y = negative_y,
+                .positive_y = positive_y,
         };
         return true;
     }
@@ -154,14 +136,12 @@ namespace CoreEngine {
         }
 
         return InputVector2{
-            .x = KeyAxisValue(IsKeyDown(binding.negative_x), IsKeyDown(binding.positive_x)),
-            .y = KeyAxisValue(IsKeyDown(binding.negative_y), IsKeyDown(binding.positive_y)),
+                .x = KeyAxisValue(IsKeyDown(binding.negative_x), IsKeyDown(binding.positive_x)),
+                .y = KeyAxisValue(IsKeyDown(binding.negative_y), IsKeyDown(binding.positive_y)),
         };
     }
 
-    bool InputSystem::IsValidKey(Key key) noexcept {
-        return key != Key::Unknown && ToIndex(key) < KeyCount;
-    }
+    bool InputSystem::IsValidKey(Key key) noexcept { return key != Key::Unknown && ToIndex(key) < KeyCount; }
 
     bool InputSystem::IsValidMouseButton(MouseButton button) noexcept {
         return button != MouseButton::Unknown && ToIndex(button) < MouseButtonCount;
@@ -242,9 +222,7 @@ namespace CoreEngine {
                 mouse_wheel_.y += event.delta_y;
                 break;
 
-            case InputEventType::FocusLost:
-                ClearState();
-                break;
+            case InputEventType::FocusLost: ClearState(); break;
         }
     }
 
@@ -263,12 +241,9 @@ namespace CoreEngine {
 
     bool InputSystem::IsBindingDown(const ButtonBinding &binding) const noexcept {
         switch (binding.kind) {
-            case BindingKind::Key:
-                return IsKeyDown(binding.key);
-            case BindingKind::MouseButton:
-                return IsMouseButtonDown(binding.mouse_button);
-            case BindingKind::None:
-                return false;
+            case BindingKind::Key:         return IsKeyDown(binding.key);
+            case BindingKind::MouseButton: return IsMouseButtonDown(binding.mouse_button);
+            case BindingKind::None:        return false;
         }
 
         return false;
@@ -276,12 +251,9 @@ namespace CoreEngine {
 
     bool InputSystem::WasBindingPressed(const ButtonBinding &binding) const noexcept {
         switch (binding.kind) {
-            case BindingKind::Key:
-                return WasKeyPressed(binding.key);
-            case BindingKind::MouseButton:
-                return WasMouseButtonPressed(binding.mouse_button);
-            case BindingKind::None:
-                return false;
+            case BindingKind::Key:         return WasKeyPressed(binding.key);
+            case BindingKind::MouseButton: return WasMouseButtonPressed(binding.mouse_button);
+            case BindingKind::None:        return false;
         }
 
         return false;
@@ -289,12 +261,9 @@ namespace CoreEngine {
 
     bool InputSystem::WasBindingReleased(const ButtonBinding &binding) const noexcept {
         switch (binding.kind) {
-            case BindingKind::Key:
-                return WasKeyReleased(binding.key);
-            case BindingKind::MouseButton:
-                return WasMouseButtonReleased(binding.mouse_button);
-            case BindingKind::None:
-                return false;
+            case BindingKind::Key:         return WasKeyReleased(binding.key);
+            case BindingKind::MouseButton: return WasMouseButtonReleased(binding.mouse_button);
+            case BindingKind::None:        return false;
         }
 
         return false;

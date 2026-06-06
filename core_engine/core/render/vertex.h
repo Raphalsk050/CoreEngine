@@ -12,4 +12,4 @@ namespace CoreEngine {
     };
 
     using Vertex = StaticMeshVertex;
-}
+} // namespace CoreEngine

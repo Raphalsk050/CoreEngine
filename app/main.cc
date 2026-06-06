@@ -14,10 +14,10 @@
 #include <utility>
 #include <vector>
 
-#include "core/i_game_app.h"
-#include "core/ecs/world.h"
 #include "core/ecs/components/camera_component.h"
 #include "core/ecs/components/mesh_renderer_component.h"
+#include "core/ecs/world.h"
+#include "core/i_game_app.h"
 #include "core/input/input_system.h"
 #include "core/math/math.h"
 #include "core/render/material.h"
@@ -116,10 +116,8 @@ struct Chunk {
  */
 class VoxelWorld final {
 public:
-    void Initialize(CoreEngine::World &world,
-                    CoreEngine::RenderSystem &render_system,
-                    const CoreEngine::Math::Vec3 &initial_camera_position,
-                    VoxelWorldConfig config = {}) {
+    void Initialize(CoreEngine::World &world, CoreEngine::RenderSystem &render_system,
+                    const CoreEngine::Math::Vec3 &initial_camera_position, VoxelWorldConfig config = {}) {
         config_ = NormalizeConfig(config);
         voxel_size_ = 1.0f / static_cast<float>(config_.voxels_per_world_unit);
         terrain_generator_ = CoreEngineSandbox::TerrainGenerator(config_.terrain);
@@ -127,8 +125,9 @@ public:
         // The material is white because block colors are baked into vertices.
         // This keeps the sample simple and avoids one material per block type.
         material_ = CoreEngine::Material::Unlit(CoreEngine::UnlitProps{
-            .color = CoreEngine::Math::Vec4{1.0f, 1.0f, 1.0f, 1.0f},
-        }).Resolve(render_system);
+                                                        .color = CoreEngine::Math::Vec4{1.0f, 1.0f, 1.0f, 1.0f},
+                                                })
+                            .Resolve(render_system);
         if (!material_.IsValid()) {
             // If the backend cannot resolve a material, skip world creation
             // instead of creating nodes that cannot render.
@@ -141,8 +140,7 @@ public:
         UpdateStreaming(world, render_system, initial_camera_position);
     }
 
-    void UpdateStreaming(CoreEngine::World &world,
-                         CoreEngine::RenderSystem &render_system,
+    void UpdateStreaming(CoreEngine::World &world, CoreEngine::RenderSystem &render_system,
                          const CoreEngine::Math::Vec3 &camera_position) {
         if (!material_.IsValid()) {
             return;
@@ -241,38 +239,28 @@ private:
         config.chunk_world_size_xz = std::clamp(config.chunk_world_size_xz, 1, 64);
         config.world_height_units = std::clamp(config.world_height_units, 16, 256);
         config.view_radius_chunks = std::clamp(config.view_radius_chunks, 0, MaxViewRadiusChunks);
-        config.distant_lod_radius_chunks = std::clamp(config.distant_lod_radius_chunks,
-                                                      config.view_radius_chunks + 1,
-                                                      MaxDistantLodRadiusChunks);
+        config.distant_lod_radius_chunks =
+                std::clamp(config.distant_lod_radius_chunks, config.view_radius_chunks + 1, MaxDistantLodRadiusChunks);
         config.distant_lod_near_samples_per_world_unit =
-                std::clamp(config.distant_lod_near_samples_per_world_unit,
-                           MinDistantLodSamplesPerWorldUnit,
+                std::clamp(config.distant_lod_near_samples_per_world_unit, MinDistantLodSamplesPerWorldUnit,
                            static_cast<float>(config.voxels_per_world_unit));
         config.distant_lod_mid_samples_per_world_unit =
-                std::clamp(config.distant_lod_mid_samples_per_world_unit,
-                           MinDistantLodSamplesPerWorldUnit,
+                std::clamp(config.distant_lod_mid_samples_per_world_unit, MinDistantLodSamplesPerWorldUnit,
                            config.distant_lod_near_samples_per_world_unit);
         config.distant_lod_far_samples_per_world_unit =
-                std::clamp(config.distant_lod_far_samples_per_world_unit,
-                           MinDistantLodSamplesPerWorldUnit,
+                std::clamp(config.distant_lod_far_samples_per_world_unit, MinDistantLodSamplesPerWorldUnit,
                            config.distant_lod_mid_samples_per_world_unit);
         const int lod_distance_budget = config.distant_lod_radius_chunks - config.view_radius_chunks;
-        config.distant_lod_near_radius_chunks = std::clamp(config.distant_lod_near_radius_chunks,
-                                                           0,
-                                                           lod_distance_budget);
+        config.distant_lod_near_radius_chunks =
+                std::clamp(config.distant_lod_near_radius_chunks, 0, lod_distance_budget);
         config.distant_lod_mid_radius_chunks = std::clamp(config.distant_lod_mid_radius_chunks,
-                                                          config.distant_lod_near_radius_chunks,
-                                                          lod_distance_budget);
+                                                          config.distant_lod_near_radius_chunks, lod_distance_budget);
         config.chunk_worker_count = std::clamp(config.chunk_worker_count, 0, MaxChunkWorkerCount);
-        config.max_chunk_uploads_per_frame = std::clamp(config.max_chunk_uploads_per_frame,
-                                                        1,
-                                                        MaxChunkUploadsPerFrame);
+        config.max_chunk_uploads_per_frame = std::clamp(config.max_chunk_uploads_per_frame, 1, MaxChunkUploadsPerFrame);
         return config;
     }
 
-    [[nodiscard]] static bool SameChunkCoord(ChunkCoord a, ChunkCoord b) noexcept {
-        return a.x == b.x && a.z == b.z;
-    }
+    [[nodiscard]] static bool SameChunkCoord(ChunkCoord a, ChunkCoord b) noexcept { return a.x == b.x && a.z == b.z; }
 
     [[nodiscard]] static int ChunkDistanceSquared(ChunkCoord a, ChunkCoord b) noexcept {
         const int dx = a.x - b.x;
@@ -288,8 +276,8 @@ private:
     [[nodiscard]] ChunkCoord CameraChunkCoord(const CoreEngine::Math::Vec3 &position) const noexcept {
         const float chunk_size = static_cast<float>(config_.chunk_world_size_xz);
         return ChunkCoord{
-            .x = FloorToInt(position.x / chunk_size),
-            .z = FloorToInt(position.z / chunk_size),
+                .x = FloorToInt(position.x / chunk_size),
+                .z = FloorToInt(position.z / chunk_size),
         };
     }
 
@@ -421,11 +409,9 @@ private:
         }
     }
 
-    void ProcessCompletedDistantLod(ChunkBuildResult &&result,
-                                    CoreEngine::World &world,
+    void ProcessCompletedDistantLod(ChunkBuildResult &&result, CoreEngine::World &world,
                                     CoreEngine::RenderSystem &render_system) {
-        if (result.revision != distant_lod_revision_ ||
-            !stream_center_initialized_ ||
+        if (result.revision != distant_lod_revision_ || !stream_center_initialized_ ||
             !SameChunkCoord(result.coord, stream_center_)) {
             return;
         }
@@ -436,8 +422,9 @@ private:
         }
 
         CoreEngine::MeshHandle mesh = render_system.CreateMesh(CoreEngine::MeshDesc{
-            .vertices = std::span<const CoreEngine::StaticMeshVertex>{result.vertices.data(), result.vertices.size()},
-            .indices = std::span<const std::uint32_t>{result.indices.data(), result.indices.size()},
+                .vertices =
+                        std::span<const CoreEngine::StaticMeshVertex>{result.vertices.data(), result.vertices.size()},
+                .indices = std::span<const std::uint32_t>{result.indices.data(), result.indices.size()},
         });
         if (!mesh.IsValid()) {
             return;
@@ -449,19 +436,18 @@ private:
         distant_lod_node_ = world.CreateNode(std::format("Distant Terrain LOD {},{}", result.coord.x, result.coord.z));
         distant_lod_node_.SetPosition(DistantLodWorldOrigin(result.coord));
         distant_lod_node_.AddComponent<CoreEngine::MeshRendererComponent>(CoreEngine::MeshRendererComponent{
-            .mesh = distant_lod_mesh_,
-            .material = material_,
-            .visible = true,
-            .cast_shadows = false,
-            .topology = CoreEngine::PrimitiveTopology::TriangleList,
+                .mesh = distant_lod_mesh_,
+                .material = material_,
+                .visible = true,
+                .cast_shadows = false,
+                .topology = CoreEngine::PrimitiveTopology::TriangleList,
         });
         distant_lod_center_ = result.coord;
         distant_lod_center_initialized_ = true;
     }
 
     void RequestDistantLodBuild(ChunkCoord center) {
-        if (distant_lod_build_pending_ &&
-            distant_lod_center_initialized_ &&
+        if (distant_lod_build_pending_ && distant_lod_center_initialized_ &&
             SameChunkCoord(center, distant_lod_center_)) {
             return;
         }
@@ -473,16 +459,15 @@ private:
 
         {
             std::lock_guard<std::mutex> lock(chunk_worker_mutex_);
-            pending_builds_.erase(std::remove_if(pending_builds_.begin(),
-                                                 pending_builds_.end(),
+            pending_builds_.erase(std::remove_if(pending_builds_.begin(), pending_builds_.end(),
                                                  [](const ChunkBuildRequest &request) noexcept {
                                                      return request.kind == TerrainBuildKind::DistantLod;
                                                  }),
                                   pending_builds_.end());
             pending_builds_.push_back(ChunkBuildRequest{
-                .kind = TerrainBuildKind::DistantLod,
-                .coord = center,
-                .revision = revision,
+                    .kind = TerrainBuildKind::DistantLod,
+                    .coord = center,
+                    .revision = revision,
             });
         }
         chunk_worker_cv_.notify_one();
@@ -530,8 +515,8 @@ private:
             chunk.build_pending = true;
             chunk_lookup_[key] = chunk_index;
             build_requests.push_back(ChunkBuildRequest{
-                .kind = TerrainBuildKind::Chunk,
-                .coord = coord,
+                    .kind = TerrainBuildKind::Chunk,
+                    .coord = coord,
             });
         }
 
@@ -555,20 +540,13 @@ private:
         }
 
         const unsigned int hardware_threads = std::thread::hardware_concurrency();
-        const int automatic_workers = hardware_threads > 1u
-                                          ? std::clamp(static_cast<int>(hardware_threads) - 1,
-                                                       1,
-                                                       MaxChunkWorkerCount)
-                                          : 1;
-        const int worker_count = config_.chunk_worker_count > 0
-                                     ? config_.chunk_worker_count
-                                     : automatic_workers;
+        const int automatic_workers =
+                hardware_threads > 1u ? std::clamp(static_cast<int>(hardware_threads) - 1, 1, MaxChunkWorkerCount) : 1;
+        const int worker_count = config_.chunk_worker_count > 0 ? config_.chunk_worker_count : automatic_workers;
 
         chunk_workers_.reserve(static_cast<std::size_t>(worker_count));
         for (int worker_index = 0; worker_index < worker_count; ++worker_index) {
-            chunk_workers_.emplace_back([this] {
-                ChunkWorkerLoop();
-            });
+            chunk_workers_.emplace_back([this] { ChunkWorkerLoop(); });
         }
     }
 
@@ -599,9 +577,7 @@ private:
             ChunkBuildRequest request;
             {
                 std::unique_lock<std::mutex> lock(chunk_worker_mutex_);
-                chunk_worker_cv_.wait(lock, [this] {
-                    return chunk_worker_stop_ || !pending_builds_.empty();
-                });
+                chunk_worker_cv_.wait(lock, [this] { return chunk_worker_stop_ || !pending_builds_.empty(); });
 
                 if (chunk_worker_stop_) {
                     return;
@@ -612,8 +588,8 @@ private:
             }
 
             ChunkBuildResult result = request.kind == TerrainBuildKind::DistantLod
-                                          ? BuildDistantLodData(request.coord, request.revision)
-                                          : BuildChunkData(request.coord);
+                                              ? BuildDistantLodData(request.coord, request.revision)
+                                              : BuildChunkData(request.coord);
 
             {
                 std::lock_guard<std::mutex> lock(chunk_worker_mutex_);
@@ -628,9 +604,7 @@ private:
         return config_.chunk_world_size_xz * config_.voxels_per_world_unit;
     }
 
-    [[nodiscard]] int ChunkSizeY() const noexcept {
-        return config_.world_height_units * config_.voxels_per_world_unit;
-    }
+    [[nodiscard]] int ChunkSizeY() const noexcept { return config_.world_height_units * config_.voxels_per_world_unit; }
 
     [[nodiscard]] int ChunkSizeZ() const noexcept {
         return config_.chunk_world_size_xz * config_.voxels_per_world_unit;
@@ -658,87 +632,71 @@ private:
 
     // Face order must match the neighbor checks in BuildChunkData:
     // +X, -X, +Y, -Y, +Z, -Z.
-    static constexpr std::array<FaceDesc, 6> Faces{
-        {
+    static constexpr std::array<FaceDesc, 6> Faces{{
             FaceDesc{
-                .normal = {1.0f, 0.0f, 0.0f},
-                .corners = {
-                    {
-                        {1.0f, 1.0f, 0.0f},
-                        {1.0f, 1.0f, 1.0f},
-                        {1.0f, 0.0f, 1.0f},
-                        {1.0f, 0.0f, 0.0f},
-                    }
-                },
+                    .normal = {1.0f, 0.0f, 0.0f},
+                    .corners = {{
+                            {1.0f, 1.0f, 0.0f},
+                            {1.0f, 1.0f, 1.0f},
+                            {1.0f, 0.0f, 1.0f},
+                            {1.0f, 0.0f, 0.0f},
+                    }},
             },
             FaceDesc{
-                .normal = {-1.0f, 0.0f, 0.0f},
-                .corners = {
-                    {
-                        {0.0f, 1.0f, 1.0f},
-                        {0.0f, 1.0f, 0.0f},
-                        {0.0f, 0.0f, 0.0f},
-                        {0.0f, 0.0f, 1.0f},
-                    }
-                },
+                    .normal = {-1.0f, 0.0f, 0.0f},
+                    .corners = {{
+                            {0.0f, 1.0f, 1.0f},
+                            {0.0f, 1.0f, 0.0f},
+                            {0.0f, 0.0f, 0.0f},
+                            {0.0f, 0.0f, 1.0f},
+                    }},
             },
             FaceDesc{
-                .normal = {0.0f, 1.0f, 0.0f},
-                .corners = {
-                    {
-                        {0.0f, 1.0f, 1.0f},
-                        {1.0f, 1.0f, 1.0f},
-                        {1.0f, 1.0f, 0.0f},
-                        {0.0f, 1.0f, 0.0f},
-                    }
-                },
+                    .normal = {0.0f, 1.0f, 0.0f},
+                    .corners = {{
+                            {0.0f, 1.0f, 1.0f},
+                            {1.0f, 1.0f, 1.0f},
+                            {1.0f, 1.0f, 0.0f},
+                            {0.0f, 1.0f, 0.0f},
+                    }},
             },
             FaceDesc{
-                .normal = {0.0f, -1.0f, 0.0f},
-                .corners = {
-                    {
-                        {0.0f, 0.0f, 0.0f},
-                        {1.0f, 0.0f, 0.0f},
-                        {1.0f, 0.0f, 1.0f},
-                        {0.0f, 0.0f, 1.0f},
-                    }
-                },
+                    .normal = {0.0f, -1.0f, 0.0f},
+                    .corners = {{
+                            {0.0f, 0.0f, 0.0f},
+                            {1.0f, 0.0f, 0.0f},
+                            {1.0f, 0.0f, 1.0f},
+                            {0.0f, 0.0f, 1.0f},
+                    }},
             },
             FaceDesc{
-                .normal = {0.0f, 0.0f, 1.0f},
-                .corners = {
-                    {
-                        {1.0f, 1.0f, 1.0f},
-                        {0.0f, 1.0f, 1.0f},
-                        {0.0f, 0.0f, 1.0f},
-                        {1.0f, 0.0f, 1.0f},
-                    }
-                },
+                    .normal = {0.0f, 0.0f, 1.0f},
+                    .corners = {{
+                            {1.0f, 1.0f, 1.0f},
+                            {0.0f, 1.0f, 1.0f},
+                            {0.0f, 0.0f, 1.0f},
+                            {1.0f, 0.0f, 1.0f},
+                    }},
             },
             FaceDesc{
-                .normal = {0.0f, 0.0f, -1.0f},
-                .corners = {
-                    {
-                        {0.0f, 1.0f, 0.0f},
-                        {1.0f, 1.0f, 0.0f},
-                        {1.0f, 0.0f, 0.0f},
-                        {0.0f, 0.0f, 0.0f},
-                    }
-                },
+                    .normal = {0.0f, 0.0f, -1.0f},
+                    .corners = {{
+                            {0.0f, 1.0f, 0.0f},
+                            {1.0f, 1.0f, 0.0f},
+                            {1.0f, 0.0f, 0.0f},
+                            {0.0f, 0.0f, 0.0f},
+                    }},
             },
-        }
-    };
+    }};
 
     // Every generated quad uses the same UVs. Textures are not sampled yet, but
     // keeping UVs valid makes this mesh compatible with textured materials later.
-    static constexpr std::array<CoreEngine::Math::Vec2, 4> FaceUvs{
-        {
+    static constexpr std::array<CoreEngine::Math::Vec2, 4> FaceUvs{{
             {0.0f, 0.0f},
             {1.0f, 0.0f},
             {1.0f, 1.0f},
             {0.0f, 1.0f},
-        }
-    };
+    }};
 
     [[nodiscard]] static std::uint64_t PackChunkCoord(ChunkCoord coord) noexcept {
         // Reinterpret signed coordinates as fixed-width halves. This preserves a
@@ -748,9 +706,7 @@ private:
     }
 
     [[nodiscard]] int TerrainHeight(int voxel_world_x, int voxel_world_z) const noexcept {
-        return terrain_generator_.HeightAtVoxel(voxel_world_x,
-                                                voxel_world_z,
-                                                config_.voxels_per_world_unit,
+        return terrain_generator_.HeightAtVoxel(voxel_world_x, voxel_world_z, config_.voxels_per_world_unit,
                                                 ChunkSizeY());
     }
 
@@ -766,18 +722,12 @@ private:
         CoreEngine::Math::Vec3 color{1.0f, 1.0f, 1.0f};
         switch (block) {
             case BlockId::Grass:
-                color = normal.y > 0.5f
-                            ? CoreEngine::Math::Vec3{0.20f, 0.70f, 0.22f}
-                            : CoreEngine::Math::Vec3{0.38f, 0.26f, 0.12f};
+                color = normal.y > 0.5f ? CoreEngine::Math::Vec3{0.20f, 0.70f, 0.22f}
+                                        : CoreEngine::Math::Vec3{0.38f, 0.26f, 0.12f};
                 break;
-            case BlockId::Dirt:
-                color = CoreEngine::Math::Vec3{0.45f, 0.28f, 0.13f};
-                break;
-            case BlockId::Stone:
-                color = CoreEngine::Math::Vec3{0.46f, 0.48f, 0.50f};
-                break;
-            case BlockId::Air:
-                break;
+            case BlockId::Dirt:  color = CoreEngine::Math::Vec3{0.45f, 0.28f, 0.13f}; break;
+            case BlockId::Stone: color = CoreEngine::Math::Vec3{0.46f, 0.48f, 0.50f}; break;
+            case BlockId::Air:   break;
         }
 
         // Simple face shading gives the block world readable shape without a
@@ -790,18 +740,18 @@ private:
         // Chunk meshes are generated in local chunk coordinates, then moved by
         // the node transform to their world-grid origin.
         return CoreEngine::Math::Vec3{
-            static_cast<float>(coord.x * config_.chunk_world_size_xz),
-            0.0f,
-            static_cast<float>(coord.z * config_.chunk_world_size_xz),
+                static_cast<float>(coord.x * config_.chunk_world_size_xz),
+                0.0f,
+                static_cast<float>(coord.z * config_.chunk_world_size_xz),
         };
     }
 
     [[nodiscard]] CoreEngine::Math::Vec3 DistantLodWorldOrigin(ChunkCoord center) const noexcept {
         const int radius = config_.distant_lod_radius_chunks;
         return CoreEngine::Math::Vec3{
-            static_cast<float>((center.x - radius) * config_.chunk_world_size_xz),
-            0.0f,
-            static_cast<float>((center.z - radius) * config_.chunk_world_size_xz),
+                static_cast<float>((center.x - radius) * config_.chunk_world_size_xz),
+                0.0f,
+                static_cast<float>((center.z - radius) * config_.chunk_world_size_xz),
         };
     }
 
@@ -844,11 +794,8 @@ private:
         return surface_heights;
     }
 
-    [[nodiscard]] int GetGeneratedSurfaceHeight(const std::vector<int> &surface_heights,
-                                                int local_x,
-                                                int local_z,
-                                                int world_x,
-                                                int world_z) const {
+    [[nodiscard]] int GetGeneratedSurfaceHeight(const std::vector<int> &surface_heights, int local_x, int local_z,
+                                                int world_x, int world_z) const {
         const int chunk_size_x = ChunkSizeX();
         const int chunk_size_z = ChunkSizeZ();
         if (local_x >= 0 && local_x < chunk_size_x && local_z >= 0 && local_z < chunk_size_z) {
@@ -858,41 +805,37 @@ private:
         return TerrainHeight(world_x, world_z);
     }
 
-    void AddVoxelQuad(std::vector<CoreEngine::StaticMeshVertex> &vertices,
-                      std::vector<std::uint32_t> &indices,
-                      const CoreEngine::Math::Vec3 &p0,
-                      const CoreEngine::Math::Vec3 &p1,
-                      const CoreEngine::Math::Vec3 &p2,
-                      const CoreEngine::Math::Vec3 &p3,
-                      const CoreEngine::Math::Vec3 &normal,
-                      BlockId block) const {
+    void AddVoxelQuad(std::vector<CoreEngine::StaticMeshVertex> &vertices, std::vector<std::uint32_t> &indices,
+                      const CoreEngine::Math::Vec3 &p0, const CoreEngine::Math::Vec3 &p1,
+                      const CoreEngine::Math::Vec3 &p2, const CoreEngine::Math::Vec3 &p3,
+                      const CoreEngine::Math::Vec3 &normal, BlockId block) const {
         // Inputs are in voxel-grid coordinates. Scaling once here lets meshing
         // merge many blocks into larger quads without losing world-size stability.
         const std::uint32_t base_index = static_cast<std::uint32_t>(vertices.size());
         const CoreEngine::Math::Vec3 color = BlockColor(block, normal);
         vertices.push_back(CoreEngine::StaticMeshVertex{
-            .position = p0 * voxel_size_,
-            .normal = normal,
-            .color = color,
-            .uv = FaceUvs[0],
+                .position = p0 * voxel_size_,
+                .normal = normal,
+                .color = color,
+                .uv = FaceUvs[0],
         });
         vertices.push_back(CoreEngine::StaticMeshVertex{
-            .position = p1 * voxel_size_,
-            .normal = normal,
-            .color = color,
-            .uv = FaceUvs[1],
+                .position = p1 * voxel_size_,
+                .normal = normal,
+                .color = color,
+                .uv = FaceUvs[1],
         });
         vertices.push_back(CoreEngine::StaticMeshVertex{
-            .position = p2 * voxel_size_,
-            .normal = normal,
-            .color = color,
-            .uv = FaceUvs[2],
+                .position = p2 * voxel_size_,
+                .normal = normal,
+                .color = color,
+                .uv = FaceUvs[2],
         });
         vertices.push_back(CoreEngine::StaticMeshVertex{
-            .position = p3 * voxel_size_,
-            .normal = normal,
-            .color = color,
-            .uv = FaceUvs[3],
+                .position = p3 * voxel_size_,
+                .normal = normal,
+                .color = color,
+                .uv = FaceUvs[3],
         });
 
         // Two triangles, matching the face corner order above and the renderer's
@@ -905,35 +848,20 @@ private:
         indices.push_back(base_index + 0u);
     }
 
-    void AddTopRun(std::vector<CoreEngine::StaticMeshVertex> &vertices,
-                   std::vector<std::uint32_t> &indices,
-                   int x0,
-                   int x1,
-                   int z,
-                   int height) const {
+    void AddTopRun(std::vector<CoreEngine::StaticMeshVertex> &vertices, std::vector<std::uint32_t> &indices, int x0,
+                   int x1, int z, int height) const {
         const float left = static_cast<float>(x0);
         const float right = static_cast<float>(x1);
         const float z0 = static_cast<float>(z);
         const float z1 = static_cast<float>(z + 1);
         const float y = static_cast<float>(height + 1);
-        AddVoxelQuad(vertices,
-                     indices,
-                     CoreEngine::Math::Vec3{left, y, z1},
-                     CoreEngine::Math::Vec3{right, y, z1},
-                     CoreEngine::Math::Vec3{right, y, z0},
-                     CoreEngine::Math::Vec3{left, y, z0},
-                     Faces[2].normal,
+        AddVoxelQuad(vertices, indices, CoreEngine::Math::Vec3{left, y, z1}, CoreEngine::Math::Vec3{right, y, z1},
+                     CoreEngine::Math::Vec3{right, y, z0}, CoreEngine::Math::Vec3{left, y, z0}, Faces[2].normal,
                      BlockId::Grass);
     }
 
-    void AddSideSpan(std::vector<CoreEngine::StaticMeshVertex> &vertices,
-                     std::vector<std::uint32_t> &indices,
-                     int x,
-                     int z,
-                     int y_start,
-                     int y_end,
-                     std::size_t face_index,
-                     BlockId block) const {
+    void AddSideSpan(std::vector<CoreEngine::StaticMeshVertex> &vertices, std::vector<std::uint32_t> &indices, int x,
+                     int z, int y_start, int y_end, std::size_t face_index, BlockId block) const {
         if (y_start >= y_end) {
             return;
         }
@@ -947,57 +875,31 @@ private:
 
         switch (face_index) {
             case 0:
-                AddVoxelQuad(vertices,
-                             indices,
-                             CoreEngine::Math::Vec3{x1, y1, z0},
-                             CoreEngine::Math::Vec3{x1, y1, z1},
-                             CoreEngine::Math::Vec3{x1, y0, z1},
-                             CoreEngine::Math::Vec3{x1, y0, z0},
-                             Faces[0].normal,
+                AddVoxelQuad(vertices, indices, CoreEngine::Math::Vec3{x1, y1, z0}, CoreEngine::Math::Vec3{x1, y1, z1},
+                             CoreEngine::Math::Vec3{x1, y0, z1}, CoreEngine::Math::Vec3{x1, y0, z0}, Faces[0].normal,
                              block);
                 break;
             case 1:
-                AddVoxelQuad(vertices,
-                             indices,
-                             CoreEngine::Math::Vec3{x0, y1, z1},
-                             CoreEngine::Math::Vec3{x0, y1, z0},
-                             CoreEngine::Math::Vec3{x0, y0, z0},
-                             CoreEngine::Math::Vec3{x0, y0, z1},
-                             Faces[1].normal,
+                AddVoxelQuad(vertices, indices, CoreEngine::Math::Vec3{x0, y1, z1}, CoreEngine::Math::Vec3{x0, y1, z0},
+                             CoreEngine::Math::Vec3{x0, y0, z0}, CoreEngine::Math::Vec3{x0, y0, z1}, Faces[1].normal,
                              block);
                 break;
             case 4:
-                AddVoxelQuad(vertices,
-                             indices,
-                             CoreEngine::Math::Vec3{x1, y1, z1},
-                             CoreEngine::Math::Vec3{x0, y1, z1},
-                             CoreEngine::Math::Vec3{x0, y0, z1},
-                             CoreEngine::Math::Vec3{x1, y0, z1},
-                             Faces[4].normal,
+                AddVoxelQuad(vertices, indices, CoreEngine::Math::Vec3{x1, y1, z1}, CoreEngine::Math::Vec3{x0, y1, z1},
+                             CoreEngine::Math::Vec3{x0, y0, z1}, CoreEngine::Math::Vec3{x1, y0, z1}, Faces[4].normal,
                              block);
                 break;
             case 5:
-                AddVoxelQuad(vertices,
-                             indices,
-                             CoreEngine::Math::Vec3{x0, y1, z0},
-                             CoreEngine::Math::Vec3{x1, y1, z0},
-                             CoreEngine::Math::Vec3{x1, y0, z0},
-                             CoreEngine::Math::Vec3{x0, y0, z0},
-                             Faces[5].normal,
+                AddVoxelQuad(vertices, indices, CoreEngine::Math::Vec3{x0, y1, z0}, CoreEngine::Math::Vec3{x1, y1, z0},
+                             CoreEngine::Math::Vec3{x1, y0, z0}, CoreEngine::Math::Vec3{x0, y0, z0}, Faces[5].normal,
                              block);
                 break;
-            default:
-                break;
+            default: break;
         }
     }
 
-    void AddColumnSide(std::vector<CoreEngine::StaticMeshVertex> &vertices,
-                       std::vector<std::uint32_t> &indices,
-                       int x,
-                       int z,
-                       int height,
-                       int neighbor_height,
-                       std::size_t face_index) const {
+    void AddColumnSide(std::vector<CoreEngine::StaticMeshVertex> &vertices, std::vector<std::uint32_t> &indices, int x,
+                       int z, int height, int neighbor_height, std::size_t face_index) const {
         if (neighbor_height >= height) {
             return;
         }
@@ -1008,46 +910,37 @@ private:
         const int grass_start = height;
 
         AddSideSpan(vertices, indices, x, z, y_start, std::min(y_end, dirt_start), face_index, BlockId::Stone);
-        AddSideSpan(vertices,
-                    indices,
-                    x,
-                    z,
-                    std::max(y_start, dirt_start),
-                    std::min(y_end, grass_start),
-                    face_index,
+        AddSideSpan(vertices, indices, x, z, std::max(y_start, dirt_start), std::min(y_end, grass_start), face_index,
                     BlockId::Dirt);
         AddSideSpan(vertices, indices, x, z, std::max(y_start, grass_start), y_end, face_index, BlockId::Grass);
     }
 
     static void AddDistantLodQuad(std::vector<CoreEngine::StaticMeshVertex> &vertices,
-                                  std::vector<std::uint32_t> &indices,
-                                  const CoreEngine::Math::Vec3 &p0,
-                                  const CoreEngine::Math::Vec3 &p1,
-                                  const CoreEngine::Math::Vec3 &p2,
-                                  const CoreEngine::Math::Vec3 &p3,
-                                  const CoreEngine::Math::Vec3 &normal,
+                                  std::vector<std::uint32_t> &indices, const CoreEngine::Math::Vec3 &p0,
+                                  const CoreEngine::Math::Vec3 &p1, const CoreEngine::Math::Vec3 &p2,
+                                  const CoreEngine::Math::Vec3 &p3, const CoreEngine::Math::Vec3 &normal,
                                   BlockId block) {
         const std::uint32_t base_index = static_cast<std::uint32_t>(vertices.size());
         const CoreEngine::Math::Vec3 color = BlockColor(block, normal);
         vertices.push_back(CoreEngine::StaticMeshVertex{
-            .position = p0,
-            .normal = normal,
-            .color = color,
+                .position = p0,
+                .normal = normal,
+                .color = color,
         });
         vertices.push_back(CoreEngine::StaticMeshVertex{
-            .position = p1,
-            .normal = normal,
-            .color = color,
+                .position = p1,
+                .normal = normal,
+                .color = color,
         });
         vertices.push_back(CoreEngine::StaticMeshVertex{
-            .position = p2,
-            .normal = normal,
-            .color = color,
+                .position = p2,
+                .normal = normal,
+                .color = color,
         });
         vertices.push_back(CoreEngine::StaticMeshVertex{
-            .position = p3,
-            .normal = normal,
-            .color = color,
+                .position = p3,
+                .normal = normal,
+                .color = color,
         });
 
         indices.push_back(base_index + 0u);
@@ -1060,9 +953,9 @@ private:
 
     [[nodiscard]] ChunkBuildResult BuildDistantLodData(ChunkCoord center, std::uint64_t revision) const {
         ChunkBuildResult result{
-            .kind = TerrainBuildKind::DistantLod,
-            .coord = center,
-            .revision = revision,
+                .kind = TerrainBuildKind::DistantLod,
+                .coord = center,
+                .revision = revision,
         };
 
         const int chunk_size_x = ChunkSizeX();
@@ -1086,19 +979,16 @@ private:
             const int side = square_radius * 2 + 1;
             return static_cast<std::size_t>(side * side);
         };
-        const int near_radius = std::min(radius,
-                                         config_.view_radius_chunks + config_.distant_lod_near_radius_chunks);
-        const int mid_radius = std::min(radius,
-                                        config_.view_radius_chunks + config_.distant_lod_mid_radius_chunks);
+        const int near_radius = std::min(radius, config_.view_radius_chunks + config_.distant_lod_near_radius_chunks);
+        const int mid_radius = std::min(radius, config_.view_radius_chunks + config_.distant_lod_mid_radius_chunks);
         const std::size_t real_chunk_count = square_chunk_count(config_.view_radius_chunks);
         const std::size_t near_chunk_count = square_chunk_count(near_radius) - real_chunk_count;
         const std::size_t mid_chunk_count = square_chunk_count(mid_radius) - square_chunk_count(near_radius);
-        const std::size_t far_chunk_count = static_cast<std::size_t>(chunk_side_count * chunk_side_count) -
-                                            square_chunk_count(mid_radius);
-        const std::size_t estimated_cells =
-                near_chunk_count * cells_per_chunk(near_step_voxels) +
-                mid_chunk_count * cells_per_chunk(mid_step_voxels) +
-                far_chunk_count * cells_per_chunk(far_step_voxels);
+        const std::size_t far_chunk_count =
+                static_cast<std::size_t>(chunk_side_count * chunk_side_count) - square_chunk_count(mid_radius);
+        const std::size_t estimated_cells = near_chunk_count * cells_per_chunk(near_step_voxels) +
+                                            mid_chunk_count * cells_per_chunk(mid_step_voxels) +
+                                            far_chunk_count * cells_per_chunk(far_step_voxels);
         result.vertices.reserve(estimated_cells * 8u);
         result.indices.reserve(estimated_cells * 12u);
 
@@ -1106,12 +996,7 @@ private:
             return static_cast<float>(TerrainHeight(voxel_x, voxel_z)) * voxel_size_;
         };
 
-        const auto emit_side = [&](float x0,
-                                   float x1,
-                                   float z0,
-                                   float z1,
-                                   float height,
-                                   float neighbor_height,
+        const auto emit_side = [&](float x0, float x1, float z0, float z1, float height, float neighbor_height,
                                    std::size_t face_index) {
             if (neighbor_height >= height) {
                 return;
@@ -1119,47 +1004,30 @@ private:
 
             switch (face_index) {
                 case 0:
-                    AddDistantLodQuad(result.vertices,
-                                      result.indices,
-                                      CoreEngine::Math::Vec3{x1, height, z0},
+                    AddDistantLodQuad(result.vertices, result.indices, CoreEngine::Math::Vec3{x1, height, z0},
                                       CoreEngine::Math::Vec3{x1, height, z1},
                                       CoreEngine::Math::Vec3{x1, neighbor_height, z1},
-                                      CoreEngine::Math::Vec3{x1, neighbor_height, z0},
-                                      Faces[0].normal,
-                                      BlockId::Dirt);
+                                      CoreEngine::Math::Vec3{x1, neighbor_height, z0}, Faces[0].normal, BlockId::Dirt);
                     break;
                 case 1:
-                    AddDistantLodQuad(result.vertices,
-                                      result.indices,
-                                      CoreEngine::Math::Vec3{x0, height, z1},
+                    AddDistantLodQuad(result.vertices, result.indices, CoreEngine::Math::Vec3{x0, height, z1},
                                       CoreEngine::Math::Vec3{x0, height, z0},
                                       CoreEngine::Math::Vec3{x0, neighbor_height, z0},
-                                      CoreEngine::Math::Vec3{x0, neighbor_height, z1},
-                                      Faces[1].normal,
-                                      BlockId::Dirt);
+                                      CoreEngine::Math::Vec3{x0, neighbor_height, z1}, Faces[1].normal, BlockId::Dirt);
                     break;
                 case 4:
-                    AddDistantLodQuad(result.vertices,
-                                      result.indices,
-                                      CoreEngine::Math::Vec3{x1, height, z1},
+                    AddDistantLodQuad(result.vertices, result.indices, CoreEngine::Math::Vec3{x1, height, z1},
                                       CoreEngine::Math::Vec3{x0, height, z1},
                                       CoreEngine::Math::Vec3{x0, neighbor_height, z1},
-                                      CoreEngine::Math::Vec3{x1, neighbor_height, z1},
-                                      Faces[4].normal,
-                                      BlockId::Dirt);
+                                      CoreEngine::Math::Vec3{x1, neighbor_height, z1}, Faces[4].normal, BlockId::Dirt);
                     break;
                 case 5:
-                    AddDistantLodQuad(result.vertices,
-                                      result.indices,
-                                      CoreEngine::Math::Vec3{x0, height, z0},
+                    AddDistantLodQuad(result.vertices, result.indices, CoreEngine::Math::Vec3{x0, height, z0},
                                       CoreEngine::Math::Vec3{x1, height, z0},
                                       CoreEngine::Math::Vec3{x1, neighbor_height, z0},
-                                      CoreEngine::Math::Vec3{x0, neighbor_height, z0},
-                                      Faces[5].normal,
-                                      BlockId::Dirt);
+                                      CoreEngine::Math::Vec3{x0, neighbor_height, z0}, Faces[5].normal, BlockId::Dirt);
                     break;
-                default:
-                    break;
+                default: break;
             }
         };
 
@@ -1194,43 +1062,17 @@ private:
                         const float z0 = static_cast<float>(voxel_z0 - min_voxel_z) * voxel_size_;
                         const float z1 = static_cast<float>(voxel_z1 - min_voxel_z) * voxel_size_;
 
-                        AddDistantLodQuad(result.vertices,
-                                          result.indices,
-                                          CoreEngine::Math::Vec3{x0, height, z1},
+                        AddDistantLodQuad(result.vertices, result.indices, CoreEngine::Math::Vec3{x0, height, z1},
                                           CoreEngine::Math::Vec3{x1, height, z1},
                                           CoreEngine::Math::Vec3{x1, height, z0},
-                                          CoreEngine::Math::Vec3{x0, height, z0},
-                                          Faces[2].normal,
-                                          BlockId::Grass);
+                                          CoreEngine::Math::Vec3{x0, height, z0}, Faces[2].normal, BlockId::Grass);
 
-                        emit_side(x0,
-                                  x1,
-                                  z0,
-                                  z1,
-                                  height,
-                                  sample_height(voxel_x1 + cell_size_x / 2, sample_z),
-                                  0);
-                        emit_side(x0,
-                                  x1,
-                                  z0,
-                                  z1,
-                                  height,
-                                  sample_height(voxel_x0 - std::max(1, cell_size_x / 2), sample_z),
-                                  1);
-                        emit_side(x0,
-                                  x1,
-                                  z0,
-                                  z1,
-                                  height,
-                                  sample_height(sample_x, voxel_z1 + cell_size_z / 2),
-                                  4);
-                        emit_side(x0,
-                                  x1,
-                                  z0,
-                                  z1,
-                                  height,
-                                  sample_height(sample_x, voxel_z0 - std::max(1, cell_size_z / 2)),
-                                  5);
+                        emit_side(x0, x1, z0, z1, height, sample_height(voxel_x1 + cell_size_x / 2, sample_z), 0);
+                        emit_side(x0, x1, z0, z1, height,
+                                  sample_height(voxel_x0 - std::max(1, cell_size_x / 2), sample_z), 1);
+                        emit_side(x0, x1, z0, z1, height, sample_height(sample_x, voxel_z1 + cell_size_z / 2), 4);
+                        emit_side(x0, x1, z0, z1, height,
+                                  sample_height(sample_x, voxel_z0 - std::max(1, cell_size_z / 2)), 5);
                     }
                 }
             }
@@ -1241,9 +1083,9 @@ private:
 
     [[nodiscard]] ChunkBuildResult BuildChunkData(ChunkCoord coord) const {
         ChunkBuildResult result{
-            .kind = TerrainBuildKind::Chunk,
-            .coord = coord,
-            .surface_heights = BuildSurfaceHeights(coord),
+                .kind = TerrainBuildKind::Chunk,
+                .coord = coord,
+                .surface_heights = BuildSurfaceHeights(coord),
         };
         const int chunk_size_x = ChunkSizeX();
         const int chunk_size_z = ChunkSizeZ();
@@ -1253,14 +1095,12 @@ private:
             int dz = 0;
             std::size_t face_index = 0;
         };
-        static constexpr std::array<SideDesc, 4> SideFaces{
-            {
+        static constexpr std::array<SideDesc, 4> SideFaces{{
                 SideDesc{.dx = 1, .dz = 0, .face_index = 0},
                 SideDesc{.dx = -1, .dz = 0, .face_index = 1},
                 SideDesc{.dx = 0, .dz = 1, .face_index = 4},
                 SideDesc{.dx = 0, .dz = -1, .face_index = 5},
-            }
-        };
+        }};
 
         // Surface-only meshing is equivalent to culling a solid heightfield, but
         // avoids storing and scanning every hidden voxel under the terrain.
@@ -1285,18 +1125,9 @@ private:
                 const int world_z = coord.z * chunk_size_z + z;
 
                 for (const SideDesc &side: SideFaces) {
-                    const int neighbor_height = GetGeneratedSurfaceHeight(result.surface_heights,
-                                                                          x + side.dx,
-                                                                          z + side.dz,
-                                                                          world_x + side.dx,
-                                                                          world_z + side.dz);
-                    AddColumnSide(result.vertices,
-                                  result.indices,
-                                  x,
-                                  z,
-                                  height,
-                                  neighbor_height,
-                                  side.face_index);
+                    const int neighbor_height = GetGeneratedSurfaceHeight(
+                            result.surface_heights, x + side.dx, z + side.dz, world_x + side.dx, world_z + side.dz);
+                    AddColumnSide(result.vertices, result.indices, x, z, height, neighbor_height, side.face_index);
                 }
             }
         }
@@ -1304,10 +1135,8 @@ private:
         return result;
     }
 
-    void UploadChunkMesh(Chunk &chunk,
-                         const std::vector<CoreEngine::StaticMeshVertex> &vertices,
-                         const std::vector<std::uint32_t> &indices,
-                         CoreEngine::World &world,
+    void UploadChunkMesh(Chunk &chunk, const std::vector<CoreEngine::StaticMeshVertex> &vertices,
+                         const std::vector<std::uint32_t> &indices, CoreEngine::World &world,
                          CoreEngine::RenderSystem &render_system) {
         if (vertices.empty() || indices.empty()) {
             // Empty chunks do not allocate a GPU mesh or an ECS render node.
@@ -1317,8 +1146,8 @@ private:
         // CreateMesh consumes spans into local vectors; the render system owns
         // the uploaded copy after this call returns.
         chunk.mesh = render_system.CreateMesh(CoreEngine::MeshDesc{
-            .vertices = std::span<const CoreEngine::StaticMeshVertex>{vertices.data(), vertices.size()},
-            .indices = std::span<const std::uint32_t>{indices.data(), indices.size()},
+                .vertices = std::span<const CoreEngine::StaticMeshVertex>{vertices.data(), vertices.size()},
+                .indices = std::span<const std::uint32_t>{indices.data(), indices.size()},
         });
         if (!chunk.mesh.IsValid()) {
             return;
@@ -1329,11 +1158,11 @@ private:
         chunk.node = world.CreateNode(std::format("Chunk {},{}", chunk.coord.x, chunk.coord.z));
         chunk.node.SetPosition(ChunkWorldOrigin(chunk.coord));
         chunk.node.AddComponent<CoreEngine::MeshRendererComponent>(CoreEngine::MeshRendererComponent{
-            .mesh = chunk.mesh,
-            .material = material_,
-            .visible = true,
-            .cast_shadows = true,
-            .topology = CoreEngine::PrimitiveTopology::TriangleList,
+                .mesh = chunk.mesh,
+                .material = material_,
+                .visible = true,
+                .cast_shadows = true,
+                .topology = CoreEngine::PrimitiveTopology::TriangleList,
         });
     }
 
@@ -1381,13 +1210,13 @@ public:
         // avoids relying on the renderer's fallback/default camera path.
         camera_node_ = context.world.CreateNode("Main Camera");
         camera_node_.AddComponent<CoreEngine::CameraComponent>(CoreEngine::CameraComponent{
-            .projection_type = CoreEngine::CameraProjectionType::Perspective,
-            .aspect_mode = CoreEngine::CameraAspectMode::RenderSurface,
-            .fov_y_degrees = 60.0f,
-            .near_z = 0.01f,
-            .far_z = 2500.0f,
-            .priority = 100,
-            .enabled = true,
+                .projection_type = CoreEngine::CameraProjectionType::Perspective,
+                .aspect_mode = CoreEngine::CameraAspectMode::RenderSurface,
+                .fov_y_degrees = 60.0f,
+                .near_z = 0.01f,
+                .far_z = 2500.0f,
+                .priority = 100,
+                .enabled = true,
         });
         ApplyCameraTransform();
 
@@ -1412,18 +1241,12 @@ public:
 private:
     static void BindCameraControls(CoreEngine::InputSystem &input_system) noexcept {
         // A/D controls local X movement, W/S controls local forward movement.
-        static_cast<void>(input_system.BindAxis2D(MoveCameraAction,
-                                                  CoreEngine::Key::A,
-                                                  CoreEngine::Key::D,
-                                                  CoreEngine::Key::S,
-                                                  CoreEngine::Key::W));
+        static_cast<void>(input_system.BindAxis2D(MoveCameraAction, CoreEngine::Key::A, CoreEngine::Key::D,
+                                                  CoreEngine::Key::S, CoreEngine::Key::W));
         // Arrow keys provide keyboard look for machines where mouse capture is
         // not desired while debugging.
-        static_cast<void>(input_system.BindAxis2D(LookCameraAction,
-                                                  CoreEngine::Key::Left,
-                                                  CoreEngine::Key::Right,
-                                                  CoreEngine::Key::Down,
-                                                  CoreEngine::Key::Up));
+        static_cast<void>(input_system.BindAxis2D(LookCameraAction, CoreEngine::Key::Left, CoreEngine::Key::Right,
+                                                  CoreEngine::Key::Down, CoreEngine::Key::Up));
         // Q/E are vertical debug-camera movement; LeftShift multiplies speed.
         static_cast<void>(input_system.BindButton(CameraUpAction, CoreEngine::Key::E));
         static_cast<void>(input_system.BindButton(CameraDownAction, CoreEngine::Key::Q));
@@ -1462,29 +1285,23 @@ private:
 
         // Mouse look is active only while holding right mouse button, matching
         // common editor/debug-camera behavior.
-        const CoreEngine::InputVector2 mouse_delta = frame.input_system.
-                                                     IsMouseButtonDown(CoreEngine::MouseButton::Right)
-                                                         ? frame.input_system.MouseDelta()
-                                                         : CoreEngine::InputVector2{};
+        const CoreEngine::InputVector2 mouse_delta =
+                frame.input_system.IsMouseButtonDown(CoreEngine::MouseButton::Right) ? frame.input_system.MouseDelta()
+                                                                                     : CoreEngine::InputVector2{};
 
         // Keyboard look is frame-rate independent; mouse delta is already a
         // per-frame displacement from the input system.
-        camera_yaw_ += key_look_axis.x * CameraKeyLookSpeed * frame.delta_time +
-                mouse_delta.x * CameraMouseLookSpeed;
-        camera_pitch_ += key_look_axis.y * CameraKeyLookSpeed * frame.delta_time -
-                mouse_delta.y * CameraMouseLookSpeed;
+        camera_yaw_ += key_look_axis.x * CameraKeyLookSpeed * frame.delta_time + mouse_delta.x * CameraMouseLookSpeed;
+        camera_pitch_ += key_look_axis.y * CameraKeyLookSpeed * frame.delta_time - mouse_delta.y * CameraMouseLookSpeed;
         camera_pitch_ = std::clamp(camera_pitch_, -CameraMaxPitch, CameraMaxPitch);
 
         // Vertical movement is world-up instead of camera-up so looking down does
         // not make Q/E move diagonally.
-        const float vertical_axis =
-                (frame.input_system.IsActionDown(CameraUpAction) ? 1.0f : 0.0f) -
-                (frame.input_system.IsActionDown(CameraDownAction) ? 1.0f : 0.0f);
+        const float vertical_axis = (frame.input_system.IsActionDown(CameraUpAction) ? 1.0f : 0.0f) -
+                                    (frame.input_system.IsActionDown(CameraDownAction) ? 1.0f : 0.0f);
 
-        const float speed = CameraMoveSpeed *
-                            (frame.input_system.IsActionDown(CameraSprintAction)
-                                 ? CameraSprintMultiplier
-                                 : 1.0f);
+        const float speed =
+                CameraMoveSpeed * (frame.input_system.IsActionDown(CameraSprintAction) ? CameraSprintMultiplier : 1.0f);
         const CoreEngine::Math::Quat orientation = CameraOrientation();
         // Build movement basis from the current camera rotation so WASD moves in
         // the direction the camera is facing.
@@ -1492,8 +1309,7 @@ private:
         const CoreEngine::Math::Vec3 forward = orientation * CoreEngine::Math::Vec3{0.0f, 0.0f, 1.0f};
         const CoreEngine::Math::Vec3 up{0.0f, 1.0f, 0.0f};
 
-        const CoreEngine::Math::Vec3 velocity =
-                (right * move_axis.x) + (forward * move_axis.y) + (up * vertical_axis);
+        const CoreEngine::Math::Vec3 velocity = (right * move_axis.x) + (forward * move_axis.y) + (up * vertical_axis);
         camera_position_ += velocity * (speed * frame.delta_time);
 
         ApplyCameraTransform();
@@ -1512,22 +1328,17 @@ private:
 };
 
 int main() {
-    // The sample app owns scene setup and per-frame behavior; RunEngine owns the
-    // platform window, render loop, input system, and engine shutdown order.
     auto app = std::make_unique<SandboxApp>();
 
     CoreEngine::EngineConfig config;
-    config.windowWidth = 1280;
-    config.windowHeight = 720;
+    config.window_width = 1280;
+    config.window_height = 720;
     config.resizable = true;
-    config.windowTitle = "CoreEngine Voxel Sandbox";
+    config.window_title = "CoreEngine Voxel Sandbox";
 
-    // A real backend is required. The null backend accepts the engine loop but
-    // cannot upload meshes, which would make the sample render nothing.
-    config.renderBackend = CoreEngine::RenderBackendType::DiligentD3D11;
+    config.render_backend = CoreEngine::RenderBackendType::DiligentD3D11;
 
-    // The prototype does not use editor UI yet, so ImGui stays disabled.
-    config.enableImGui = false;
+    config.enable_imgui = false;
 
     return CoreEngine::RunEngine(std::move(app), config);
 }

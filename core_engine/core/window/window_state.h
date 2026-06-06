@@ -7,9 +7,7 @@ namespace CoreEngine {
         int width = 0;
         int height = 0;
 
-        [[nodiscard]] bool IsValid() const noexcept {
-            return width > 0 && height > 0;
-        }
+        [[nodiscard]] bool IsValid() const noexcept { return width > 0 && height > 0; }
     };
 
     enum class WindowCursorMode : std::int8_t {

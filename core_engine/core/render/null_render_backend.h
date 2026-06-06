@@ -8,8 +8,7 @@
 namespace CoreEngine {
     class NullRenderBackend final : public IRenderBackend {
     public:
-        [[nodiscard]] bool Initialize(const RenderDesc &desc,
-                                      NativeWindowHandle native_window) override;
+        [[nodiscard]] bool Initialize(const RenderDesc &desc, NativeWindowHandle native_window) override;
 
         [[nodiscard]] TextureHandle LoadTexture2D(const TextureLoadDesc &desc) override;
 

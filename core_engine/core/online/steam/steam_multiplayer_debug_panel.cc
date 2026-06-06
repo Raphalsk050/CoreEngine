@@ -34,8 +34,7 @@ namespace CoreEngine {
             ImGui::Text("Disconnect reason: %s", ToString(status.last_disconnect_reason));
             ImGui::Text("Ping: %d ms", stats.ping_ms);
             ImGui::Text("Packet loss: %.2f", stats.packet_loss);
-            ImGui::Text("Bytes in/out: %llu / %llu",
-                        static_cast<unsigned long long>(stats.bytes_in),
+            ImGui::Text("Bytes in/out: %llu / %llu", static_cast<unsigned long long>(stats.bytes_in),
                         static_cast<unsigned long long>(stats.bytes_out));
             ImGui::Text("Snapshot tick: %u", stats.last_snapshot_tick);
             ImGui::Text("Last input tick: %u", stats.last_input_tick);
@@ -84,8 +83,7 @@ namespace CoreEngine {
 
             if (ImGui::CollapsingHeader("Lobby members")) {
                 for (const OnlineLobbyMember &member: online_system.LobbyMembers()) {
-                    ImGui::BulletText("%llu %s",
-                                      static_cast<unsigned long long>(member.user_id),
+                    ImGui::BulletText("%llu %s", static_cast<unsigned long long>(member.user_id),
                                       member.display_name.c_str());
                 }
             }
@@ -129,10 +127,10 @@ namespace CoreEngine {
         std::memcpy(texture->GetPixels(), avatar.rgba.data(), avatar.rgba.size());
         texture->UseColors = true;
         texture->UsedRect = ImTextureRect{
-            0,
-            0,
-            static_cast<unsigned short>(avatar.width),
-            static_cast<unsigned short>(avatar.height),
+                0,
+                0,
+                static_cast<unsigned short>(avatar.width),
+                static_cast<unsigned short>(avatar.height),
         };
         texture->SetStatus(ImTextureStatus_WantCreate);
 

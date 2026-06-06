@@ -6,12 +6,12 @@ namespace CoreEngine {
     struct TransformComponent {
         Math::Vec3 position = Math::Vec3(0.0, 0.0, 0.0);
         Math::Quat rotation = Math::Quat(1.0, 0.0, 0.0, 0.0);
-        Math::Vec3 scale    = Math::Vec3(1.0, 1.0, 1.0);
+        Math::Vec3 scale = Math::Vec3(1.0, 1.0, 1.0);
 
         explicit TransformComponent(Math::Vec3 position = Math::Vec3(0.0, 0.0, 0.0),
                                     Math::Quat rotation = Math::Quat(1.0, 0.0, 0.0, 0.0),
-                                    Math::Vec3 scale    = Math::Vec3(1.0, 1.0, 1.0))
-            : position(position), rotation(rotation), scale(scale) {}
+                                    Math::Vec3 scale = Math::Vec3(1.0, 1.0, 1.0)) :
+            position(position), rotation(rotation), scale(scale) {}
 
         void SetPosition(const Math::Vec3 &value) noexcept {
             position = value;
@@ -28,21 +28,13 @@ namespace CoreEngine {
             dirty_ = true;
         }
 
-        [[nodiscard]] const Math::Vec3 &Position() const noexcept {
-            return position;
-        }
+        [[nodiscard]] const Math::Vec3 &Position() const noexcept { return position; }
 
-        [[nodiscard]] const Math::Quat &Rotation() const noexcept {
-            return rotation;
-        }
+        [[nodiscard]] const Math::Quat &Rotation() const noexcept { return rotation; }
 
-        [[nodiscard]] const Math::Vec3 &Scale() const noexcept {
-            return scale;
-        }
+        [[nodiscard]] const Math::Vec3 &Scale() const noexcept { return scale; }
 
-        void MarkDirty() noexcept {
-            dirty_ = true;
-        }
+        void MarkDirty() noexcept { dirty_ = true; }
 
         [[nodiscard]] const Math::Mat4 &WorldMatrix() const {
             if (dirty_ || !Equals(cached_position_, position) || !Equals(cached_rotation_, rotation) ||

@@ -21,4 +21,4 @@ namespace CoreEngine {
 
         virtual void DestroyShaderProgram(ShaderProgramHandle handle) = 0;
     };
-}
+} // namespace CoreEngine

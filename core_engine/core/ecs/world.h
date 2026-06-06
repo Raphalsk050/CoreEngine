@@ -1,7 +1,7 @@
 #pragma once
-#include "core/ecs/node.h"
 #include <string>
 #include <utility>
+#include "core/ecs/node.h"
 
 namespace CoreEngine {
     class World {
@@ -39,7 +39,7 @@ namespace CoreEngine {
         void Clear();
 
         template<typename T, typename... Args>
-        T &Emplace(entt::entity e, Args &&... args);
+        T &Emplace(entt::entity e, Args &&...args);
 
         template<typename T>
         T &GetComponent(entt::entity e);
@@ -63,9 +63,7 @@ namespace CoreEngine {
         entt::registry registry_;
     };
 
-    inline bool World::IsValid(Node node) const {
-        return node.OwnerWorld() == this && registry_.valid(node.Handle());
-    }
+    inline bool World::IsValid(Node node) const { return node.OwnerWorld() == this && registry_.valid(node.Handle()); }
 
     template<typename... Components>
     auto World::View() {
@@ -81,14 +79,12 @@ namespace CoreEngine {
 
     inline const entt::registry &World::Registry() const { return registry_; }
 
-    inline std::size_t World::GetNodeCount() const {
-        return registry_.view<entt::entity>().size();
-    }
+    inline std::size_t World::GetNodeCount() const { return registry_.view<entt::entity>().size(); }
 
     inline void World::Clear() { registry_.clear(); }
 
     template<typename T, typename... Args>
-    T &World::Emplace(entt::entity e, Args &&... args) {
+    T &World::Emplace(entt::entity e, Args &&...args) {
         return registry_.emplace<T>(e, std::forward<Args>(args)...);
     }
 
@@ -123,12 +119,14 @@ namespace CoreEngine {
     }
 
     template<typename T, typename... Args>
-    T &Node::AddComponent(Args &&... args) {
+    T &Node::AddComponent(Args &&...args) {
         return world_->Emplace<T>(handle_, std::forward<Args>(args)...);
     }
 
     template<typename T>
-    T &Node::GetComponent() { return world_->GetComponent<T>(handle_); }
+    T &Node::GetComponent() {
+        return world_->GetComponent<T>(handle_);
+    }
 
     template<typename T>
     const T &Node::GetComponent() const {
@@ -136,7 +134,9 @@ namespace CoreEngine {
     }
 
     template<typename T>
-    T *Node::TryGetComponent() { return world_->TryGetComponent<T>(handle_); }
+    T *Node::TryGetComponent() {
+        return world_->TryGetComponent<T>(handle_);
+    }
 
     template<typename T>
     const T *Node::TryGetComponent() const {
@@ -144,8 +144,12 @@ namespace CoreEngine {
     }
 
     template<typename T>
-    bool Node::HasComponent() const { return world_->HasComponent<T>(handle_); }
+    bool Node::HasComponent() const {
+        return world_->HasComponent<T>(handle_);
+    }
 
     template<typename T>
-    void Node::RemoveComponent() const { world_->RemoveComponent<T>(handle_); }
+    void Node::RemoveComponent() const {
+        world_->RemoveComponent<T>(handle_);
+    }
 } // namespace CoreEngine

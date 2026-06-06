@@ -3,8 +3,8 @@
 #include <array>
 #include <cstddef>
 #include <span>
-#include <vector>
 #include <tsl/robin_map.h>
+#include <vector>
 #include "core/math/math.h"
 #include "core/render/render_handle.h"
 
@@ -61,4 +61,4 @@ namespace CoreEngine {
         tsl::robin_map<BatchKey, std::size_t, BatchKeyHash> batch_indices_;
         std::size_t active_batch_count_ = 0;
     };
-}
+} // namespace CoreEngine

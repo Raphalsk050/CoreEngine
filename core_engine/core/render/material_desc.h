@@ -14,9 +14,7 @@ namespace CoreEngine {
         ShaderStage stages = ShaderStage::Pixel;
         std::string sampler_name;
 
-        [[nodiscard]] bool IsValid() const {
-            return !name.empty() && texture.IsValid();
-        }
+        [[nodiscard]] bool IsValid() const { return !name.empty() && texture.IsValid(); }
     };
 
     struct MaterialDesc {

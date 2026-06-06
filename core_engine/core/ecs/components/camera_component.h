@@ -3,15 +3,9 @@
 #include <cstdint>
 
 namespace CoreEngine {
-    enum class CameraProjectionType : std::uint8_t {
-        Perspective,
-        Orthographic
-    };
+    enum class CameraProjectionType : std::uint8_t { Perspective, Orthographic };
 
-    enum class CameraAspectMode : std::uint8_t {
-        RenderSurface,
-        Fixed
-    };
+    enum class CameraAspectMode : std::uint8_t { RenderSurface, Fixed };
 
     struct CameraComponent {
         CameraProjectionType projection_type = CameraProjectionType::Perspective;

@@ -2,9 +2,9 @@
 
 #include <string_view>
 
-#include "window_state.h"
 #include "core/window/native_window_handle.h"
 #include "core/window/window_desc.h"
+#include "window_state.h"
 
 namespace CoreEngine {
     class WindowEventQueue;

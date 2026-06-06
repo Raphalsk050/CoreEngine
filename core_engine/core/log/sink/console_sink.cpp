@@ -13,20 +13,10 @@ namespace CoreEngine {
 
         std::ostream &stream = std::cout;
 
-        stream
-                << GetColorCode(message.metadata.level)
-                << "["
-                << ToString(message.metadata.level)
-                << "]"
-                << "\x1b[0m"
-                << " "
-                << "["
-                << message.metadata.category
-                << "] "
-                << "[thread:"
-                << message.metadata.threadId
-                << "] "
-                << message.text
-                << std::endl;
+        stream << GetColorCode(message.metadata.level) << "[" << ToString(message.metadata.level) << "]"
+               << "\x1b[0m"
+               << " "
+               << "[" << message.metadata.category << "] "
+               << "[thread:" << message.metadata.threadId << "] " << message.text << std::endl;
     }
-}
+} // namespace CoreEngine

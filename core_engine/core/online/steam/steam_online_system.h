@@ -32,9 +32,7 @@ namespace CoreEngine {
 
         void Shutdown();
 
-        [[nodiscard]] bool IsAvailable() const noexcept {
-            return initialized_;
-        }
+        [[nodiscard]] bool IsAvailable() const noexcept { return initialized_; }
 
         [[nodiscard]] std::uint64_t LocalSteamId() const noexcept;
 

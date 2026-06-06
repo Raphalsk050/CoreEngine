@@ -9,17 +9,15 @@ namespace CoreEngine {
         }
 
         const TextureHandle handle{
-            .id = next_texture_id_++,
-            .generation = next_texture_generation_++,
+                .id = next_texture_id_++,
+                .generation = next_texture_generation_++,
         };
 
         textures_[handle.id] = handle.generation;
         return handle;
     }
 
-    TextureHandle NullRenderBackend::LoadTexture2DAsync(const TextureLoadDesc &desc) {
-        return LoadTexture2D(desc);
-    }
+    TextureHandle NullRenderBackend::LoadTexture2DAsync(const TextureLoadDesc &desc) { return LoadTexture2D(desc); }
 
     TextureLoadState NullRenderBackend::GetTextureLoadState(TextureHandle handle) const {
         const auto it = textures_.find(handle.id);
@@ -37,29 +35,21 @@ namespace CoreEngine {
         }
     }
 
-    void NullRenderBackend::BindShaderTexture(std::string_view, TextureHandle) {
-    }
+    void NullRenderBackend::BindShaderTexture(std::string_view, TextureHandle) {}
 
-    void NullRenderBackend::BeginFrame() {
-    }
+    void NullRenderBackend::BeginFrame() {}
 
-    void NullRenderBackend::Clear(const RenderClearColor &) {
-    }
+    void NullRenderBackend::Clear(const RenderClearColor &) {}
 
-    void NullRenderBackend::BeginImGuiFrame() {
-    }
+    void NullRenderBackend::BeginImGuiFrame() {}
 
-    void NullRenderBackend::RenderImGui() {
-    }
+    void NullRenderBackend::RenderImGui() {}
 
-    void NullRenderBackend::EndFrame() {
-    }
+    void NullRenderBackend::EndFrame() {}
 
-    void NullRenderBackend::Resize(int, int) {
-    }
+    void NullRenderBackend::Resize(int, int) {}
 
-    void NullRenderBackend::Shutdown() {
-    }
+    void NullRenderBackend::Shutdown() {}
 
     FrameBufferHandle NullRenderBackend::CreateFrameBuffer(const FrameBufferDesc &desc) {
         if (!desc.IsValid()) {
@@ -67,8 +57,8 @@ namespace CoreEngine {
         }
 
         const FrameBufferHandle handle{
-            .id = next_frame_buffer_id_++,
-            .generation = next_frame_buffer_generation_++,
+                .id = next_frame_buffer_id_++,
+                .generation = next_frame_buffer_generation_++,
         };
 
         frame_buffers_[handle.id] = handle.generation;
@@ -82,31 +72,22 @@ namespace CoreEngine {
         }
     }
 
-    void NullRenderBackend::SetFrameBuffer(FrameBufferHandle) {
-    }
+    void NullRenderBackend::SetFrameBuffer(FrameBufferHandle) {}
 
-    void NullRenderBackend::SetSwapChainFrameBuffer() {
-    }
+    void NullRenderBackend::SetSwapChainFrameBuffer() {}
 
-    FrameBufferColorView NullRenderBackend::GetFrameBufferColorView(FrameBufferHandle) const {
-        return {};
-    }
+    FrameBufferColorView NullRenderBackend::GetFrameBufferColorView(FrameBufferHandle) const { return {}; }
 
-    FrameBufferDepthView NullRenderBackend::GetFrameBufferDepthView(FrameBufferHandle) const {
-        return {};
-    }
+    FrameBufferDepthView NullRenderBackend::GetFrameBufferDepthView(FrameBufferHandle) const { return {}; }
 
     void NullRenderBackend::RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
-                                               const DepthVisualizationDesc &desc) {
-    }
+                                               const DepthVisualizationDesc &desc) {}
 
-    void NullRenderBackend::CompositeFrameBuffer(FrameBufferHandle) {
-    }
+    void NullRenderBackend::CompositeFrameBuffer(FrameBufferHandle) {}
 
     MeshHandle NullRenderBackend::UploadMesh(const MeshDesc &) { return {}; }
 
-    void NullRenderBackend::DestroyMesh(MeshHandle) {
-    }
+    void NullRenderBackend::DestroyMesh(MeshHandle) {}
 
     MaterialHandle NullRenderBackend::ResolveMaterial(const MaterialDesc &) { return {}; }
 
@@ -116,8 +97,8 @@ namespace CoreEngine {
         }
 
         const ShaderProgramHandle handle{
-            .id = next_shader_program_id_++,
-            .generation = next_shader_program_generation_++,
+                .id = next_shader_program_id_++,
+                .generation = next_shader_program_generation_++,
         };
         shader_programs_[handle.id] = handle.generation;
         return handle;
@@ -130,26 +111,19 @@ namespace CoreEngine {
         }
     }
 
-    void NullRenderBackend::UseShaderProgram(ShaderProgramHandle) {
-    }
+    void NullRenderBackend::UseShaderProgram(ShaderProgramHandle) {}
 
-    void NullRenderBackend::BindShaderTexture(std::string_view, FrameBufferColorView) {
-    }
+    void NullRenderBackend::BindShaderTexture(std::string_view, FrameBufferColorView) {}
 
-    void NullRenderBackend::BindShaderTexture(std::string_view, FrameBufferDepthView) {
-    }
+    void NullRenderBackend::BindShaderTexture(std::string_view, FrameBufferDepthView) {}
 
-    void NullRenderBackend::BindShaderUniform(std::string_view, std::span<const std::uint8_t>) {
-    }
+    void NullRenderBackend::BindShaderUniform(std::string_view, std::span<const std::uint8_t>) {}
 
-    void NullRenderBackend::SetPerFrameProps(PerFrameProps props) {
-    }
+    void NullRenderBackend::SetPerFrameProps(PerFrameProps props) {}
 
-    void NullRenderBackend::SubmitBatch(const RenderBatch &) {
-    }
+    void NullRenderBackend::SubmitBatch(const RenderBatch &) {}
 
-    void NullRenderBackend::Draw(std::uint32_t, std::uint32_t) {
-    }
+    void NullRenderBackend::Draw(std::uint32_t, std::uint32_t) {}
 
     std::string_view NullRenderBackend::LastError() const { return {}; }
 } // namespace CoreEngine

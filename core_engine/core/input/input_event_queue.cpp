@@ -17,19 +17,11 @@ namespace CoreEngine {
         return true;
     }
 
-    std::span<const InputEvent> InputEventQueue::Events() const noexcept {
-        return {events_.data(), size_};
-    }
+    std::span<const InputEvent> InputEventQueue::Events() const noexcept { return {events_.data(), size_}; }
 
-    bool InputEventQueue::Empty() const noexcept {
-        return size_ == 0;
-    }
+    bool InputEventQueue::Empty() const noexcept { return size_ == 0; }
 
-    std::size_t InputEventQueue::Size() const noexcept {
-        return size_;
-    }
+    std::size_t InputEventQueue::Size() const noexcept { return size_; }
 
-    std::size_t InputEventQueue::DroppedEvents() const noexcept {
-        return dropped_events_;
-    }
+    std::size_t InputEventQueue::DroppedEvents() const noexcept { return dropped_events_; }
 } // namespace CoreEngine

@@ -45,8 +45,7 @@
 namespace CoreEngine {
     bool IsRenderBackendAvailable(RenderBackendType backend_type) {
         switch (backend_type) {
-            case RenderBackendType::None:
-                return true;
+            case RenderBackendType::None: return true;
 
             case RenderBackendType::DiligentD3D11:
                 return CORE_ENGINE_ENABLE_DILIGENT && PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D11;
@@ -55,7 +54,8 @@ namespace CoreEngine {
                 return CORE_ENGINE_ENABLE_DILIGENT && PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D12;
 
             case RenderBackendType::DiligentVulkan:
-                return CORE_ENGINE_ENABLE_DILIGENT && CORE_ENGINE_HAS_DILIGENT_VULKAN && (PLATFORM_WIN32 || PLATFORM_MACOS);
+                return CORE_ENGINE_ENABLE_DILIGENT && CORE_ENGINE_HAS_DILIGENT_VULKAN &&
+                       (PLATFORM_WIN32 || PLATFORM_MACOS);
         }
 
         return false;
@@ -71,8 +71,7 @@ namespace CoreEngine {
 
     std::unique_ptr<IRenderBackend> CreateRenderBackend(RenderBackendType backend_type) {
         switch (backend_type) {
-            case RenderBackendType::None:
-                return std::make_unique<NullRenderBackend>();
+            case RenderBackendType::None: return std::make_unique<NullRenderBackend>();
 
             case RenderBackendType::DiligentD3D11:
 #if CORE_ENGINE_ENABLE_DILIGENT && PLATFORM_WIN32 && CORE_ENGINE_HAS_DILIGENT_D3D11

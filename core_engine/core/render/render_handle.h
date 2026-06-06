@@ -30,4 +30,4 @@ namespace CoreEngine {
     using FrameBufferHandle = GeneratedHandle<FrameBufferHandleTag>;
     using RenderPassHandle = GeneratedHandle<RenderPassHandleTag>;
     using ModelHandle = GeneratedHandle<ModelHandleTag>;
-}
+} // namespace CoreEngine

@@ -1,9 +1,7 @@
 #include "core/time/frame_clock.h"
 
 namespace CoreEngine {
-    FrameClock::FrameClock() {
-        Reset();
-    }
+    FrameClock::FrameClock() { Reset(); }
 
     void FrameClock::Reset() noexcept {
         const Clock::time_point now = Clock::now();
@@ -31,7 +29,5 @@ namespace CoreEngine {
         return total.count();
     }
 
-    std::uint64_t FrameClock::FrameIndex() const noexcept {
-        return frame_index_;
-    }
+    std::uint64_t FrameClock::FrameIndex() const noexcept { return frame_index_; }
 } // namespace CoreEngine

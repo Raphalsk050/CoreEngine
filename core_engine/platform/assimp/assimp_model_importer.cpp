@@ -37,40 +37,19 @@
 
 namespace CoreEngine {
     namespace {
-        using AiImportFileFn = const aiScene *(*)(const char *, unsigned int);
+        using AiImportFileFn = const aiScene *(*) (const char *, unsigned int);
         using AiReleaseImportFn = void (*)(const aiScene *);
-        using AiGetErrorStringFn = const char *(*)();
-        using AiGetMaterialStringFn = aiReturn (*)(
-            const aiMaterial *,
-            const char *,
-            unsigned int,
-            unsigned int,
-            aiString *);
-        using AiGetMaterialColorFn = aiReturn (*)(
-            const aiMaterial *,
-            const char *,
-            unsigned int,
-            unsigned int,
-            aiColor4D *);
-        using AiGetMaterialFloatArrayFn = aiReturn (*)(
-            const aiMaterial *,
-            const char *,
-            unsigned int,
-            unsigned int,
-            ai_real *,
-            unsigned int *);
+        using AiGetErrorStringFn = const char *(*) ();
+        using AiGetMaterialStringFn = aiReturn (*)(const aiMaterial *, const char *, unsigned int, unsigned int,
+                                                   aiString *);
+        using AiGetMaterialColorFn = aiReturn (*)(const aiMaterial *, const char *, unsigned int, unsigned int,
+                                                  aiColor4D *);
+        using AiGetMaterialFloatArrayFn = aiReturn (*)(const aiMaterial *, const char *, unsigned int, unsigned int,
+                                                       ai_real *, unsigned int *);
         using AiGetMaterialTextureCountFn = unsigned int (*)(const aiMaterial *, aiTextureType);
-        using AiGetMaterialTextureFn = aiReturn (*)(
-            const aiMaterial *,
-            aiTextureType,
-            unsigned int,
-            aiString *,
-            aiTextureMapping *,
-            unsigned int *,
-            ai_real *,
-            aiTextureOp *,
-            aiTextureMapMode *,
-            unsigned int *);
+        using AiGetMaterialTextureFn = aiReturn (*)(const aiMaterial *, aiTextureType, unsigned int, aiString *,
+                                                    aiTextureMapping *, unsigned int *, ai_real *, aiTextureOp *,
+                                                    aiTextureMapMode *, unsigned int *);
 
         struct AssimpRuntime {
             SDL_SharedObject *library = nullptr;
@@ -93,9 +72,9 @@ namespace CoreEngine {
 
             [[nodiscard]] bool IsLoaded() const {
                 return library != nullptr && import_file != nullptr && release_import != nullptr &&
-                       get_error_string != nullptr && get_material_string != nullptr &&
-                       get_material_color != nullptr && get_material_float_array != nullptr &&
-                       get_material_texture_count != nullptr && get_material_texture != nullptr;
+                       get_error_string != nullptr && get_material_string != nullptr && get_material_color != nullptr &&
+                       get_material_float_array != nullptr && get_material_texture_count != nullptr &&
+                       get_material_texture != nullptr;
             }
 
             [[nodiscard]] bool EnsureLoaded() {
@@ -104,8 +83,7 @@ namespace CoreEngine {
                 }
 
                 const std::string base_path_library = BuildBasePathLibraryName();
-                if (!LoadLibrary(base_path_library.c_str()) &&
-                    !LoadLibrary(CORE_ENGINE_ASSIMP_RUNTIME_LIBRARY_NAME) &&
+                if (!LoadLibrary(base_path_library.c_str()) && !LoadLibrary(CORE_ENGINE_ASSIMP_RUNTIME_LIBRARY_NAME) &&
                     !LoadLibrary(CORE_ENGINE_ASSIMP_RUNTIME_LIBRARY_PATH)) {
                     return false;
                 }
@@ -120,8 +98,8 @@ namespace CoreEngine {
 
                 library = SDL_LoadObject(library_path);
                 if (library == nullptr) {
-                    error_message = "Failed to load Assimp runtime '" + std::string(library_path) + "': " +
-                                    SDL_GetError();
+                    error_message =
+                            "Failed to load Assimp runtime '" + std::string(library_path) + "': " + SDL_GetError();
                     return false;
                 }
 
@@ -217,12 +195,10 @@ namespace CoreEngine {
             return "Mesh_" + std::to_string(index);
         }
 
-        [[nodiscard]] std::string MaterialName(const AssimpRuntime &runtime,
-                                               const aiMaterial &material,
+        [[nodiscard]] std::string MaterialName(const AssimpRuntime &runtime, const aiMaterial &material,
                                                std::uint32_t index) {
             aiString name{};
-            if (runtime.get_material_string(&material, AI_MATKEY_NAME, &name) == AI_SUCCESS &&
-                name.length > 0) {
+            if (runtime.get_material_string(&material, AI_MATKEY_NAME, &name) == AI_SUCCESS && name.length > 0) {
                 return name.C_Str();
             }
 
@@ -258,9 +234,7 @@ namespace CoreEngine {
             return target;
         }
 
-        [[nodiscard]] Math::Vec3 ReadPosition(const aiVector3D &value) {
-            return {value.x, value.y, value.z};
-        }
+        [[nodiscard]] Math::Vec3 ReadPosition(const aiVector3D &value) { return {value.x, value.y, value.z}; }
 
         [[nodiscard]] Math::Vec3 ReadNormal(const aiMesh &mesh, std::uint32_t vertex_index) {
             if (mesh.mNormals == nullptr) {
@@ -289,21 +263,14 @@ namespace CoreEngine {
             return {uv.x, uv.y};
         }
 
-        [[nodiscard]] bool TryReadMaterialColor(const AssimpRuntime &runtime,
-                                                const aiMaterial &material,
-                                                const char *key,
-                                                unsigned int type,
-                                                unsigned int index,
+        [[nodiscard]] bool TryReadMaterialColor(const AssimpRuntime &runtime, const aiMaterial &material,
+                                                const char *key, unsigned int type, unsigned int index,
                                                 aiColor4D &out_color) {
             return runtime.get_material_color(&material, key, type, index, &out_color) == AI_SUCCESS;
         }
 
-        [[nodiscard]] float ReadMaterialFloat(const AssimpRuntime &runtime,
-                                              const aiMaterial &material,
-                                              const char *key,
-                                              unsigned int type,
-                                              unsigned int index,
-                                              float fallback) {
+        [[nodiscard]] float ReadMaterialFloat(const AssimpRuntime &runtime, const aiMaterial &material, const char *key,
+                                              unsigned int type, unsigned int index, float fallback) {
             ai_real value = static_cast<ai_real>(fallback);
             unsigned int value_count = 1u;
             if (runtime.get_material_float_array(&material, key, type, index, &value, &value_count) == AI_SUCCESS &&
@@ -314,11 +281,9 @@ namespace CoreEngine {
             return fallback;
         }
 
-        [[nodiscard]] ModelTextureAsset BuildEmbeddedTextureAsset(const aiScene &scene,
-                                                                  const std::string &model_path,
+        [[nodiscard]] ModelTextureAsset BuildEmbeddedTextureAsset(const aiScene &scene, const std::string &model_path,
                                                                   const std::string &raw_path,
-                                                                  ModelTextureSemantic semantic,
-                                                                  bool srgb) {
+                                                                  ModelTextureSemantic semantic, bool srgb) {
             if (raw_path.size() <= 1u || raw_path.front() != '*') {
                 return {};
             }
@@ -332,17 +297,16 @@ namespace CoreEngine {
             }
 
             const aiTexture *texture = scene.mTextures[static_cast<unsigned int>(texture_index)];
-            if (texture == nullptr || texture->pcData == nullptr || texture->mWidth == 0u ||
-                texture->mHeight != 0u) {
+            if (texture == nullptr || texture->pcData == nullptr || texture->mWidth == 0u || texture->mHeight != 0u) {
                 return {};
             }
 
             const auto *bytes = reinterpret_cast<const unsigned char *>(texture->pcData);
             ModelTextureAsset asset{
-                .semantic = semantic,
-                .path = model_path + "#embedded_" + std::to_string(texture_index),
-                .data = {},
-                .srgb = srgb,
+                    .semantic = semantic,
+                    .path = model_path + "#embedded_" + std::to_string(texture_index),
+                    .data = {},
+                    .srgb = srgb,
             };
             asset.data.assign(bytes, bytes + texture->mWidth);
             return asset;
@@ -350,8 +314,7 @@ namespace CoreEngine {
 
         [[nodiscard]] ModelTextureAsset BuildFileTextureAsset(const std::string &model_path,
                                                               const std::string &raw_path,
-                                                              ModelTextureSemantic semantic,
-                                                              bool srgb) {
+                                                              ModelTextureSemantic semantic, bool srgb) {
             std::filesystem::path path{raw_path};
             if (!path.is_absolute()) {
                 const std::filesystem::path base_path = std::filesystem::path{model_path}.parent_path();
@@ -359,17 +322,15 @@ namespace CoreEngine {
             }
 
             return ModelTextureAsset{
-                .semantic = semantic,
-                .path = path.lexically_normal().generic_string(),
-                .data = {},
-                .srgb = srgb,
+                    .semantic = semantic,
+                    .path = path.lexically_normal().generic_string(),
+                    .data = {},
+                    .srgb = srgb,
             };
         }
 
-        [[nodiscard]] ModelTextureAsset BuildTextureAsset(const aiScene &scene,
-                                                          const std::string &model_path,
-                                                          const aiString &texture_path,
-                                                          ModelTextureSemantic semantic,
+        [[nodiscard]] ModelTextureAsset BuildTextureAsset(const aiScene &scene, const std::string &model_path,
+                                                          const aiString &texture_path, ModelTextureSemantic semantic,
                                                           bool srgb) {
             if (texture_path.length == 0) {
                 return {};
@@ -387,23 +348,14 @@ namespace CoreEngine {
             return BuildFileTextureAsset(model_path, raw_path, semantic, srgb);
         }
 
-        [[nodiscard]] bool HasTextureSemantic(const ModelMaterialAsset &material,
-                                              ModelTextureSemantic semantic) {
-            return std::any_of(
-                material.textures.begin(),
-                material.textures.end(),
-                [semantic](const ModelTextureAsset &texture) {
-                    return texture.semantic == semantic;
-                });
+        [[nodiscard]] bool HasTextureSemantic(const ModelMaterialAsset &material, ModelTextureSemantic semantic) {
+            return std::any_of(material.textures.begin(), material.textures.end(),
+                               [semantic](const ModelTextureAsset &texture) { return texture.semantic == semantic; });
         }
 
-        void AppendMaterialTextureIfPresent(const AssimpRuntime &runtime,
-                                            const aiScene &scene,
-                                            const aiMaterial &source,
-                                            const std::string &model_path,
-                                            ModelTextureSemantic semantic,
-                                            aiTextureType assimp_type,
-                                            bool srgb,
+        void AppendMaterialTextureIfPresent(const AssimpRuntime &runtime, const aiScene &scene,
+                                            const aiMaterial &source, const std::string &model_path,
+                                            ModelTextureSemantic semantic, aiTextureType assimp_type, bool srgb,
                                             ModelMaterialAsset &target) {
             if (HasTextureSemantic(target, semantic) ||
                 runtime.get_material_texture_count(&source, assimp_type) == 0u) {
@@ -411,17 +363,8 @@ namespace CoreEngine {
             }
 
             aiString texture_path{};
-            if (runtime.get_material_texture(
-                    &source,
-                    assimp_type,
-                    0u,
-                    &texture_path,
-                    nullptr,
-                    nullptr,
-                    nullptr,
-                    nullptr,
-                    nullptr,
-                    nullptr) != AI_SUCCESS) {
+            if (runtime.get_material_texture(&source, assimp_type, 0u, &texture_path, nullptr, nullptr, nullptr,
+                                             nullptr, nullptr, nullptr) != AI_SUCCESS) {
                 return;
             }
 
@@ -433,10 +376,8 @@ namespace CoreEngine {
             target.textures.push_back(std::move(texture));
         }
 
-        [[nodiscard]] ModelMaterialAsset ConvertMaterial(const AssimpRuntime &runtime,
-                                                         const aiScene &scene,
-                                                         const aiMaterial &source,
-                                                         std::uint32_t material_index,
+        [[nodiscard]] ModelMaterialAsset ConvertMaterial(const AssimpRuntime &runtime, const aiScene &scene,
+                                                         const aiMaterial &source, std::uint32_t material_index,
                                                          const std::string &model_path) {
             ModelMaterialAsset target;
             target.name = MaterialName(runtime, source, material_index);
@@ -451,32 +392,24 @@ namespace CoreEngine {
             target.metallic = ReadMaterialFloat(runtime, source, AI_MATKEY_METALLIC_FACTOR, target.metallic);
             target.roughness = ReadMaterialFloat(runtime, source, AI_MATKEY_ROUGHNESS_FACTOR, target.roughness);
 
-            AppendMaterialTextureIfPresent(
-                runtime, scene, source, model_path, ModelTextureSemantic::BaseColor, aiTextureType_BASE_COLOR, true,
-                target);
-            AppendMaterialTextureIfPresent(
-                runtime, scene, source, model_path, ModelTextureSemantic::BaseColor, aiTextureType_DIFFUSE, true,
-                target);
-            AppendMaterialTextureIfPresent(
-                runtime, scene, source, model_path, ModelTextureSemantic::Normal, aiTextureType_NORMALS, false, target);
-            AppendMaterialTextureIfPresent(
-                runtime, scene, source, model_path, ModelTextureSemantic::Metallic, aiTextureType_METALNESS, false,
-                target);
-            AppendMaterialTextureIfPresent(
-                runtime, scene, source, model_path, ModelTextureSemantic::Roughness, aiTextureType_DIFFUSE_ROUGHNESS,
-                false, target);
-            AppendMaterialTextureIfPresent(
-                runtime, scene, source, model_path, ModelTextureSemantic::MetallicRoughness,
-                aiTextureType_GLTF_METALLIC_ROUGHNESS, false, target);
-            AppendMaterialTextureIfPresent(
-                runtime, scene, source, model_path, ModelTextureSemantic::Emissive, aiTextureType_EMISSIVE, true,
-                target);
-            AppendMaterialTextureIfPresent(
-                runtime, scene, source, model_path, ModelTextureSemantic::Occlusion, aiTextureType_AMBIENT_OCCLUSION,
-                false, target);
-            AppendMaterialTextureIfPresent(
-                runtime, scene, source, model_path, ModelTextureSemantic::Occlusion, aiTextureType_LIGHTMAP, false,
-                target);
+            AppendMaterialTextureIfPresent(runtime, scene, source, model_path, ModelTextureSemantic::BaseColor,
+                                           aiTextureType_BASE_COLOR, true, target);
+            AppendMaterialTextureIfPresent(runtime, scene, source, model_path, ModelTextureSemantic::BaseColor,
+                                           aiTextureType_DIFFUSE, true, target);
+            AppendMaterialTextureIfPresent(runtime, scene, source, model_path, ModelTextureSemantic::Normal,
+                                           aiTextureType_NORMALS, false, target);
+            AppendMaterialTextureIfPresent(runtime, scene, source, model_path, ModelTextureSemantic::Metallic,
+                                           aiTextureType_METALNESS, false, target);
+            AppendMaterialTextureIfPresent(runtime, scene, source, model_path, ModelTextureSemantic::Roughness,
+                                           aiTextureType_DIFFUSE_ROUGHNESS, false, target);
+            AppendMaterialTextureIfPresent(runtime, scene, source, model_path, ModelTextureSemantic::MetallicRoughness,
+                                           aiTextureType_GLTF_METALLIC_ROUGHNESS, false, target);
+            AppendMaterialTextureIfPresent(runtime, scene, source, model_path, ModelTextureSemantic::Emissive,
+                                           aiTextureType_EMISSIVE, true, target);
+            AppendMaterialTextureIfPresent(runtime, scene, source, model_path, ModelTextureSemantic::Occlusion,
+                                           aiTextureType_AMBIENT_OCCLUSION, false, target);
+            AppendMaterialTextureIfPresent(runtime, scene, source, model_path, ModelTextureSemantic::Occlusion,
+                                           aiTextureType_LIGHTMAP, false, target);
 
             return target;
         }
@@ -487,19 +420,16 @@ namespace CoreEngine {
             }
 
             asset.materials.push_back(ModelMaterialAsset{
-                .name = "DefaultMaterial",
-                .base_color = {1.f, 1.f, 1.f, 1.f},
-                .metallic = 0.f,
-                .roughness = 1.f,
-                .textures = {},
+                    .name = "DefaultMaterial",
+                    .base_color = {1.f, 1.f, 1.f, 1.f},
+                    .metallic = 0.f,
+                    .roughness = 1.f,
+                    .textures = {},
             });
         }
 
-        [[nodiscard]] bool ConvertMesh(const aiMesh &source,
-                                       std::uint32_t mesh_index,
-                                       std::uint32_t material_count,
-                                       ModelMeshAsset &target,
-                                       std::string &error_message) {
+        [[nodiscard]] bool ConvertMesh(const aiMesh &source, std::uint32_t mesh_index, std::uint32_t material_count,
+                                       ModelMeshAsset &target, std::string &error_message) {
             if (!source.HasPositions() || !source.HasFaces()) {
                 error_message = "Assimp mesh has no positions or faces";
                 return false;
@@ -538,11 +468,8 @@ namespace CoreEngine {
             return target.IsValid();
         }
 
-        [[nodiscard]] bool ConvertNodeHierarchy(const aiNode &source,
-                                                std::uint32_t parent_index,
-                                                std::size_t mesh_count,
-                                                ModelAsset &asset,
-                                                std::string &error_message) {
+        [[nodiscard]] bool ConvertNodeHierarchy(const aiNode &source, std::uint32_t parent_index,
+                                                std::size_t mesh_count, ModelAsset &asset, std::string &error_message) {
             if (asset.nodes.size() >= static_cast<std::size_t>(kInvalidModelNodeIndex)) {
                 error_message = "Model node hierarchy exceeds the 32-bit node index limit";
                 return false;
@@ -582,10 +509,8 @@ namespace CoreEngine {
             return true;
         }
 
-        [[nodiscard]] bool ReserveMergedMesh(const std::vector<const ModelMeshAsset *> &sources,
-                                             ModelMeshAsset &target,
-                                             const std::string &path,
-                                             std::string &error_message) {
+        [[nodiscard]] bool ReserveMergedMesh(const std::vector<const ModelMeshAsset *> &sources, ModelMeshAsset &target,
+                                             const std::string &path, std::string &error_message) {
             const auto max_index = static_cast<std::uint64_t>(std::numeric_limits<std::uint32_t>::max());
             const auto max_container_size = static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max());
             std::uint64_t vertex_count = 0;
@@ -615,8 +540,7 @@ namespace CoreEngine {
             return true;
         }
 
-        [[nodiscard]] bool AppendMeshToMergedMesh(const ModelMeshAsset &source,
-                                                  ModelMeshAsset &target,
+        [[nodiscard]] bool AppendMeshToMergedMesh(const ModelMeshAsset &source, ModelMeshAsset &target,
                                                   std::string &error_message) {
             if (!source.IsValid()) {
                 error_message = "Cannot merge an invalid model mesh";
@@ -649,12 +573,9 @@ namespace CoreEngine {
             return true;
         }
 
-        [[nodiscard]] bool BuildMergedMesh(const std::vector<const ModelMeshAsset *> &sources,
-                                           std::string name,
-                                           std::uint32_t material_index,
-                                           const std::string &path,
-                                           ModelMeshAsset &merged,
-                                           std::string &error_message) {
+        [[nodiscard]] bool BuildMergedMesh(const std::vector<const ModelMeshAsset *> &sources, std::string name,
+                                           std::uint32_t material_index, const std::string &path,
+                                           ModelMeshAsset &merged, std::string &error_message) {
             merged.name = std::move(name);
             merged.material_index = material_index;
             if (!ReserveMergedMesh(sources, merged, path, error_message)) {
@@ -679,9 +600,7 @@ namespace CoreEngine {
             return "MergedMaterial_" + std::to_string(material_index);
         }
 
-        [[nodiscard]] bool MergeAllSubmeshes(ModelAsset &asset,
-                                             const std::string &path,
-                                             std::string &error_message) {
+        [[nodiscard]] bool MergeAllSubmeshes(ModelAsset &asset, const std::string &path, std::string &error_message) {
             std::vector<const ModelMeshAsset *> sources;
             sources.reserve(asset.meshes.size());
             for (const ModelMeshAsset &mesh: asset.meshes) {
@@ -699,8 +618,7 @@ namespace CoreEngine {
             return asset.IsValid();
         }
 
-        [[nodiscard]] bool MergeSubmeshesByMaterial(ModelAsset &asset,
-                                                    const std::string &path,
+        [[nodiscard]] bool MergeSubmeshesByMaterial(ModelAsset &asset, const std::string &path,
                                                     std::string &error_message) {
             std::vector<std::uint32_t> material_order;
             material_order.reserve(asset.meshes.size());
@@ -723,13 +641,8 @@ namespace CoreEngine {
                 }
 
                 ModelMeshAsset merged;
-                if (!BuildMergedMesh(
-                        sources,
-                        MergedMaterialMeshName(asset, material_index),
-                        material_index,
-                        path,
-                        merged,
-                        error_message)) {
+                if (!BuildMergedMesh(sources, MergedMaterialMeshName(asset, material_index), material_index, path,
+                                     merged, error_message)) {
                     return false;
                 }
 
@@ -740,9 +653,7 @@ namespace CoreEngine {
             return asset.IsValid();
         }
 
-        [[nodiscard]] bool MergeSubmeshes(ModelAsset &asset,
-                                          ModelMergeMode merge_mode,
-                                          const std::string &path,
+        [[nodiscard]] bool MergeSubmeshes(ModelAsset &asset, ModelMergeMode merge_mode, const std::string &path,
                                           std::string &error_message) {
             if (merge_mode == ModelMergeMode::None || asset.meshes.size() <= 1u) {
                 return asset.IsValid();
@@ -761,18 +672,16 @@ namespace CoreEngine {
 
             for (std::uint32_t mesh_index = 0; mesh_index < asset.meshes.size(); ++mesh_index) {
                 asset.nodes.push_back(ModelNodeAsset{
-                    .name = asset.meshes[mesh_index].name.empty()
-                                ? "MeshNode_" + std::to_string(mesh_index)
-                                : asset.meshes[mesh_index].name,
-                    .parent_index = kInvalidModelNodeIndex,
-                    .local_transform = Math::Identity(),
-                    .mesh_indices = {mesh_index},
+                        .name = asset.meshes[mesh_index].name.empty() ? "MeshNode_" + std::to_string(mesh_index)
+                                                                      : asset.meshes[mesh_index].name,
+                        .parent_index = kInvalidModelNodeIndex,
+                        .local_transform = Math::Identity(),
+                        .mesh_indices = {mesh_index},
                 });
             }
         }
 
-        [[nodiscard]] ModelLoadResult ConvertScene(const AssimpRuntime &runtime,
-                                                   const aiScene &scene,
+        [[nodiscard]] ModelLoadResult ConvertScene(const AssimpRuntime &runtime, const aiScene &scene,
                                                    const ModelLoadDesc &desc) {
             ModelLoadResult result;
 
@@ -791,7 +700,7 @@ namespace CoreEngine {
                     }
 
                     result.asset.materials.push_back(
-                        ConvertMaterial(runtime, scene, *material, material_index, desc.path));
+                            ConvertMaterial(runtime, scene, *material, material_index, desc.path));
                 }
             }
             EnsureDefaultMaterial(result.asset);
@@ -818,12 +727,8 @@ namespace CoreEngine {
             const ModelMergeMode merge_mode = ResolveMergeMode(desc);
             if (merge_mode == ModelMergeMode::None) {
                 if (scene.mRootNode != nullptr &&
-                    !ConvertNodeHierarchy(
-                        *scene.mRootNode,
-                        kInvalidModelNodeIndex,
-                        result.asset.meshes.size(),
-                        result.asset,
-                        result.error_message)) {
+                    !ConvertNodeHierarchy(*scene.mRootNode, kInvalidModelNodeIndex, result.asset.meshes.size(),
+                                          result.asset, result.error_message)) {
                     result.error_message += ": " + desc.path;
                     return result;
                 }
@@ -850,9 +755,7 @@ namespace CoreEngine {
         AssimpRuntime runtime;
     };
 
-    AssimpModelImporter::AssimpModelImporter()
-        : impl_(std::make_unique<Impl>()) {
-    }
+    AssimpModelImporter::AssimpModelImporter() : impl_(std::make_unique<Impl>()) {}
 
     AssimpModelImporter::~AssimpModelImporter() = default;
 
@@ -871,8 +774,8 @@ namespace CoreEngine {
 
         const unsigned int flags = BuildPostProcessFlags(desc);
         SceneGuard scene{
-            .scene = impl_->runtime.import_file(desc.path.c_str(), flags),
-            .release = impl_->runtime.release_import,
+                .scene = impl_->runtime.import_file(desc.path.c_str(), flags),
+                .release = impl_->runtime.release_import,
         };
 
         if (scene.scene == nullptr) {

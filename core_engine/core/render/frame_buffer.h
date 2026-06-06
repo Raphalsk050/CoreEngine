@@ -24,10 +24,7 @@ namespace CoreEngine {
         FrameBufferFormat depth_format = FrameBufferFormat::SwapChainDepth;
 
         [[nodiscard]] bool IsValid() const {
-            return width > 0 &&
-                   height > 0 &&
-                   (has_color || has_depth) &&
-                   (!sample_color || has_color) &&
+            return width > 0 && height > 0 && (has_color || has_depth) && (!sample_color || has_color) &&
                    (!sample_depth || has_depth);
         }
     };
@@ -35,16 +32,12 @@ namespace CoreEngine {
     struct FrameBufferColorView {
         NativeFrameBufferColorView *native_handle = nullptr;
 
-        [[nodiscard]] bool IsValid() const {
-            return native_handle != nullptr;
-        }
+        [[nodiscard]] bool IsValid() const { return native_handle != nullptr; }
     };
 
     struct FrameBufferDepthView {
         NativeFrameBufferDepthView *native_handle = nullptr;
 
-        [[nodiscard]] bool IsValid() const {
-            return native_handle != nullptr;
-        }
+        [[nodiscard]] bool IsValid() const { return native_handle != nullptr; }
     };
 } // namespace CoreEngine

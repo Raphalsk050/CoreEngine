@@ -12,7 +12,7 @@ namespace CoreEngine {
         // Explicit swapchain dimensions.
         // Must match the window size at initialization time.
         // Passing 0 lets the backend infer from the HWND (may fail on some drivers).
-        int width  = 0;
+        int width = 0;
         int height = 0;
     };
 } // namespace CoreEngine

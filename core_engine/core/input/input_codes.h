@@ -100,13 +100,5 @@ namespace CoreEngine {
         Count
     };
 
-    enum class MouseButton : uint8_t {
-        Unknown = 0,
-        Left,
-        Middle,
-        Right,
-        X1,
-        X2,
-        Count
-    };
+    enum class MouseButton : uint8_t { Unknown = 0, Left, Middle, Right, X1, X2, Count };
 } // namespace CoreEngine

@@ -23,13 +23,9 @@ namespace CoreEngine {
         return {inline_instances_.data(), inline_instance_count_};
     }
 
-    std::span<const RenderInstance> RenderBatch::OverflowInstances() const {
-        return overflow_instances_;
-    }
+    std::span<const RenderInstance> RenderBatch::OverflowInstances() const { return overflow_instances_; }
 
-    std::size_t RenderBatch::InstanceCount() const {
-        return inline_instance_count_ + overflow_instances_.size();
-    }
+    std::size_t RenderBatch::InstanceCount() const { return inline_instance_count_ + overflow_instances_.size(); }
 
     std::size_t BatchAccumulator::BatchKeyHash::operator()(const BatchKey &key) const noexcept {
         const auto material_id = static_cast<std::uint64_t>(key.material.id);
@@ -84,4 +80,4 @@ namespace CoreEngine {
         active_batch_count_ = 0;
         batch_indices_.clear();
     }
-}
+} // namespace CoreEngine

@@ -48,21 +48,13 @@ namespace CoreEngine {
 
         void DumpConnectionStatus() const;
 
-        [[nodiscard]] const NetworkEventQueue &Events() const noexcept {
-            return current_events_;
-        }
+        [[nodiscard]] const NetworkEventQueue &Events() const noexcept { return current_events_; }
 
-        [[nodiscard]] NetworkSession &Session() noexcept {
-            return session_;
-        }
+        [[nodiscard]] NetworkSession &Session() noexcept { return session_; }
 
-        [[nodiscard]] const NetworkSession &Session() const noexcept {
-            return session_;
-        }
+        [[nodiscard]] const NetworkSession &Session() const noexcept { return session_; }
 
-        [[nodiscard]] const NetworkStats &Stats() const noexcept {
-            return stats_;
-        }
+        [[nodiscard]] const NetworkStats &Stats() const noexcept { return stats_; }
 
         [[nodiscard]] std::span<const SteamLobbyMember> LobbyMembers() const noexcept;
 
@@ -85,9 +77,7 @@ namespace CoreEngine {
 
         bool SendAuthRejected(PeerId peer, NetworkDisconnectReason reason);
 
-        [[nodiscard]] std::uint32_t NextSequence() noexcept {
-            return next_sequence_++;
-        }
+        [[nodiscard]] std::uint32_t NextSequence() noexcept { return next_sequence_++; }
 
         SteamOnlineSystem &online_system_;
         std::unique_ptr<SteamLobbyService> lobby_service_;

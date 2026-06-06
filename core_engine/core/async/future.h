@@ -33,9 +33,7 @@ namespace CoreEngine {
 
         template<typename Callable,
                  typename = std::enable_if_t<!std::is_same_v<std::decay_t<Callable>, FutureCallback>>>
-        explicit FutureCallback(Callable &&callable)
-            : callable_(MakeCallableModel(std::forward<Callable>(callable))) {
-        }
+        explicit FutureCallback(Callable &&callable) : callable_(MakeCallableModel(std::forward<Callable>(callable))) {}
 
         FutureCallback(FutureCallback &&) noexcept = default;
         FutureCallback &operator=(FutureCallback &&) noexcept = default;
@@ -53,9 +51,7 @@ namespace CoreEngine {
             }
         }
 
-        [[nodiscard]] explicit operator bool() const {
-            return callable_ != nullptr;
-        }
+        [[nodiscard]] explicit operator bool() const { return callable_ != nullptr; }
 
     private:
         struct CallableConcept {
@@ -65,9 +61,7 @@ namespace CoreEngine {
 
         template<typename Callable>
         struct CallableModel final : CallableConcept {
-            explicit CallableModel(Callable &&callable)
-                : callable_(std::move(callable)) {
-            }
+            explicit CallableModel(Callable &&callable) : callable_(std::move(callable)) {}
 
             ReturnType Invoke(Args... args) override {
                 if constexpr (std::is_void_v<ReturnType>) {
@@ -115,27 +109,17 @@ namespace CoreEngine {
             return result;
         }
 
-        [[nodiscard]] FutureState State() const {
-            return state_;
-        }
+        [[nodiscard]] FutureState State() const { return state_; }
 
         [[nodiscard]] bool IsReady() const {
-            return state_ == FutureState::Ready ||
-                   state_ == FutureState::Failed ||
-                   state_ == FutureState::Cancelled;
+            return state_ == FutureState::Ready || state_ == FutureState::Failed || state_ == FutureState::Cancelled;
         }
 
-        [[nodiscard]] bool IsSuccess() const {
-            return state_ == FutureState::Ready && value_.has_value();
-        }
+        [[nodiscard]] bool IsSuccess() const { return state_ == FutureState::Ready && value_.has_value(); }
 
-        [[nodiscard]] bool IsFailed() const {
-            return state_ == FutureState::Failed;
-        }
+        [[nodiscard]] bool IsFailed() const { return state_ == FutureState::Failed; }
 
-        [[nodiscard]] bool IsCancelled() const {
-            return state_ == FutureState::Cancelled;
-        }
+        [[nodiscard]] bool IsCancelled() const { return state_ == FutureState::Cancelled; }
 
         [[nodiscard]] const T &Value() const {
             CENGINE_ASSERT(IsSuccess(), "Cannot read the value from an unsuccessful future result");
@@ -147,9 +131,7 @@ namespace CoreEngine {
             return std::move(*value_);
         }
 
-        [[nodiscard]] const std::string &ErrorMessage() const {
-            return error_message_;
-        }
+        [[nodiscard]] const std::string &ErrorMessage() const { return error_message_; }
 
     private:
         FutureState state_ = FutureState::Invalid;
@@ -174,17 +156,11 @@ namespace CoreEngine {
     template<typename T>
     class FuturePromise {
     public:
-        FuturePromise()
-            : state_(std::make_shared<FutureSharedState<T>>()) {
-        }
+        FuturePromise() : state_(std::make_shared<FutureSharedState<T>>()) {}
 
-        [[nodiscard]] Future<T> GetFuture() const {
-            return Future<T>{state_};
-        }
+        [[nodiscard]] Future<T> GetFuture() const { return Future<T>{state_}; }
 
-        bool Resolve(T value) const {
-            return Complete(FutureResult<T>::Success(std::move(value)));
-        }
+        bool Resolve(T value) const { return Complete(FutureResult<T>::Success(std::move(value))); }
 
         bool Reject(std::string error_message) const {
             return Complete(FutureResult<T>::Failure(std::move(error_message)));
@@ -261,9 +237,7 @@ namespace CoreEngine {
             return future;
         }
 
-        [[nodiscard]] bool IsValid() const {
-            return state_ != nullptr;
-        }
+        [[nodiscard]] bool IsValid() const { return state_ != nullptr; }
 
         [[nodiscard]] FutureState State() const {
             if (state_ == nullptr) {
@@ -280,9 +254,7 @@ namespace CoreEngine {
 
         [[nodiscard]] bool IsReady() const {
             const FutureState state = State();
-            return state == FutureState::Ready ||
-                   state == FutureState::Failed ||
-                   state == FutureState::Cancelled;
+            return state == FutureState::Ready || state == FutureState::Failed || state == FutureState::Cancelled;
         }
 
         void Wait() const {
@@ -291,9 +263,7 @@ namespace CoreEngine {
             }
 
             std::unique_lock lock{state_->mutex};
-            state_->ready_event.wait(lock, [this] {
-                return state_->result.has_value();
-            });
+            state_->ready_event.wait(lock, [this] { return state_->result.has_value(); });
         }
 
         template<typename Callable>
@@ -327,9 +297,7 @@ namespace CoreEngine {
     private:
         friend class FuturePromise<T>;
 
-        explicit Future(std::shared_ptr<FutureSharedState<T>> state)
-            : state_(std::move(state)) {
-        }
+        explicit Future(std::shared_ptr<FutureSharedState<T>> state) : state_(std::move(state)) {}
 
         std::shared_ptr<FutureSharedState<T>> state_;
     };

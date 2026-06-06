@@ -5,15 +5,10 @@
 namespace CoreEngine {
     class DefaultSceneRenderPass final : public IRenderPass {
     public:
-        explicit DefaultSceneRenderPass(RenderSystem &owner) : owner_(owner) {
-        }
+        explicit DefaultSceneRenderPass(RenderSystem &owner) : owner_(owner) {}
 
         [[nodiscard]] RenderPassDesc Describe() const override {
-            return {
-                .name = "Default",
-                .stage = RenderPassStage::ForwardOpaque,
-                .order = 0
-            };
+            return {.name = "Default", .stage = RenderPassStage::ForwardOpaque, .order = 0};
         }
 
         void Execute(RenderPassContext &context) override;
@@ -21,5 +16,4 @@ namespace CoreEngine {
     private:
         RenderSystem &owner_;
     };
-} // CoreEngine
-
+} // namespace CoreEngine

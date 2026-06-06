@@ -55,4 +55,4 @@ namespace CoreEngine {
             Fatal(category, std::format(fmt, std::forward<Args>(args)...));
         }
     };
-}
+} // namespace CoreEngine

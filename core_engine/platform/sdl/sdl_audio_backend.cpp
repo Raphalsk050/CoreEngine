@@ -8,17 +8,14 @@ namespace CoreEngine {
     namespace {
         SDL_AudioFormat ToSdlAudioFormat(AudioSampleFormat format) {
             switch (format) {
-                case AudioSampleFormat::Float32:
-                    return SDL_AUDIO_F32;
+                case AudioSampleFormat::Float32: return SDL_AUDIO_F32;
             }
 
             return SDL_AUDIO_F32;
         }
-    }
+    } // namespace
 
-    SdlAudioBackend::SdlAudioBackend(SdlContext &context)
-        : context_(context) {
-    }
+    SdlAudioBackend::SdlAudioBackend(SdlContext &context) : context_(context) {}
 
     bool SdlAudioBackend::Initialize(const AudioDesc &desc) {
         if (!context_.InitializeAudio()) {
@@ -27,17 +24,12 @@ namespace CoreEngine {
         }
 
         const SDL_AudioSpec spec{
-            .format = ToSdlAudioFormat(desc.sample_format),
-            .channels = desc.channel_count,
-            .freq = desc.sample_rate,
+                .format = ToSdlAudioFormat(desc.sample_format),
+                .channels = desc.channel_count,
+                .freq = desc.sample_rate,
         };
 
-        stream_ = SDL_OpenAudioDeviceStream(
-            SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
-            &spec,
-            nullptr,
-            nullptr
-        );
+        stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
 
         if (stream_ == nullptr) {
             last_error_ = SDL_GetError();
@@ -110,7 +102,5 @@ namespace CoreEngine {
         return SDL_GetAudioStreamQueued(stream_);
     }
 
-    std::string_view SdlAudioBackend::LastError() const {
-        return last_error_;
-    }
+    std::string_view SdlAudioBackend::LastError() const { return last_error_; }
 } // namespace CoreEngine

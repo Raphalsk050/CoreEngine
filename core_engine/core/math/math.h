@@ -15,10 +15,8 @@
 
 namespace CoreEngine::Math {
     template<typename T>
-    concept Scalar = std::same_as<T, float>
-                     || std::same_as<T, double>
-                     || std::same_as<T, int>
-                     || std::same_as<T, unsigned int>;
+    concept Scalar =
+            std::same_as<T, float> || std::same_as<T, double> || std::same_as<T, int> || std::same_as<T, unsigned int>;
 
     template<Scalar T>
     struct Vec2T {
@@ -28,10 +26,8 @@ namespace CoreEngine::Math {
         T y{};
 
         constexpr Vec2T() noexcept = default;
-        constexpr explicit Vec2T(T value) noexcept : x(value), y(value) {
-        }
-        constexpr Vec2T(T x_value, T y_value) noexcept : x(x_value), y(y_value) {
-        }
+        constexpr explicit Vec2T(T value) noexcept : x(value), y(value) {}
+        constexpr Vec2T(T x_value, T y_value) noexcept : x(x_value), y(y_value) {}
     };
 
     template<Scalar T>
@@ -43,11 +39,8 @@ namespace CoreEngine::Math {
         T z{};
 
         constexpr Vec3T() noexcept = default;
-        constexpr explicit Vec3T(T value) noexcept : x(value), y(value), z(value) {
-        }
-        constexpr Vec3T(T x_value, T y_value, T z_value) noexcept
-            : x(x_value), y(y_value), z(z_value) {
-        }
+        constexpr explicit Vec3T(T value) noexcept : x(value), y(value), z(value) {}
+        constexpr Vec3T(T x_value, T y_value, T z_value) noexcept : x(x_value), y(y_value), z(z_value) {}
     };
 
     template<Scalar T>
@@ -60,11 +53,9 @@ namespace CoreEngine::Math {
         T w{};
 
         constexpr Vec4T() noexcept = default;
-        constexpr explicit Vec4T(T value) noexcept : x(value), y(value), z(value), w(value) {
-        }
-        constexpr Vec4T(T x_value, T y_value, T z_value, T w_value) noexcept
-            : x(x_value), y(y_value), z(z_value), w(w_value) {
-        }
+        constexpr explicit Vec4T(T value) noexcept : x(value), y(value), z(value), w(value) {}
+        constexpr Vec4T(T x_value, T y_value, T z_value, T w_value) noexcept :
+            x(x_value), y(y_value), z(z_value), w(w_value) {}
     };
 
     using Vec2 = Vec2T<float>;
@@ -86,8 +77,7 @@ namespace CoreEngine::Math {
 
         float data[4]{};
 
-        constexpr Mat2() noexcept : Mat2(1.f) {
-        }
+        constexpr Mat2() noexcept : Mat2(1.f) {}
         constexpr explicit Mat2(float diagonal) noexcept {
             data[0] = diagonal;
             data[3] = diagonal;
@@ -99,8 +89,7 @@ namespace CoreEngine::Math {
 
         float data[9]{};
 
-        constexpr Mat3() noexcept : Mat3(1.f) {
-        }
+        constexpr Mat3() noexcept : Mat3(1.f) {}
         constexpr explicit Mat3(float diagonal) noexcept {
             data[0] = diagonal;
             data[4] = diagonal;
@@ -132,8 +121,7 @@ namespace CoreEngine::Math {
 
         float data[16]{};
 
-        constexpr Mat4() noexcept : Mat4(1.f) {
-        }
+        constexpr Mat4() noexcept : Mat4(1.f) {}
         constexpr explicit Mat4(float diagonal) noexcept {
             data[0] = diagonal;
             data[5] = diagonal;
@@ -170,39 +158,32 @@ namespace CoreEngine::Math {
         float z{};
 
         constexpr Quat() noexcept = default;
-        constexpr Quat(float w_value, float x_value, float y_value, float z_value) noexcept
-            : w(w_value), x(x_value), y(y_value), z(z_value) {
-        }
+        constexpr Quat(float w_value, float x_value, float y_value, float z_value) noexcept :
+            w(w_value), x(x_value), y(y_value), z(z_value) {}
     };
 
     template<typename T>
-    concept Vector = std::same_as<std::remove_cvref_t<T>, Vec2>
-                     || std::same_as<std::remove_cvref_t<T>, Vec3>
-                     || std::same_as<std::remove_cvref_t<T>, Vec4>
-                     || std::same_as<std::remove_cvref_t<T>, DVec2>
-                     || std::same_as<std::remove_cvref_t<T>, DVec3>
-                     || std::same_as<std::remove_cvref_t<T>, DVec4>
-                     || std::same_as<std::remove_cvref_t<T>, IVec2>
-                     || std::same_as<std::remove_cvref_t<T>, IVec3>
-                     || std::same_as<std::remove_cvref_t<T>, IVec4>
-                     || std::same_as<std::remove_cvref_t<T>, UVec2>
-                     || std::same_as<std::remove_cvref_t<T>, UVec3>
-                     || std::same_as<std::remove_cvref_t<T>, UVec4>;
+    concept Vector = std::same_as<std::remove_cvref_t<T>, Vec2> || std::same_as<std::remove_cvref_t<T>, Vec3> ||
+                     std::same_as<std::remove_cvref_t<T>, Vec4> || std::same_as<std::remove_cvref_t<T>, DVec2> ||
+                     std::same_as<std::remove_cvref_t<T>, DVec3> || std::same_as<std::remove_cvref_t<T>, DVec4> ||
+                     std::same_as<std::remove_cvref_t<T>, IVec2> || std::same_as<std::remove_cvref_t<T>, IVec3> ||
+                     std::same_as<std::remove_cvref_t<T>, IVec4> || std::same_as<std::remove_cvref_t<T>, UVec2> ||
+                     std::same_as<std::remove_cvref_t<T>, UVec3> || std::same_as<std::remove_cvref_t<T>, UVec4>;
 
     template<typename T>
     concept DotCompatible = Vector<T>;
 
     template<typename T>
-    concept CrossCompatible = std::same_as<std::remove_cvref_t<T>, Vec3>
-                              || std::same_as<std::remove_cvref_t<T>, DVec3>
-                              || std::same_as<std::remove_cvref_t<T>, IVec3>;
+    concept CrossCompatible =
+            std::same_as<std::remove_cvref_t<T>, Vec3> || std::same_as<std::remove_cvref_t<T>, DVec3> ||
+            std::same_as<std::remove_cvref_t<T>, IVec3>;
 
     template<typename T>
     concept AngleConvertible = Scalar<T> || Vector<T>;
 
-    inline constexpr float Pi      = 3.14159265358979323846f;
-    inline constexpr float TwoPi   = 6.28318530717958647692f;
-    inline constexpr float HalfPi  = 1.57079632679489661923f;
+    inline constexpr float Pi = 3.14159265358979323846f;
+    inline constexpr float TwoPi = 6.28318530717958647692f;
+    inline constexpr float HalfPi = 1.57079632679489661923f;
     inline constexpr float Epsilon = 1.192092896e-07f;
 
     template<Scalar T>
@@ -357,23 +338,35 @@ namespace CoreEngine::Math {
         Mat4 result{0.f};
         result.data[0] = a.data[0] * b.data[0] + a.data[4] * b.data[1] + a.data[8] * b.data[2] + a.data[12] * b.data[3];
         result.data[1] = a.data[1] * b.data[0] + a.data[5] * b.data[1] + a.data[9] * b.data[2] + a.data[13] * b.data[3];
-        result.data[2] = a.data[2] * b.data[0] + a.data[6] * b.data[1] + a.data[10] * b.data[2] + a.data[14] * b.data[3];
-        result.data[3] = a.data[3] * b.data[0] + a.data[7] * b.data[1] + a.data[11] * b.data[2] + a.data[15] * b.data[3];
+        result.data[2] =
+                a.data[2] * b.data[0] + a.data[6] * b.data[1] + a.data[10] * b.data[2] + a.data[14] * b.data[3];
+        result.data[3] =
+                a.data[3] * b.data[0] + a.data[7] * b.data[1] + a.data[11] * b.data[2] + a.data[15] * b.data[3];
 
         result.data[4] = a.data[0] * b.data[4] + a.data[4] * b.data[5] + a.data[8] * b.data[6] + a.data[12] * b.data[7];
         result.data[5] = a.data[1] * b.data[4] + a.data[5] * b.data[5] + a.data[9] * b.data[6] + a.data[13] * b.data[7];
-        result.data[6] = a.data[2] * b.data[4] + a.data[6] * b.data[5] + a.data[10] * b.data[6] + a.data[14] * b.data[7];
-        result.data[7] = a.data[3] * b.data[4] + a.data[7] * b.data[5] + a.data[11] * b.data[6] + a.data[15] * b.data[7];
+        result.data[6] =
+                a.data[2] * b.data[4] + a.data[6] * b.data[5] + a.data[10] * b.data[6] + a.data[14] * b.data[7];
+        result.data[7] =
+                a.data[3] * b.data[4] + a.data[7] * b.data[5] + a.data[11] * b.data[6] + a.data[15] * b.data[7];
 
-        result.data[8] = a.data[0] * b.data[8] + a.data[4] * b.data[9] + a.data[8] * b.data[10] + a.data[12] * b.data[11];
-        result.data[9] = a.data[1] * b.data[8] + a.data[5] * b.data[9] + a.data[9] * b.data[10] + a.data[13] * b.data[11];
-        result.data[10] = a.data[2] * b.data[8] + a.data[6] * b.data[9] + a.data[10] * b.data[10] + a.data[14] * b.data[11];
-        result.data[11] = a.data[3] * b.data[8] + a.data[7] * b.data[9] + a.data[11] * b.data[10] + a.data[15] * b.data[11];
+        result.data[8] =
+                a.data[0] * b.data[8] + a.data[4] * b.data[9] + a.data[8] * b.data[10] + a.data[12] * b.data[11];
+        result.data[9] =
+                a.data[1] * b.data[8] + a.data[5] * b.data[9] + a.data[9] * b.data[10] + a.data[13] * b.data[11];
+        result.data[10] =
+                a.data[2] * b.data[8] + a.data[6] * b.data[9] + a.data[10] * b.data[10] + a.data[14] * b.data[11];
+        result.data[11] =
+                a.data[3] * b.data[8] + a.data[7] * b.data[9] + a.data[11] * b.data[10] + a.data[15] * b.data[11];
 
-        result.data[12] = a.data[0] * b.data[12] + a.data[4] * b.data[13] + a.data[8] * b.data[14] + a.data[12] * b.data[15];
-        result.data[13] = a.data[1] * b.data[12] + a.data[5] * b.data[13] + a.data[9] * b.data[14] + a.data[13] * b.data[15];
-        result.data[14] = a.data[2] * b.data[12] + a.data[6] * b.data[13] + a.data[10] * b.data[14] + a.data[14] * b.data[15];
-        result.data[15] = a.data[3] * b.data[12] + a.data[7] * b.data[13] + a.data[11] * b.data[14] + a.data[15] * b.data[15];
+        result.data[12] =
+                a.data[0] * b.data[12] + a.data[4] * b.data[13] + a.data[8] * b.data[14] + a.data[12] * b.data[15];
+        result.data[13] =
+                a.data[1] * b.data[12] + a.data[5] * b.data[13] + a.data[9] * b.data[14] + a.data[13] * b.data[15];
+        result.data[14] =
+                a.data[2] * b.data[12] + a.data[6] * b.data[13] + a.data[10] * b.data[14] + a.data[14] * b.data[15];
+        result.data[15] =
+                a.data[3] * b.data[12] + a.data[7] * b.data[13] + a.data[11] * b.data[14] + a.data[15] * b.data[15];
         return result;
     }
 
@@ -391,9 +384,9 @@ namespace CoreEngine::Math {
     template<CrossCompatible T>
     [[nodiscard]] constexpr T Cross(const T &a, const T &b) noexcept {
         return {
-            a.y * b.z - a.z * b.y,
-            a.z * b.x - a.x * b.z,
-            a.x * b.y - a.y * b.x,
+                a.y * b.z - a.z * b.y,
+                a.z * b.x - a.x * b.z,
+                a.x * b.y - a.y * b.x,
         };
     }
 
@@ -454,10 +447,10 @@ namespace CoreEngine::Math {
 
         if (cos_theta > 0.9995f) {
             return Normalize(Quat{
-                a.w + (end.w - a.w) * t,
-                a.x + (end.x - a.x) * t,
-                a.y + (end.y - a.y) * t,
-                a.z + (end.z - a.z) * t,
+                    a.w + (end.w - a.w) * t,
+                    a.x + (end.x - a.x) * t,
+                    a.y + (end.y - a.y) * t,
+                    a.z + (end.z - a.z) * t,
             });
         }
 
@@ -467,10 +460,10 @@ namespace CoreEngine::Math {
         const float weight_b = std::sin(t * theta) / sin_theta;
 
         return {
-            a.w * weight_a + end.w * weight_b,
-            a.x * weight_a + end.x * weight_b,
-            a.y * weight_a + end.y * weight_b,
-            a.z * weight_a + end.z * weight_b,
+                a.w * weight_a + end.w * weight_b,
+                a.x * weight_a + end.x * weight_b,
+                a.y * weight_a + end.y * weight_b,
+                a.z * weight_a + end.z * weight_b,
         };
     }
 
@@ -503,9 +496,7 @@ namespace CoreEngine::Math {
         return value < static_cast<T>(0) ? -value : value;
     }
 
-    [[nodiscard]] constexpr Mat4 Identity() noexcept {
-        return Mat4(1.f);
-    }
+    [[nodiscard]] constexpr Mat4 Identity() noexcept { return Mat4(1.f); }
 
     [[nodiscard]] constexpr Mat4 Translate(const Mat4 &m, const Vec3 &offset) noexcept {
         Mat4 result = m;
@@ -577,120 +568,55 @@ namespace CoreEngine::Math {
         const float *a = m.data;
         Mat4 inv{0.f};
 
-        inv.data[0] = a[5] * a[10] * a[15] -
-                      a[5] * a[11] * a[14] -
-                      a[9] * a[6] * a[15] +
-                      a[9] * a[7] * a[14] +
-                      a[13] * a[6] * a[11] -
-                      a[13] * a[7] * a[10];
+        inv.data[0] = a[5] * a[10] * a[15] - a[5] * a[11] * a[14] - a[9] * a[6] * a[15] + a[9] * a[7] * a[14] +
+                      a[13] * a[6] * a[11] - a[13] * a[7] * a[10];
 
-        inv.data[4] = -a[4] * a[10] * a[15] +
-                      a[4] * a[11] * a[14] +
-                      a[8] * a[6] * a[15] -
-                      a[8] * a[7] * a[14] -
-                      a[12] * a[6] * a[11] +
-                      a[12] * a[7] * a[10];
+        inv.data[4] = -a[4] * a[10] * a[15] + a[4] * a[11] * a[14] + a[8] * a[6] * a[15] - a[8] * a[7] * a[14] -
+                      a[12] * a[6] * a[11] + a[12] * a[7] * a[10];
 
-        inv.data[8] = a[4] * a[9] * a[15] -
-                      a[4] * a[11] * a[13] -
-                      a[8] * a[5] * a[15] +
-                      a[8] * a[7] * a[13] +
-                      a[12] * a[5] * a[11] -
-                      a[12] * a[7] * a[9];
+        inv.data[8] = a[4] * a[9] * a[15] - a[4] * a[11] * a[13] - a[8] * a[5] * a[15] + a[8] * a[7] * a[13] +
+                      a[12] * a[5] * a[11] - a[12] * a[7] * a[9];
 
-        inv.data[12] = -a[4] * a[9] * a[14] +
-                       a[4] * a[10] * a[13] +
-                       a[8] * a[5] * a[14] -
-                       a[8] * a[6] * a[13] -
-                       a[12] * a[5] * a[10] +
-                       a[12] * a[6] * a[9];
+        inv.data[12] = -a[4] * a[9] * a[14] + a[4] * a[10] * a[13] + a[8] * a[5] * a[14] - a[8] * a[6] * a[13] -
+                       a[12] * a[5] * a[10] + a[12] * a[6] * a[9];
 
-        inv.data[1] = -a[1] * a[10] * a[15] +
-                      a[1] * a[11] * a[14] +
-                      a[9] * a[2] * a[15] -
-                      a[9] * a[3] * a[14] -
-                      a[13] * a[2] * a[11] +
-                      a[13] * a[3] * a[10];
+        inv.data[1] = -a[1] * a[10] * a[15] + a[1] * a[11] * a[14] + a[9] * a[2] * a[15] - a[9] * a[3] * a[14] -
+                      a[13] * a[2] * a[11] + a[13] * a[3] * a[10];
 
-        inv.data[5] = a[0] * a[10] * a[15] -
-                      a[0] * a[11] * a[14] -
-                      a[8] * a[2] * a[15] +
-                      a[8] * a[3] * a[14] +
-                      a[12] * a[2] * a[11] -
-                      a[12] * a[3] * a[10];
+        inv.data[5] = a[0] * a[10] * a[15] - a[0] * a[11] * a[14] - a[8] * a[2] * a[15] + a[8] * a[3] * a[14] +
+                      a[12] * a[2] * a[11] - a[12] * a[3] * a[10];
 
-        inv.data[9] = -a[0] * a[9] * a[15] +
-                      a[0] * a[11] * a[13] +
-                      a[8] * a[1] * a[15] -
-                      a[8] * a[3] * a[13] -
-                      a[12] * a[1] * a[11] +
-                      a[12] * a[3] * a[9];
+        inv.data[9] = -a[0] * a[9] * a[15] + a[0] * a[11] * a[13] + a[8] * a[1] * a[15] - a[8] * a[3] * a[13] -
+                      a[12] * a[1] * a[11] + a[12] * a[3] * a[9];
 
-        inv.data[13] = a[0] * a[9] * a[14] -
-                       a[0] * a[10] * a[13] -
-                       a[8] * a[1] * a[14] +
-                       a[8] * a[2] * a[13] +
-                       a[12] * a[1] * a[10] -
-                       a[12] * a[2] * a[9];
+        inv.data[13] = a[0] * a[9] * a[14] - a[0] * a[10] * a[13] - a[8] * a[1] * a[14] + a[8] * a[2] * a[13] +
+                       a[12] * a[1] * a[10] - a[12] * a[2] * a[9];
 
-        inv.data[2] = a[1] * a[6] * a[15] -
-                      a[1] * a[7] * a[14] -
-                      a[5] * a[2] * a[15] +
-                      a[5] * a[3] * a[14] +
-                      a[13] * a[2] * a[7] -
-                      a[13] * a[3] * a[6];
+        inv.data[2] = a[1] * a[6] * a[15] - a[1] * a[7] * a[14] - a[5] * a[2] * a[15] + a[5] * a[3] * a[14] +
+                      a[13] * a[2] * a[7] - a[13] * a[3] * a[6];
 
-        inv.data[6] = -a[0] * a[6] * a[15] +
-                      a[0] * a[7] * a[14] +
-                      a[4] * a[2] * a[15] -
-                      a[4] * a[3] * a[14] -
-                      a[12] * a[2] * a[7] +
-                      a[12] * a[3] * a[6];
+        inv.data[6] = -a[0] * a[6] * a[15] + a[0] * a[7] * a[14] + a[4] * a[2] * a[15] - a[4] * a[3] * a[14] -
+                      a[12] * a[2] * a[7] + a[12] * a[3] * a[6];
 
-        inv.data[10] = a[0] * a[5] * a[15] -
-                       a[0] * a[7] * a[13] -
-                       a[4] * a[1] * a[15] +
-                       a[4] * a[3] * a[13] +
-                       a[12] * a[1] * a[7] -
-                       a[12] * a[3] * a[5];
+        inv.data[10] = a[0] * a[5] * a[15] - a[0] * a[7] * a[13] - a[4] * a[1] * a[15] + a[4] * a[3] * a[13] +
+                       a[12] * a[1] * a[7] - a[12] * a[3] * a[5];
 
-        inv.data[14] = -a[0] * a[5] * a[14] +
-                       a[0] * a[6] * a[13] +
-                       a[4] * a[1] * a[14] -
-                       a[4] * a[2] * a[13] -
-                       a[12] * a[1] * a[6] +
-                       a[12] * a[2] * a[5];
+        inv.data[14] = -a[0] * a[5] * a[14] + a[0] * a[6] * a[13] + a[4] * a[1] * a[14] - a[4] * a[2] * a[13] -
+                       a[12] * a[1] * a[6] + a[12] * a[2] * a[5];
 
-        inv.data[3] = -a[1] * a[6] * a[11] +
-                      a[1] * a[7] * a[10] +
-                      a[5] * a[2] * a[11] -
-                      a[5] * a[3] * a[10] -
-                      a[9] * a[2] * a[7] +
-                      a[9] * a[3] * a[6];
+        inv.data[3] = -a[1] * a[6] * a[11] + a[1] * a[7] * a[10] + a[5] * a[2] * a[11] - a[5] * a[3] * a[10] -
+                      a[9] * a[2] * a[7] + a[9] * a[3] * a[6];
 
-        inv.data[7] = a[0] * a[6] * a[11] -
-                      a[0] * a[7] * a[10] -
-                      a[4] * a[2] * a[11] +
-                      a[4] * a[3] * a[10] +
-                      a[8] * a[2] * a[7] -
-                      a[8] * a[3] * a[6];
+        inv.data[7] = a[0] * a[6] * a[11] - a[0] * a[7] * a[10] - a[4] * a[2] * a[11] + a[4] * a[3] * a[10] +
+                      a[8] * a[2] * a[7] - a[8] * a[3] * a[6];
 
-        inv.data[11] = -a[0] * a[5] * a[11] +
-                       a[0] * a[7] * a[9] +
-                       a[4] * a[1] * a[11] -
-                       a[4] * a[3] * a[9] -
-                       a[8] * a[1] * a[7] +
-                       a[8] * a[3] * a[5];
+        inv.data[11] = -a[0] * a[5] * a[11] + a[0] * a[7] * a[9] + a[4] * a[1] * a[11] - a[4] * a[3] * a[9] -
+                       a[8] * a[1] * a[7] + a[8] * a[3] * a[5];
 
-        inv.data[15] = a[0] * a[5] * a[10] -
-                       a[0] * a[6] * a[9] -
-                       a[4] * a[1] * a[10] +
-                       a[4] * a[2] * a[9] +
-                       a[8] * a[1] * a[6] -
-                       a[8] * a[2] * a[5];
+        inv.data[15] = a[0] * a[5] * a[10] - a[0] * a[6] * a[9] - a[4] * a[1] * a[10] + a[4] * a[2] * a[9] +
+                       a[8] * a[1] * a[6] - a[8] * a[2] * a[5];
 
-        const float determinant = a[0] * inv.data[0] + a[1] * inv.data[4] +
-                                  a[2] * inv.data[8] + a[3] * inv.data[12];
+        const float determinant = a[0] * inv.data[0] + a[1] * inv.data[4] + a[2] * inv.data[8] + a[3] * inv.data[12];
         if (std::abs(determinant) <= Epsilon) {
             return Mat4{1.f};
         }
@@ -739,10 +665,10 @@ namespace CoreEngine::Math {
 
     [[nodiscard]] constexpr Quat operator*(const Quat &lhs, const Quat &rhs) noexcept {
         return {
-            lhs.w * rhs.w - lhs.x * rhs.x - lhs.y * rhs.y - lhs.z * rhs.z,
-            lhs.w * rhs.x + lhs.x * rhs.w + lhs.y * rhs.z - lhs.z * rhs.y,
-            lhs.w * rhs.y - lhs.x * rhs.z + lhs.y * rhs.w + lhs.z * rhs.x,
-            lhs.w * rhs.z + lhs.x * rhs.y - lhs.y * rhs.x + lhs.z * rhs.w,
+                lhs.w * rhs.w - lhs.x * rhs.x - lhs.y * rhs.y - lhs.z * rhs.z,
+                lhs.w * rhs.x + lhs.x * rhs.w + lhs.y * rhs.z - lhs.z * rhs.y,
+                lhs.w * rhs.y - lhs.x * rhs.z + lhs.y * rhs.w + lhs.z * rhs.x,
+                lhs.w * rhs.z + lhs.x * rhs.y - lhs.y * rhs.x + lhs.z * rhs.w,
         };
     }
 
@@ -755,21 +681,15 @@ namespace CoreEngine::Math {
         return {q.w * scalar, q.x * scalar, q.y * scalar, q.z * scalar};
     }
 
-    [[nodiscard]] constexpr Quat operator*(float scalar, const Quat &q) noexcept {
-        return q * scalar;
-    }
+    [[nodiscard]] constexpr Quat operator*(float scalar, const Quat &q) noexcept { return q * scalar; }
 
-    [[nodiscard]] constexpr Quat operator-(const Quat &q) noexcept {
-        return {-q.w, -q.x, -q.y, -q.z};
-    }
+    [[nodiscard]] constexpr Quat operator-(const Quat &q) noexcept { return {-q.w, -q.x, -q.y, -q.z}; }
 
     [[nodiscard]] constexpr float Dot(const Quat &a, const Quat &b) noexcept {
         return a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z;
     }
 
-    [[nodiscard]] constexpr Quat Conjugate(const Quat &q) noexcept {
-        return {q.w, -q.x, -q.y, -q.z};
-    }
+    [[nodiscard]] constexpr Quat Conjugate(const Quat &q) noexcept { return {q.w, -q.x, -q.y, -q.z}; }
 
     [[nodiscard]] inline Quat Inverse(const Quat &q) noexcept {
         const float length_squared = q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z;
@@ -784,9 +704,7 @@ namespace CoreEngine::Math {
         return a.w == b.w && a.x == b.x && a.y == b.y && a.z == b.z;
     }
 
-    [[nodiscard]] constexpr bool operator!=(const Quat &a, const Quat &b) noexcept {
-        return !(a == b);
-    }
+    [[nodiscard]] constexpr bool operator!=(const Quat &a, const Quat &b) noexcept { return !(a == b); }
 
     [[nodiscard]] constexpr Mat3 QuatToMat3(const Quat &q) noexcept {
         const float xx = q.x * q.x;
@@ -876,8 +794,7 @@ namespace CoreEngine::Math {
         return v + ((uv * q.w) + uuv) * 2.f;
     }
 
-    [[nodiscard]] inline Mat4 PerspectiveLH(float fov_y_radians, float aspect,
-                                            float near_z, float far_z) noexcept {
+    [[nodiscard]] inline Mat4 PerspectiveLH(float fov_y_radians, float aspect, float near_z, float far_z) noexcept {
         constexpr float kProjectionEpsilon = 1.0e-5f;
         const float safe_fovy = std::clamp(fov_y_radians, Deg2Rad(1.0f), Deg2Rad(179.0f));
         const float safe_aspect = std::fabs(aspect) > kProjectionEpsilon ? aspect : 1.0f;
@@ -893,9 +810,8 @@ namespace CoreEngine::Math {
         return result;
     }
 
-    [[nodiscard]] inline Mat4 OrthoLH(float left, float right,
-                                      float bottom, float top,
-                                      float near_z, float far_z) noexcept {
+    [[nodiscard]] inline Mat4 OrthoLH(float left, float right, float bottom, float top, float near_z,
+                                      float far_z) noexcept {
         constexpr float kProjectionEpsilon = 1.0e-5f;
         const float width = std::fabs(right - left) > kProjectionEpsilon ? right - left : 1.0f;
         const float height = std::fabs(top - bottom) > kProjectionEpsilon ? top - bottom : 1.0f;
@@ -913,8 +829,7 @@ namespace CoreEngine::Math {
         return result;
     }
 
-    [[nodiscard]] inline Mat4 LookAtLH(const Vec3 &eye, const Vec3 &target,
-                                       const Vec3 &up) noexcept {
+    [[nodiscard]] inline Mat4 LookAtLH(const Vec3 &eye, const Vec3 &target, const Vec3 &up) noexcept {
         constexpr float kDirectionEpsilon = 1.0e-8f;
         Vec3 forward = target - eye;
         if (LengthSquared(forward) <= kDirectionEpsilon) {
@@ -963,8 +878,7 @@ namespace CoreEngine::Math {
     [[nodiscard]] constexpr float *ValuePtr(Mat4 &m) noexcept { return m.data; }
     [[nodiscard]] constexpr float *ValuePtr(Quat &q) noexcept { return &q.w; }
 
-    [[nodiscard]] constexpr Mat4 ComposeTransform(const Vec3 &position,
-                                                  const Quat &rotation,
+    [[nodiscard]] constexpr Mat4 ComposeTransform(const Vec3 &position, const Quat &rotation,
                                                   const Vec3 &scale) noexcept {
         const float xx = rotation.x * rotation.x;
         const float yy = rotation.y * rotation.y;

@@ -37,13 +37,9 @@ namespace CoreEngine {
 
         void Shutdown();
 
-        [[nodiscard]] bool IsInitialized() const noexcept {
-            return initialized_;
-        }
+        [[nodiscard]] bool IsInitialized() const noexcept { return initialized_; }
 
-        [[nodiscard]] const OnlineStatus &Status() const noexcept override {
-            return status_;
-        }
+        [[nodiscard]] const OnlineStatus &Status() const noexcept override { return status_; }
 
         [[nodiscard]] std::span<const OnlineLobbyMember> LobbyMembers() const noexcept override {
             return lobby_members_;

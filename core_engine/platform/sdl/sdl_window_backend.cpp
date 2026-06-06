@@ -1,9 +1,9 @@
 #include "sdl_window_backend.h"
 
-#include "core/window/window_event.h"
-#include "core/window/window_event_queue.h"
 #include "SDL3/SDL_mouse.h"
 #include "SDL3/SDL_properties.h"
+#include "core/window/window_event.h"
+#include "core/window/window_event_queue.h"
 
 #if defined(__APPLE__)
 #include "SDL3/SDL_metal.h"
@@ -27,12 +27,10 @@ namespace CoreEngine {
                 return;
             }
 
-            SDL_WarpMouseInWindow(
-                window,
-                static_cast<float>(extent.width) * 0.5f,
-                static_cast<float>(extent.height) * 0.5f);
+            SDL_WarpMouseInWindow(window, static_cast<float>(extent.width) * 0.5f,
+                                  static_cast<float>(extent.height) * 0.5f);
         }
-    }
+    } // namespace
 
     bool SdlWindowBackend::SetWindowCursorMode(WindowCursorMode cursor_mode) {
         if (window_ == nullptr) {
@@ -71,9 +69,7 @@ namespace CoreEngine {
                 success = relative_disabled && grab_released && rect_cleared && visible;
                 break;
             }
-            default:
-                last_error_ = "Unsupported window cursor mode";
-                return false;
+            default: last_error_ = "Unsupported window cursor mode"; return false;
         }
 
         if (success) {
@@ -86,8 +82,7 @@ namespace CoreEngine {
         return false;
     }
 
-    SdlWindowBackend::SdlWindowBackend(SdlContext &context) : context_(context) {
-    }
+    SdlWindowBackend::SdlWindowBackend(SdlContext &context) : context_(context) {}
 
     bool SdlWindowBackend::Initialize(const WindowDesc &desc) {
         if (!context_.InitializeVideo()) {
@@ -171,25 +166,25 @@ namespace CoreEngine {
 
             case SDL_EVENT_WINDOW_RESIZED:
                 state_.logical_size = WindowExtent{
-                    .width = event.window.data1,
-                    .height = event.window.data2,
+                        .width = event.window.data1,
+                        .height = event.window.data2,
                 };
                 out_event = WindowEvent{
-                    .type = WindowEventType::Resized,
-                    .width = event.window.data1,
-                    .height = event.window.data2,
+                        .type = WindowEventType::Resized,
+                        .width = event.window.data1,
+                        .height = event.window.data2,
                 };
                 return true;
 
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                 state_.pixel_size = WindowExtent{
-                    .width = event.window.data1,
-                    .height = event.window.data2,
+                        .width = event.window.data1,
+                        .height = event.window.data2,
                 };
                 out_event = WindowEvent{
-                    .type = WindowEventType::PixelSizeChanged,
-                    .width = event.window.data1,
-                    .height = event.window.data2,
+                        .type = WindowEventType::PixelSizeChanged,
+                        .width = event.window.data1,
+                        .height = event.window.data2,
                 };
                 return true;
 
@@ -213,8 +208,7 @@ namespace CoreEngine {
                 out_event = WindowEvent{.type = WindowEventType::Restored};
                 return true;
 
-            default:
-                return false;
+            default: return false;
         }
     }
 
@@ -236,9 +230,7 @@ namespace CoreEngine {
         should_close_ = false;
     }
 
-    bool SdlWindowBackend::ShouldClose() const {
-        return should_close_;
-    }
+    bool SdlWindowBackend::ShouldClose() const { return should_close_; }
 
     NativeWindowHandle SdlWindowBackend::GetNativeHandle() const {
         NativeWindowHandle native_handle;
@@ -263,11 +255,7 @@ namespace CoreEngine {
         return native_handle;
     }
 
-    const WindowState &SdlWindowBackend::GetState() const {
-        return state_;
-    }
+    const WindowState &SdlWindowBackend::GetState() const { return state_; }
 
-    std::string_view SdlWindowBackend::LastError() const {
-        return last_error_;
-    }
+    std::string_view SdlWindowBackend::LastError() const { return last_error_; }
 } // namespace CoreEngine

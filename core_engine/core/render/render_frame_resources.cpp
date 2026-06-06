@@ -4,14 +4,12 @@
 
 namespace CoreEngine {
     namespace {
-        constexpr std::size_t ToIndex(GlobalTextureSlot slot) {
-            return static_cast<std::size_t>(slot);
-        }
+        constexpr std::size_t ToIndex(GlobalTextureSlot slot) { return static_cast<std::size_t>(slot); }
 
         constexpr bool IsValidSlot(GlobalTextureSlot slot) {
             return ToIndex(slot) < static_cast<std::size_t>(GlobalTextureSlot::Count);
         }
-    }
+    } // namespace
 
     void RenderFrameResources::SetColorTexture(GlobalTextureSlot slot, FrameBufferColorView view) {
         if (!IsValidSlot(slot)) {
@@ -46,4 +44,4 @@ namespace CoreEngine {
         color_textures_.fill({});
         depth_textures_.fill({});
     }
-} // CoreEngine
+} // namespace CoreEngine

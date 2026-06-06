@@ -29,8 +29,6 @@ namespace CoreEngine {
         std::uint32_t last_received_sequence = 0;
         std::uint32_t last_sent_sequence = 0;
 
-        [[nodiscard]] bool IsValid() const noexcept {
-            return id != kInvalidPeerId;
-        }
+        [[nodiscard]] bool IsValid() const noexcept { return id != kInvalidPeerId; }
     };
 } // namespace CoreEngine

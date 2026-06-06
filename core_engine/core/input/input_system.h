@@ -19,14 +19,10 @@ namespace CoreEngine {
     struct InputActionId {
         uint16_t value = 0;
 
-        [[nodiscard]] constexpr bool IsValid() const noexcept {
-            return value != 0;
-        }
+        [[nodiscard]] constexpr bool IsValid() const noexcept { return value != 0; }
     };
 
-    [[nodiscard]] constexpr InputActionId MakeInputActionId(uint16_t value) noexcept {
-        return InputActionId{value};
-    }
+    [[nodiscard]] constexpr InputActionId MakeInputActionId(uint16_t value) noexcept { return InputActionId{value}; }
 
     class InputSystem final {
     public:
@@ -64,10 +60,7 @@ namespace CoreEngine {
 
         [[nodiscard]] bool BindButton(InputActionId action, MouseButton button) noexcept;
 
-        [[nodiscard]] bool BindAxis2D(InputActionId action,
-                                      Key negative_x,
-                                      Key positive_x,
-                                      Key negative_y,
+        [[nodiscard]] bool BindAxis2D(InputActionId action, Key negative_x, Key positive_x, Key negative_y,
                                       Key positive_y) noexcept;
 
         [[nodiscard]] bool IsActionDown(InputActionId action) const noexcept;
@@ -79,11 +72,7 @@ namespace CoreEngine {
         [[nodiscard]] InputVector2 GetAxis2D(InputActionId action) const noexcept;
 
     private:
-        enum class BindingKind : uint8_t {
-            None,
-            Key,
-            MouseButton
-        };
+        enum class BindingKind : uint8_t { None, Key, MouseButton };
 
         struct ButtonBinding {
             BindingKind kind = BindingKind::None;

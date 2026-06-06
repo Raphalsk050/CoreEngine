@@ -36,9 +36,7 @@ namespace CoreEngine {
     };
 
     [[nodiscard]] constexpr bool IsGameplayMessage(NetMessageType type) noexcept {
-        return type == NetMessageType::InputCommand ||
-               type == NetMessageType::WorldSnapshot ||
-               type == NetMessageType::EntitySpawn ||
-               type == NetMessageType::EntityDespawn;
+        return type == NetMessageType::InputCommand || type == NetMessageType::WorldSnapshot ||
+               type == NetMessageType::EntitySpawn || type == NetMessageType::EntityDespawn;
     }
 } // namespace CoreEngine

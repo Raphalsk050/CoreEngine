@@ -4,17 +4,17 @@
 
 #include "application.h"
 #include "core/application/frame_context.h"
+#include "core/audio/audio_system.h"
+#include "core/ecs/world.h"
 #include "core/ecs/world_access.h"
+#include "core/input/input_system.h"
 #include "core/log/logger.h"
 #include "core/log/sink/console_sink.h"
-#include "core/ecs/world.h"
-#include "engine.h"
-#include "core/audio/audio_system.h"
-#include "core/input/input_system.h"
 #include "core/platform/i_platform_services.h"
 #include "core/render/render_system.h"
 #include "core/time/frame_clock.h"
 #include "core/window/window_system.h"
+#include "engine.h"
 
 namespace CoreEngine {
     class IGameApp;

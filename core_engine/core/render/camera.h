@@ -6,24 +6,13 @@
 namespace CoreEngine {
     class Camera {
     public:
-        Camera &LookAt(const Math::Vec3 &position,
-                       const Math::Vec3 &target,
-                       const Math::Vec3 &up = {0.f, 1.f, 0.f});
+        Camera &LookAt(const Math::Vec3 &position, const Math::Vec3 &target, const Math::Vec3 &up = {0.f, 1.f, 0.f});
 
-        Camera &Perspective(float fov_y_degrees,
-                            float width,
-                            float height,
-                            float near_z,
-                            float far_z);
+        Camera &Perspective(float fov_y_degrees, float width, float height, float near_z, float far_z);
 
-        Camera &Perspective(float fov_y_degrees,
-                            float aspect_ratio,
-                            float near_z,
-                            float far_z);
+        Camera &Perspective(float fov_y_degrees, float aspect_ratio, float near_z, float far_z);
 
-        Camera &Orthographic(float left, float right,
-                             float bottom, float top,
-                             float near_z, float far_z);
+        Camera &Orthographic(float left, float right, float bottom, float top, float near_z, float far_z);
 
         [[nodiscard]] const Math::Vec3 &Position() const { return position_; }
 
@@ -35,4 +24,4 @@ namespace CoreEngine {
         Math::Vec3 up_{0.f, 1.f, 0.f};
         Math::Mat4 projection_{1.f};
     };
-}
+} // namespace CoreEngine

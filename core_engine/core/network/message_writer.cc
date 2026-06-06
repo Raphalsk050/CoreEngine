@@ -7,26 +7,16 @@ namespace CoreEngine {
         constexpr std::size_t kPayloadSizeOffset = 20;
     }
 
-    MessageWriter::MessageWriter(std::size_t reserve_bytes) {
-        buffer_.reserve(reserve_bytes);
-    }
+    MessageWriter::MessageWriter(std::size_t reserve_bytes) { buffer_.reserve(reserve_bytes); }
 
-    void MessageWriter::Reset() {
-        buffer_.clear();
-    }
+    void MessageWriter::Reset() { buffer_.clear(); }
 
-    bool MessageWriter::Begin(NetMessageType message_type,
-                              std::uint32_t sequence,
-                              std::uint32_t ack,
+    bool MessageWriter::Begin(NetMessageType message_type, std::uint32_t sequence, std::uint32_t ack,
                               std::uint32_t tick) {
         Reset();
-        return WriteUInt32(kNetworkMagic) &&
-               WriteUInt16(kNetworkProtocolVersion) &&
-               WriteUInt16(static_cast<std::uint16_t>(message_type)) &&
-               WriteUInt32(sequence) &&
-               WriteUInt32(ack) &&
-               WriteUInt32(tick) &&
-               WriteUInt16(0);
+        return WriteUInt32(kNetworkMagic) && WriteUInt16(kNetworkProtocolVersion) &&
+               WriteUInt16(static_cast<std::uint16_t>(message_type)) && WriteUInt32(sequence) && WriteUInt32(ack) &&
+               WriteUInt32(tick) && WriteUInt16(0);
     }
 
     bool MessageWriter::Finalize() {
@@ -84,13 +74,9 @@ namespace CoreEngine {
         return true;
     }
 
-    bool MessageWriter::WriteFloat(float value) {
-        return WriteUInt32(std::bit_cast<std::uint32_t>(value));
-    }
+    bool MessageWriter::WriteFloat(float value) { return WriteUInt32(std::bit_cast<std::uint32_t>(value)); }
 
-    bool MessageWriter::WriteBool(bool value) {
-        return WriteUInt8(value ? 1u : 0u);
-    }
+    bool MessageWriter::WriteBool(bool value) { return WriteUInt8(value ? 1u : 0u); }
 
     bool MessageWriter::WriteBytes(std::span<const std::byte> bytes) {
         if (!CanWrite(bytes.size())) {

@@ -24,4 +24,4 @@ namespace CoreEngine {
 
         [[nodiscard]] virtual std::string_view LastError() const = 0;
     };
-}
+} // namespace CoreEngine

@@ -1,8 +1,8 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
-#include <string>
 #include <entt/entt.hpp>
+#include <string>
 
 #include "core/math/math.h"
 
@@ -16,7 +16,7 @@ namespace CoreEngine {
         Node(entt::entity handle, World *world);
 
         template<typename T, typename... Args>
-        T &AddComponent(Args &&... args);
+        T &AddComponent(Args &&...args);
 
         template<typename T>
         T &GetComponent();

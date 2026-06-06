@@ -1,6 +1,6 @@
 #include "core/application/runtime.h"
-#include "core/i_game_app.h"
 #include <memory>
+#include "core/i_game_app.h"
 
 #include "core/online/online_system.h"
 #include "core/online/steam/steam_config.h"
@@ -13,14 +13,10 @@
 namespace {
     const char *RenderBackendName(CoreEngine::RenderBackendType backend) {
         switch (backend) {
-            case CoreEngine::RenderBackendType::None:
-                return "None";
-            case CoreEngine::RenderBackendType::DiligentD3D11:
-                return "DiligentD3D11";
-            case CoreEngine::RenderBackendType::DiligentD3D12:
-                return "DiligentD3D12";
-            case CoreEngine::RenderBackendType::DiligentVulkan:
-                return "DiligentVulkan";
+            case CoreEngine::RenderBackendType::None:           return "None";
+            case CoreEngine::RenderBackendType::DiligentD3D11:  return "DiligentD3D11";
+            case CoreEngine::RenderBackendType::DiligentD3D12:  return "DiligentD3D12";
+            case CoreEngine::RenderBackendType::DiligentVulkan: return "DiligentVulkan";
         }
 
         return "Unknown";
@@ -35,7 +31,7 @@ namespace {
 
         return CoreEngine::WindowSurfaceType::Default;
     }
-}
+} // namespace
 
 namespace CoreEngine {
     int RunEngine(std::unique_ptr<IGameApp> app, const EngineConfig &config) {
@@ -47,17 +43,11 @@ namespace CoreEngine {
         return runtime.Run(*app);
     }
 
-    void Runtime::RequestShutdown() {
-        shutdown_requested_.store(true, std::memory_order_release);
-    }
+    void Runtime::RequestShutdown() { shutdown_requested_.store(true, std::memory_order_release); }
 
-    bool Runtime::IsShutdownRequested() const {
-        return shutdown_requested_.load(std::memory_order_acquire);
-    }
+    bool Runtime::IsShutdownRequested() const { return shutdown_requested_.load(std::memory_order_acquire); }
 
-    Runtime::Runtime(const EngineConfig &config)
-        : config_(config), platform_services_(CreatePlatformServices()) {
-    }
+    Runtime::Runtime(const EngineConfig &config) : config_(config), platform_services_(CreatePlatformServices()) {}
 
     Runtime::~Runtime() = default;
 
@@ -68,12 +58,12 @@ namespace CoreEngine {
         }
 
         EngineContext engineContext{
-            .world = *world_,
-            .audio_system = *audio_system_,
-            .input_system = *input_system_,
-            .online_system = *online_system_,
-            .window_system = *window_system_,
-            .render_system = *render_system_,
+                .world = *world_,
+                .audio_system = *audio_system_,
+                .input_system = *input_system_,
+                .online_system = *online_system_,
+                .window_system = *window_system_,
+                .render_system = *render_system_,
         };
 
         app.Init(engineContext);
@@ -83,15 +73,15 @@ namespace CoreEngine {
         while (!IsShutdownRequested()) {
             const float deltaTime = frame_clock_.TickSeconds();
             FrameContext frameContext{
-                EngineContext{
-                    .world = *world_,
-                    .audio_system = *audio_system_,
-                    .input_system = *input_system_,
-                    .online_system = *online_system_,
-                    .window_system = *window_system_,
-                    .render_system = *render_system_,
-                },
-                deltaTime,
+                    EngineContext{
+                            .world = *world_,
+                            .audio_system = *audio_system_,
+                            .input_system = *input_system_,
+                            .online_system = *online_system_,
+                            .window_system = *window_system_,
+                            .render_system = *render_system_,
+                    },
+                    deltaTime,
             };
 
             Tick(frameContext);
@@ -121,12 +111,10 @@ namespace CoreEngine {
         InitializeWorld();
         InitializeOnlineSystem();
 
-        resolved_render_backend_ = SelectAvailableRenderBackend(config_.renderBackend);
-        if (resolved_render_backend_ != config_.renderBackend) {
-            Log::Warn("Render",
-                      "Requested render backend '{}' is unavailable in this build; using '{}'.",
-                      RenderBackendName(config_.renderBackend),
-                      RenderBackendName(resolved_render_backend_));
+        resolved_render_backend_ = SelectAvailableRenderBackend(config_.render_backend);
+        if (resolved_render_backend_ != config_.render_backend) {
+            Log::Warn("Render", "Requested render backend '{}' is unavailable in this build; using '{}'.",
+                      RenderBackendName(config_.render_backend), RenderBackendName(resolved_render_backend_));
         }
 
         if (!InitializeWindowBackend()) {
@@ -170,11 +158,11 @@ namespace CoreEngine {
         }
 
         WindowDesc desc;
-        desc.width = config_.windowWidth;
-        desc.height = config_.windowHeight;
-        desc.title = config_.windowTitle;
+        desc.width = config_.window_width;
+        desc.height = config_.window_height;
+        desc.title = config_.window_title;
         desc.resizable = config_.resizable;
-        desc.highDpi = config_.highDPI;
+        desc.highDpi = config_.high_dpi;
         desc.decorated = config_.decorated;
         desc.fullscreen = config_.fullscreen;
         desc.surface_type = SelectWindowSurfaceType(resolved_render_backend_);
@@ -229,8 +217,8 @@ namespace CoreEngine {
     bool Runtime::InitializeRenderBackend() {
         std::unique_ptr<IRenderBackend> backend = CreateRenderBackend(resolved_render_backend_);
         if (backend == nullptr) {
-            Log::Error("Render",
-                       "Requested render backend is not available. Enable CORE_ENGINE_ENABLE_DILIGENT or choose RenderBackendType::None.");
+            Log::Error("Render", "Requested render backend is not available. Enable CORE_ENGINE_ENABLE_DILIGENT or "
+                                 "choose RenderBackendType::None.");
             backend = CreateRenderBackend(RenderBackendType::None);
         }
 
@@ -244,9 +232,9 @@ namespace CoreEngine {
         RenderDesc desc;
         desc.backend = resolved_render_backend_;
         desc.vsync = config_.vsync;
-        desc.enable_imgui = config_.enableImGui;
-        desc.width = config_.windowWidth;
-        desc.height = config_.windowHeight;
+        desc.enable_imgui = config_.enable_imgui;
+        desc.width = config_.window_width;
+        desc.height = config_.window_height;
 
         if (!render_system_->Initialize(desc, window_system_->GetNativeHandle())) {
             Log::Error("Render", render_system_->LastError());

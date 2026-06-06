@@ -40,17 +40,13 @@ namespace CoreEngine {
 
         void PollEvents(NetworkEventQueue &out_events);
 
-        [[nodiscard]] std::span<const std::byte> LocalTicket() const noexcept {
-            return local_ticket_;
-        }
+        [[nodiscard]] std::span<const std::byte> LocalTicket() const noexcept { return local_ticket_; }
 
     private:
         void QueueEvent(NetworkEvent event);
 
 #if CORE_ENGINE_ENABLE_STEAM
-        STEAM_CALLBACK(SteamAuthService,
-                       OnValidateAuthTicketResponse,
-                       ValidateAuthTicketResponse_t,
+        STEAM_CALLBACK(SteamAuthService, OnValidateAuthTicketResponse, ValidateAuthTicketResponse_t,
                        validate_auth_ticket_callback_);
 #endif
 
