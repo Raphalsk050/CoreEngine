@@ -19,7 +19,15 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 
-ROOT = Path(__file__).resolve().parent
+def find_project_root(start: Path) -> Path:
+    for candidate in (start, *start.parents):
+        if (candidate / "CMakeLists.txt").exists():
+            return candidate
+    return start
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = find_project_root(SCRIPT_DIR)
 DEFAULT_BUILD_DIR = ROOT / "build"
 MSVC_DEVELOPER_ENVIRONMENT_VARS = ("WindowsSdkDir", "WindowsSDKVersion", "VCToolsInstallDir", "INCLUDE", "LIB")
 STEAMWORKS_SDK_ENV_VARS = ("CORE_ENGINE_STEAMWORKS_SDK_DIR", "STEAMWORKS_SDK_DIR", "STEAM_SDK_DIR")
