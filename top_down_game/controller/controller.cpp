@@ -7,6 +7,8 @@
 
 namespace TopDownGame {
     Controller::Controller(const CoreEngine::EngineContext &context) : context_(context) {
+
+        // TODO(rafael): think this in a more dynamic way in the future to bind all the necessary inputs from a json
         if (BindControls()) {
             CoreEngine::Log::Info("Controller", "Controller binds were completed");
         } else {
@@ -40,5 +42,25 @@ namespace TopDownGame {
         camera_pitch = CoreEngine::Math::Deg2Rad(camera_pitch);
 
         camera_->AddLookDelta(camera_yaw, camera_pitch);
+    }
+    void Controller::Possess(IPossessable &possessable) {
+
+        if (possessed_ == &possessable) {
+            return;
+        }
+
+        Unpossess();
+
+        possessed_ = &possessable;
+        possessable.OnPossessed();
+    }
+
+    void Controller::Unpossess() {
+        if (possessed_ == nullptr) {
+            return;
+        }
+
+        possessed_->OnUnpossessed();
+        possessed_ = nullptr;
     }
 } // namespace TopDownGame

@@ -7,6 +7,7 @@
 
 #include "camera/camera.h"
 #include "core/input/input_system.h"
+#include "player/character.h"
 
 namespace CoreEngine {
     struct EngineContext;
@@ -28,11 +29,14 @@ namespace TopDownGame {
     private:
         bool BindControls() const;
         void UpdateCamera(const CoreEngine::FrameContext &frame) const;
+        void Possess(IPossessable &possessable);
+        void Unpossess();
 
     private:
         const CoreEngine::EngineContext &context_;
         CoreEngine::InputVector2 mouse_delta_;
         std::unique_ptr<Camera> camera_;
+        IPossessable *possessed_ = nullptr;
     };
 
 } // namespace TopDownGame

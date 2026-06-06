@@ -1,4 +1,7 @@
 #include "character.h"
 
 namespace TopDownGame {
-} // TopDownGame
+
+    void Character::OnPossessed() { is_possessed_ = true; }
+    void Character::OnUnpossessed() { is_possessed_ = false; }
+} // namespace TopDownGame
