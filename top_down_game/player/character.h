@@ -4,13 +4,15 @@
 #include "i_possessable.h"
 
 namespace TopDownGame {
-
     class Character : public IPossessable {
     public:
         Character(const CoreEngine::EngineContext &context);
         void OnPossessed() override;
         void OnUnpossessed() override;
         void AddMovementInput(CoreEngine::InputVector2 input) override;
+
+    protected:
+        void InitializeCharacterRenderer();
 
     protected:
         bool is_possessed_ = false;

@@ -12,8 +12,34 @@ namespace TopDownGame {
     Character::Character(const CoreEngine::EngineContext &context) : context_(context) {
 
         character_node_ = context_.world.CreateNode("Character");
+        InitializeCharacterRenderer();
+    }
 
-        // mesh creation
+    void Character::OnPossessed() {
+        is_possessed_ = true;
+    }
+
+    void Character::OnUnpossessed() {
+        is_possessed_ = false;
+    }
+
+    void Character::AddMovementInput(CoreEngine::InputVector2 input) {
+        last_input_ = current_input_;
+        current_input_ = input;
+
+        // TODO(rafael): In the future, this direct position-setting approach should probably be handled by the
+        // physics system. Something like AddVelocity() or a similar method would be preferable.
+        // This would be better than the current approach. This would be better than this shitty way.
+        if (character_node_.IsValid()) {
+            character_node_.SetPosition(character_node_.GetPosition() +
+                                        CoreEngine::Math::Vec3(current_input_.x, 0.0f, current_input_.y));
+        }
+    }
+
+    void Character::InitializeCharacterRenderer() {
+        // TODO(rafael): The engine now sucks because to creating a simple cube requires a bunch of shit and boilerplate
+        // code. The API should be more ergonomic and user-friendly.
+        // Mesh creation
         CoreEngine::MeshDesc mesh_desc = CoreEngine::Primitives::MeshFor(CoreEngine::PrimitiveType::Cube);
         CoreEngine::MeshHandle mesh = context_.render_system.CreateMesh(mesh_desc);
 
@@ -30,16 +56,5 @@ namespace TopDownGame {
                 .cast_shadows = true,
                 .topology = CoreEngine::PrimitiveTopology::TriangleList,
         });
-    }
-    void Character::OnPossessed() { is_possessed_ = true; }
-    void Character::OnUnpossessed() { is_possessed_ = false; }
-    void Character::AddMovementInput(CoreEngine::InputVector2 input) {
-        last_input_ = current_input_;
-        current_input_ = input;
-
-        if (character_node_.IsValid()) {
-            character_node_.SetPosition(character_node_.GetPosition() +
-                                        CoreEngine::Math::Vec3(current_input_.x, 0.0f, current_input_.y));
-        }
     }
 } // namespace TopDownGame

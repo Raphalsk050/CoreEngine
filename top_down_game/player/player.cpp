@@ -7,7 +7,13 @@
 #include "core/render/render_system.h"
 
 namespace TopDownGame {
-    Player::Player(const CoreEngine::EngineContext &context) : Character(context) { Init(); }
-    void Player::Init() {}
-    void Player::Update(const CoreEngine::FrameContext &frame) {}
+    Player::Player(const CoreEngine::EngineContext &context) : Character(context) {
+        Init();
+    }
+
+    void Player::Init() {
+    }
+
+    void Player::Update(const CoreEngine::FrameContext &frame) {
+    }
 } // namespace TopDownGame
