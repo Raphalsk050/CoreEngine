@@ -13,7 +13,7 @@ int main() {
             .decorated = true,
             .high_dpi = true,
             .vsync = false,
-            .render_backend = RenderBackendType::DiligentD3D11,
+            .render_backend = RenderBackendType::DiligentVulkan,
             .window_title = "Third person game",
     };
 
