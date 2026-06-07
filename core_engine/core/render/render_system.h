@@ -173,6 +173,10 @@ namespace CoreEngine {
 
         void ClearCameraOverride();
 
+        void SetPostProcess(PostProcessDesc desc);
+
+        [[nodiscard]] const PostProcessDesc &GetPostProcess() const;
+
         void Resize(int width, int height);
 
         void Shutdown();
@@ -206,9 +210,11 @@ namespace CoreEngine {
 
         [[nodiscard]] TextureHandle LoadModelTexture(const ModelTextureAsset &texture);
 
-        [[nodiscard]] MaterialHandle ResolveModelMaterial(const ModelMaterialAsset &material);
+        [[nodiscard]] MaterialHandle ResolveModelMaterial(const ModelMaterialAsset &material,
+                                                          ModelMaterialPipeline pipeline);
 
-        [[nodiscard]] UploadedModelResources BuildModelResources(const ModelAsset &asset);
+        [[nodiscard]] UploadedModelResources BuildModelResources(const ModelAsset &asset,
+                                                                 ModelMaterialPipeline material_pipeline);
 
         [[nodiscard]] bool CreateSceneFrameBuffer();
 

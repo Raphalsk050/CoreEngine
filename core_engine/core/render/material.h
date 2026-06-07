@@ -21,11 +21,59 @@ namespace CoreEngine {
         alignas(16) Math::Vec4 color{1.f, 1.f, 1.f, 1.f};
     };
 
+    /**
+     * @brief CPU-side parameters for the standard PBR material model.
+     *
+     * Responsibility: keep artist-facing PBR values compact, physically plausible,
+     * and directly uploadable as one material constant buffer.
+     */
+    struct PbrStandardProps {
+        alignas(16) Math::Vec4 base_color{1.f, 1.f, 1.f, 1.f};
+        alignas(16) Math::Vec4 emissive{0.f, 0.f, 0.f, 0.f};
+        alignas(16) Math::Vec4 surface{0.f, 1.f, 0.5f, 1.f};
+    };
+
+    /**
+     * @brief Describes a standard PBR material and its optional base-color texture.
+     *
+     * Responsibility: provide a small, explicit API that distinguishes linear CPU
+     * colors from sRGB asset colors before material resolution.
+     */
+    struct PbrStandardDesc {
+        PbrStandardProps props{};
+        TextureHandle base_color_texture{};
+        TextureHandle normal_texture{};
+        TextureHandle metallic_texture{};
+        TextureHandle roughness_texture{};
+        TextureHandle metallic_roughness_texture{};
+        TextureHandle ambient_occlusion_texture{};
+        TextureHandle emissive_texture{};
+
+        [[nodiscard]] static PbrStandardDesc Linear(const Math::Vec4 &base_color, float metallic = 0.f,
+                                                    float perceptual_roughness = 1.f, float reflectance = 0.5f,
+                                                    float ambient_occlusion = 1.f) noexcept;
+
+        [[nodiscard]] static PbrStandardDesc Srgb(const Math::Vec4 &base_color, float metallic = 0.f,
+                                                  float perceptual_roughness = 1.f, float reflectance = 0.5f,
+                                                  float ambient_occlusion = 1.f);
+    };
+
+    [[nodiscard]] Math::Vec3 SrgbToLinear(const Math::Vec3 &srgb);
+
+    [[nodiscard]] Math::Vec4 SrgbToLinear(const Math::Vec4 &srgb);
+
+    [[nodiscard]] PbrStandardProps SanitizePbrStandardProps(const PbrStandardProps &props) noexcept;
+
+    [[nodiscard]] PbrStandardProps BlendPbrStandardProps(const PbrStandardProps &a, const PbrStandardProps &b,
+                                                        float t) noexcept;
+
     class Material {
     public:
         [[nodiscard]] static Material Unlit(const UnlitProps &props = {});
 
         [[nodiscard]] static Material TexturedUnlit(TextureHandle albedo, const TexturedUnlitProps &props = {});
+
+        [[nodiscard]] static Material PbrStandard(const PbrStandardDesc &desc = {});
 
         [[nodiscard]] static Material Custom(const std::string &vs_source, const std::string &ps_source,
                                              std::span<const uint8_t> raw_props);

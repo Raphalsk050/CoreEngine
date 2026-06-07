@@ -263,6 +263,26 @@ namespace CoreEngine {
             return {uv.x, uv.y};
         }
 
+        [[nodiscard]] Math::Vec4 ReadTangent(const aiMesh &mesh, std::uint32_t vertex_index) {
+            if (mesh.mTangents == nullptr) {
+                return {0.f, 0.f, 0.f, 1.f};
+            }
+
+            const aiVector3D &source_tangent = mesh.mTangents[vertex_index];
+            const Math::Vec3 tangent{source_tangent.x, source_tangent.y, source_tangent.z};
+            float handedness = 1.f;
+
+            if (mesh.mNormals != nullptr && mesh.mBitangents != nullptr) {
+                const aiVector3D &source_normal = mesh.mNormals[vertex_index];
+                const aiVector3D &source_bitangent = mesh.mBitangents[vertex_index];
+                const Math::Vec3 normal{source_normal.x, source_normal.y, source_normal.z};
+                const Math::Vec3 bitangent{source_bitangent.x, source_bitangent.y, source_bitangent.z};
+                handedness = Math::Dot(Math::Cross(normal, tangent), bitangent) < 0.f ? -1.f : 1.f;
+            }
+
+            return {tangent.x, tangent.y, tangent.z, handedness};
+        }
+
         [[nodiscard]] bool TryReadMaterialColor(const AssimpRuntime &runtime, const aiMaterial &material,
                                                 const char *key, unsigned int type, unsigned int index,
                                                 aiColor4D &out_color) {
@@ -446,6 +466,7 @@ namespace CoreEngine {
                 vertex.normal = ReadNormal(source, vertex_index);
                 vertex.color = ReadColor(source, vertex_index);
                 vertex.uv = ReadUv(source, vertex_index);
+                vertex.custom0 = ReadTangent(source, vertex_index);
                 target.vertices.push_back(vertex);
             }
 
@@ -772,15 +793,20 @@ namespace CoreEngine {
             return result;
         }
 
-        const unsigned int flags = BuildPostProcessFlags(desc);
+        ModelLoadDesc import_desc = desc;
+        if (import_desc.material_pipeline == ModelMaterialPipeline::PbrStandard) {
+            import_desc.calculate_tangents = true;
+        }
+
+        const unsigned int flags = BuildPostProcessFlags(import_desc);
         SceneGuard scene{
-                .scene = impl_->runtime.import_file(desc.path.c_str(), flags),
+                .scene = impl_->runtime.import_file(import_desc.path.c_str(), flags),
                 .release = impl_->runtime.release_import,
         };
 
         if (scene.scene == nullptr) {
             const char *assimp_error = impl_->runtime.get_error_string();
-            result.error_message = "Failed to import model '" + desc.path + "'";
+            result.error_message = "Failed to import model '" + import_desc.path + "'";
             if (assimp_error != nullptr && assimp_error[0] != '\0') {
                 result.error_message += ": ";
                 result.error_message += assimp_error;
@@ -788,6 +814,6 @@ namespace CoreEngine {
             return result;
         }
 
-        return ConvertScene(impl_->runtime, *scene.scene, desc);
+        return ConvertScene(impl_->runtime, *scene.scene, import_desc);
     }
 } // namespace CoreEngine

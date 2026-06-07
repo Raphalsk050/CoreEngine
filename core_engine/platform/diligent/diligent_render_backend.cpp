@@ -1,6 +1,8 @@
 #include "platform/diligent/diligent_render_backend.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <cstring>
@@ -74,6 +76,15 @@ namespace CoreEngine {
         struct PerFrameCB {
             Math::Mat4 view_proj;
             Math::Vec4 frame_clock;
+            Math::Vec4 camera_position_exposure;
+            Math::Vec4 directional_light_direction_illuminance;
+            Math::Vec4 directional_light_color_enabled;
+            Math::Vec4 environment_light_diffuse_intensity;
+            Math::Vec4 environment_light_specular_intensity;
+            Math::Vec4 environment_light_enabled;
+            std::array<Math::Vec4, kMaxPbrPointLights> point_light_position_range;
+            std::array<Math::Vec4, kMaxPbrPointLights> point_light_color_intensity;
+            Math::Vec4 point_light_params;
         };
 
         struct PerObjectCB {
@@ -81,6 +92,10 @@ namespace CoreEngine {
         };
 
         struct DepthVisualizationCB {
+            Math::Vec4 params;
+        };
+
+        struct CompositeCB {
             Math::Vec4 params;
         };
 
@@ -199,6 +214,7 @@ namespace CoreEngine {
         std::vector<std::jthread> texture_load_workers;
         bool texture_load_workers_started = false;
 
+        Diligent::RefCntAutoPtr<Diligent::IBuffer> composite_cb;
         Diligent::RefCntAutoPtr<Diligent::IPipelineState> composite_pso;
         Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> composite_srb;
         Diligent::RefCntAutoPtr<Diligent::ISampler> composite_sampler;
@@ -764,6 +780,10 @@ namespace CoreEngine {
             std::vector<Diligent::ShaderResourceVariableDesc> vars;
             vars.reserve(2u + uniforms.size() + desc.bindings.size() * 2u);
             vars.push_back({Diligent::SHADER_TYPE_VERTEX, "PerFrame", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
+            if (desc.pixel_shader_source.find("g_CameraPositionExposure") != std::string::npos) {
+                vars.push_back(
+                        {Diligent::SHADER_TYPE_PIXEL, "PerFrame", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
+            }
             vars.push_back({Diligent::SHADER_TYPE_VERTEX, "PerObject", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
 
             for (const ShaderUniformData &uniform: uniforms) {
@@ -797,8 +817,12 @@ namespace CoreEngine {
                 return mat;
             }
 
-            if (auto *per_frame = mat.pso->GetStaticVariableByName(Diligent::SHADER_TYPE_VERTEX, "PerFrame")) {
-                per_frame->Set(impl.per_frame_cb);
+            if (auto *per_frame_vs = mat.pso->GetStaticVariableByName(Diligent::SHADER_TYPE_VERTEX, "PerFrame")) {
+                per_frame_vs->Set(impl.per_frame_cb);
+            }
+
+            if (auto *per_frame_ps = mat.pso->GetStaticVariableByName(Diligent::SHADER_TYPE_PIXEL, "PerFrame")) {
+                per_frame_ps->Set(impl.per_frame_cb);
             }
 
             if (auto *per_object = mat.pso->GetStaticVariableByName(Diligent::SHADER_TYPE_VERTEX, "PerObject")) {
@@ -1002,6 +1026,11 @@ namespace CoreEngine {
                 return false;
             }
 
+            impl.composite_cb = CreateConstantBuffer(impl.device, sizeof(CompositeCB), "Composite");
+            if (!impl.composite_cb) {
+                return false;
+            }
+
             Diligent::GraphicsPipelineStateCreateInfo pci;
             pci.PSODesc.Name = "FramebufferComposite";
             pci.PSODesc.PipelineType = Diligent::PIPELINE_TYPE_GRAPHICS;
@@ -1015,12 +1044,13 @@ namespace CoreEngine {
             pci.pPS = ps;
 
             Diligent::ShaderResourceVariableDesc vars[] = {
+                    {Diligent::SHADER_TYPE_PIXEL, "Composite", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
                     {Diligent::SHADER_TYPE_PIXEL, "g_SceneColor", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
                     {Diligent::SHADER_TYPE_PIXEL, "g_SceneColor_sampler",
                      Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
             };
             pci.PSODesc.ResourceLayout.Variables = vars;
-            pci.PSODesc.ResourceLayout.NumVariables = 2;
+            pci.PSODesc.ResourceLayout.NumVariables = 3;
 
             Diligent::SamplerDesc sampler;
             sampler.AddressU = Diligent::TEXTURE_ADDRESS_CLAMP;
@@ -1031,6 +1061,13 @@ namespace CoreEngine {
             if (!impl.composite_pso) {
                 return false;
             }
+
+            auto *composite_params =
+                    impl.composite_pso->GetStaticVariableByName(Diligent::SHADER_TYPE_PIXEL, "Composite");
+            if (composite_params == nullptr) {
+                return false;
+            }
+            composite_params->Set(impl.composite_cb);
 
             impl.device->CreateSampler(sampler, &impl.composite_sampler);
             if (!impl.composite_sampler) {
@@ -1052,6 +1089,21 @@ namespace CoreEngine {
             }
 
             return impl.composite_scene_color_var != nullptr && impl.composite_scene_sampler_var != nullptr;
+        }
+
+        [[nodiscard]] float SanitizeCompositeExposure(float exposure) {
+            constexpr float kMaxExposure = 65504.0f;
+            return std::isfinite(exposure) ? std::clamp(exposure, 0.0f, kMaxExposure) : 1.0f;
+        }
+
+        [[nodiscard]] float ToCompositeToneMappingMode(ToneMappingOperator tone_mapping) {
+            switch (tone_mapping) {
+                case ToneMappingOperator::None:       return 0.0f;
+                case ToneMappingOperator::Reinhard:   return 1.0f;
+                case ToneMappingOperator::AcesFilmic: return 2.0f;
+            }
+
+            return 2.0f;
         }
 
         DiligentShaderProgramData CreateShaderProgramData(DiligentRenderBackend::Impl &impl,
@@ -1584,6 +1636,7 @@ namespace CoreEngine {
         impl_->composite_sampler.Release();
         impl_->composite_srb.Release();
         impl_->composite_pso.Release();
+        impl_->composite_cb.Release();
         impl_->shader_program_registry.clear();
         impl_->frame_buffer_registry.clear();
         impl_->mesh_registry.clear();
@@ -1702,9 +1755,9 @@ namespace CoreEngine {
                 .native_handle = reinterpret_cast<NativeFrameBufferDepthView *>(it.value().depth_srv.RawPtr())};
     }
 
-    void DiligentRenderBackend::CompositeFrameBuffer(FrameBufferHandle source) {
+    void DiligentRenderBackend::CompositeFrameBuffer(FrameBufferHandle source, const PostProcessDesc &post_process) {
         if (!impl_->immediate_context || !impl_->composite_pso || !impl_->composite_srb ||
-            impl_->composite_scene_color_var == nullptr) {
+            !impl_->composite_cb || impl_->composite_scene_color_var == nullptr) {
             return;
         }
 
@@ -1715,6 +1768,10 @@ namespace CoreEngine {
         }
 
         SetSwapChainFrameBuffer();
+
+        const CompositeCB cb{.params = Math::Vec4(SanitizeCompositeExposure(post_process.exposure),
+                                                  ToCompositeToneMappingMode(post_process.tone_mapping), 0.0f, 0.0f)};
+        UpdateBuffer(impl_->immediate_context, impl_->composite_cb, &cb, sizeof(cb));
 
         impl_->immediate_context->SetPipelineState(impl_->composite_pso);
         impl_->composite_scene_color_var->Set(it.value().color_srv);
@@ -1916,7 +1973,42 @@ namespace CoreEngine {
         }
 
 
-        PerFrameCB cb{.view_proj = props.camera.projection * props.camera.view, .frame_clock = props.frame_clock};
+        PerFrameCB cb{
+                .view_proj = props.camera.projection * props.camera.view,
+                .frame_clock = props.frame_clock,
+                .camera_position_exposure =
+                        Math::Vec4(props.camera_position.x, props.camera_position.y, props.camera_position.z,
+                                   props.exposure),
+                .directional_light_direction_illuminance =
+                        Math::Vec4(props.directional_light.direction.x, props.directional_light.direction.y,
+                                   props.directional_light.direction.z, props.directional_light.illuminance_lux),
+                .directional_light_color_enabled =
+                        Math::Vec4(props.directional_light.color.x, props.directional_light.color.y,
+                                   props.directional_light.color.z, props.directional_light.enabled ? 1.f : 0.f),
+                .environment_light_diffuse_intensity =
+                        Math::Vec4(props.environment_light.diffuse_irradiance.x,
+                                   props.environment_light.diffuse_irradiance.y,
+                                   props.environment_light.diffuse_irradiance.z, props.environment_light.intensity),
+                .environment_light_specular_intensity =
+                        Math::Vec4(props.environment_light.specular_radiance.x,
+                                   props.environment_light.specular_radiance.y,
+                                   props.environment_light.specular_radiance.z,
+                                   props.environment_light.specular_intensity),
+                .environment_light_enabled =
+                        Math::Vec4(props.environment_light.enabled ? 1.f : 0.f, 0.f, 0.f, 0.f),
+        };
+
+        const std::uint32_t point_light_count =
+                std::min<std::uint32_t>(props.point_light_count, static_cast<std::uint32_t>(kMaxPbrPointLights));
+        for (std::uint32_t light_index = 0; light_index < point_light_count; ++light_index) {
+            const PointLightFrameData &light = props.point_lights[light_index];
+            cb.point_light_position_range[light_index] =
+                    Math::Vec4(light.position.x, light.position.y, light.position.z, light.range);
+            cb.point_light_color_intensity[light_index] =
+                    Math::Vec4(light.color.x, light.color.y, light.color.z, light.luminous_intensity_cd);
+        }
+        cb.point_light_params = Math::Vec4(static_cast<float>(point_light_count), 0.f, 0.f, 0.f);
+
         UpdateBuffer(impl_->immediate_context, impl_->per_frame_cb, &cb, sizeof(cb));
     }
 

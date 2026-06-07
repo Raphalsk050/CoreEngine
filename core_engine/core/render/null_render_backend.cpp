@@ -83,7 +83,7 @@ namespace CoreEngine {
     void NullRenderBackend::RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
                                                const DepthVisualizationDesc &desc) {}
 
-    void NullRenderBackend::CompositeFrameBuffer(FrameBufferHandle) {}
+    void NullRenderBackend::CompositeFrameBuffer(FrameBufferHandle, const PostProcessDesc &) {}
 
     MeshHandle NullRenderBackend::UploadMesh(const MeshDesc &) { return {}; }
 

@@ -24,6 +24,11 @@ namespace CoreEngine {
         ByMaterial,
     };
 
+    enum class ModelMaterialPipeline : std::uint8_t {
+        Unlit,
+        PbrStandard,
+    };
+
     enum class ModelTextureSemantic : std::uint8_t {
         BaseColor,
         Normal,
@@ -45,6 +50,7 @@ namespace CoreEngine {
         bool merge_submeshes = false;
         ModelMergeMode merge_mode = ModelMergeMode::None;
         bool load_materials = true;
+        ModelMaterialPipeline material_pipeline = ModelMaterialPipeline::Unlit;
 
         [[nodiscard]] bool IsValid() const { return !path.empty(); }
     };

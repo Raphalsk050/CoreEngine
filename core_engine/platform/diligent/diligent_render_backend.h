@@ -61,7 +61,7 @@ namespace CoreEngine {
 
         [[nodiscard]] FrameBufferDepthView GetFrameBufferDepthView(FrameBufferHandle handle) const override;
 
-        void CompositeFrameBuffer(FrameBufferHandle source) override;
+        void CompositeFrameBuffer(FrameBufferHandle source, const PostProcessDesc &post_process) override;
 
         [[nodiscard]] MeshHandle UploadMesh(const MeshDesc &desc) override;
 

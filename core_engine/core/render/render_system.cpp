@@ -1,9 +1,11 @@
 #include "core/render/render_system.h"
 
+#include <algorithm>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
 #include <exception>
+#include <cmath>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -14,8 +16,11 @@
 #include <tsl/robin_map.h>
 
 #include "core/ecs/components/camera_component.h"
+#include "core/ecs/components/directional_light_component.h"
+#include "core/ecs/components/environment_light_component.h"
 #include "core/ecs/components/hierarchy_component.h"
 #include "core/ecs/components/mesh_renderer_component.h"
+#include "core/ecs/components/point_light_component.h"
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/node.h"
 #include "core/ecs/world.h"
@@ -60,6 +65,7 @@ namespace CoreEngine {
             std::unique_ptr<ModelLoadResult> decoded_result;
             std::string error_message;
             FuturePromise<ModelHandle> completion;
+            ModelMaterialPipeline material_pipeline = ModelMaterialPipeline::Unlit;
         };
 
         struct LoadTask {
@@ -83,6 +89,7 @@ namespace CoreEngine {
         struct PendingModelUpload {
             ModelHandle handle;
             ModelLoadResult result;
+            ModelMaterialPipeline material_pipeline = ModelMaterialPipeline::Unlit;
             FuturePromise<ModelHandle> completion;
         };
 
@@ -160,6 +167,157 @@ namespace CoreEngine {
             cache.emplace(entity, world_matrix);
             return world_matrix;
         }
+
+        [[nodiscard]] Math::Vec3 ExtractCameraPosition(const CameraData &camera) {
+            const Math::Mat4 inverse_view = Math::Inverse(camera.view);
+            return {inverse_view.data[12], inverse_view.data[13], inverse_view.data[14]};
+        }
+
+        [[nodiscard]] Math::Vec3 ExtractWorldPosition(const Math::Mat4 &world_matrix) {
+            return {world_matrix.data[12], world_matrix.data[13], world_matrix.data[14]};
+        }
+
+        [[nodiscard]] bool IsColorFrameBufferFormat(FrameBufferFormat format) {
+            switch (format) {
+                case FrameBufferFormat::SwapChainColor:
+                case FrameBufferFormat::RGBA8Unorm:
+                case FrameBufferFormat::RGBA16Float:
+                case FrameBufferFormat::R32Float:       return true;
+                case FrameBufferFormat::SwapChainDepth:
+                case FrameBufferFormat::Depth32Float:   return false;
+            }
+
+            return false;
+        }
+
+        [[nodiscard]] ToneMappingOperator SanitizeToneMapping(ToneMappingOperator tone_mapping) {
+            switch (tone_mapping) {
+                case ToneMappingOperator::None:
+                case ToneMappingOperator::Reinhard:
+                case ToneMappingOperator::AcesFilmic: return tone_mapping;
+            }
+
+            return ToneMappingOperator::AcesFilmic;
+        }
+
+        [[nodiscard]] PostProcessDesc SanitizePostProcess(PostProcessDesc desc) {
+            constexpr float kMaxExposure = 65504.0f;
+            desc.exposure = std::isfinite(desc.exposure) ? std::clamp(desc.exposure, 0.0f, kMaxExposure) : 1.0f;
+            desc.tone_mapping = SanitizeToneMapping(desc.tone_mapping);
+            return desc;
+        }
+
+        [[nodiscard]] float PositiveFiniteOrZero(float value) {
+            return std::isfinite(value) ? std::max(value, 0.f) : 0.f;
+        }
+
+        [[nodiscard]] RenderDesc SanitizeRenderDesc(RenderDesc desc) {
+            if (!IsColorFrameBufferFormat(desc.scene_color_format)) {
+                desc.scene_color_format = FrameBufferFormat::RGBA16Float;
+            }
+
+            desc.post_process = SanitizePostProcess(desc.post_process);
+            return desc;
+        }
+
+        [[nodiscard]] DirectionalLightFrameData ResolveDirectionalLight(World &world) {
+            constexpr float kDirectionEpsilon = 1.0e-8f;
+
+            auto view = world.View<DirectionalLightComponent>();
+            for (auto entity: view) {
+                const DirectionalLightComponent &light = view.get<DirectionalLightComponent>(entity);
+                if (!light.enabled || light.illuminance_lux <= 0.f) {
+                    continue;
+                }
+
+                Math::Vec3 direction = light.direction;
+                if (Math::LengthSquared(direction) <= kDirectionEpsilon) {
+                    direction = {0.f, -1.f, 0.f};
+                } else {
+                    direction = Math::Normalize(direction);
+                }
+
+                return DirectionalLightFrameData{
+                        .direction = direction,
+                        .illuminance_lux = light.illuminance_lux,
+                        .color = light.color,
+                        .enabled = true,
+                };
+            }
+
+            return {};
+        }
+
+        [[nodiscard]] std::uint32_t ResolvePointLights(
+                World &world, std::unordered_map<entt::entity, Math::Mat4> &world_transform_cache,
+                std::array<PointLightFrameData, kMaxPbrPointLights> &out_point_lights) {
+            constexpr float kMinPointLightRange = 0.001f;
+
+            std::uint32_t light_count = 0u;
+            auto view = world.View<PointLightComponent>();
+            for (auto entity: view) {
+                if (light_count >= kMaxPbrPointLights) {
+                    break;
+                }
+
+                const PointLightComponent &light = view.get<PointLightComponent>(entity);
+                const float intensity = PositiveFiniteOrZero(light.luminous_intensity_cd);
+                const float range = PositiveFiniteOrZero(light.range);
+                if (!light.enabled || intensity <= 0.f || range <= kMinPointLightRange) {
+                    continue;
+                }
+
+                const TransformComponent *transform = world.TryGetComponent<TransformComponent>(entity);
+                if (transform == nullptr) {
+                    continue;
+                }
+
+                const HierarchyComponent *hierarchy = world.TryGetComponent<HierarchyComponent>(entity);
+                const Math::Mat4 world_matrix = hierarchy == nullptr || hierarchy->parent == entt::null
+                                                        ? transform->WorldMatrix()
+                                                        : ResolveCachedWorldMatrix(world, entity,
+                                                                                   world_transform_cache);
+
+                out_point_lights[light_count++] = PointLightFrameData{
+                        .position = ExtractWorldPosition(world_matrix),
+                        .range = range,
+                        .color =
+                                {PositiveFiniteOrZero(light.color.x), PositiveFiniteOrZero(light.color.y),
+                                 PositiveFiniteOrZero(light.color.z)},
+                        .luminous_intensity_cd = intensity,
+                };
+            }
+
+            return light_count;
+        }
+
+        [[nodiscard]] EnvironmentLightFrameData ResolveEnvironmentLight(World &world) {
+            auto view = world.View<EnvironmentLightComponent>();
+            for (auto entity: view) {
+                const EnvironmentLightComponent &light = view.get<EnvironmentLightComponent>(entity);
+                const float diffuse_intensity = PositiveFiniteOrZero(light.intensity);
+                const float specular_intensity = PositiveFiniteOrZero(light.specular_intensity);
+                if (!light.enabled || (diffuse_intensity <= 0.f && specular_intensity <= 0.f)) {
+                    continue;
+                }
+
+                return EnvironmentLightFrameData{
+                        .diffuse_irradiance =
+                                {PositiveFiniteOrZero(light.diffuse_irradiance.x),
+                                 PositiveFiniteOrZero(light.diffuse_irradiance.y),
+                                 PositiveFiniteOrZero(light.diffuse_irradiance.z)},
+                        .intensity = diffuse_intensity,
+                        .specular_radiance =
+                                {PositiveFiniteOrZero(light.specular_radiance.x),
+                                 PositiveFiniteOrZero(light.specular_radiance.y),
+                                 PositiveFiniteOrZero(light.specular_radiance.z)},
+                        .specular_intensity = specular_intensity,
+                        .enabled = true,
+                };
+            }
+
+            return {};
+        }
     } // namespace
 
     //clang-format off
@@ -189,7 +347,7 @@ namespace CoreEngine {
     }
 
     bool RenderSystem::Initialize(const RenderDesc &desc, NativeWindowHandle native_window) {
-        desc_ = desc;
+        desc_ = SanitizeRenderDesc(desc);
         surface_width_ = desc.width > 0 ? desc.width : 1;
         surface_height_ = desc.height > 0 ? desc.height : 1;
 
@@ -198,7 +356,7 @@ namespace CoreEngine {
                                                static_cast<float>(surface_height_), 0.01f, 1000.f)
                                   .GetCameraData();
 
-        initialized_ = backend_ != nullptr && backend_->Initialize(desc, native_window);
+        initialized_ = backend_ != nullptr && backend_->Initialize(desc_, native_window);
         if (initialized_) {
             initialized_ = CreateSceneFrameBuffer();
             default_scene_pass_ = render_graph_.AddPass(std::make_unique<DefaultSceneRenderPass>(*this));
@@ -240,7 +398,7 @@ namespace CoreEngine {
             render_graph_.Execute(stage, pass_context);
         }
 
-        backend_->CompositeFrameBuffer(scene_framebuffer_);
+        backend_->CompositeFrameBuffer(scene_framebuffer_, desc_.post_process);
 
         render_graph_.Execute(RenderPassStage::UI, pass_context);
         backend_->SetSwapChainFrameBuffer();
@@ -370,7 +528,7 @@ namespace CoreEngine {
             return {};
         }
 
-        UploadedModelResources resources = BuildModelResources(result.asset);
+        UploadedModelResources resources = BuildModelResources(result.asset, desc.material_pipeline);
         if (!resources.IsSuccess()) {
             return {};
         }
@@ -382,6 +540,7 @@ namespace CoreEngine {
         record.materials = std::move(resources.materials);
         record.mesh_material_indices = std::move(resources.mesh_material_indices);
         record.nodes = std::move(resources.nodes);
+        record.material_pipeline = desc.material_pipeline;
 
         std::lock_guard lock{models_->mutex};
         const uint32_t id = models_->next_model_id++;
@@ -418,6 +577,7 @@ namespace CoreEngine {
             ModelRegistry::Record record;
             record.generation = handle.generation;
             record.state = ModelLoadState::Pending;
+            record.material_pipeline = desc.material_pipeline;
             future = record.completion.GetFuture();
             models_->records[handle.id] = std::move(record);
         }
@@ -859,6 +1019,10 @@ namespace CoreEngine {
 
     void RenderSystem::ClearCameraOverride() { has_manual_camera_override_ = false; }
 
+    void RenderSystem::SetPostProcess(PostProcessDesc desc) { desc_.post_process = SanitizePostProcess(desc); }
+
+    const PostProcessDesc &RenderSystem::GetPostProcess() const { return desc_.post_process; }
+
     void RenderSystem::Resize(int width, int height) {
         if (!initialized_ || backend_ == nullptr) {
             return;
@@ -924,7 +1088,12 @@ namespace CoreEngine {
 
         PerFrameProps props{.camera = active_camera,
                             .frame_clock = Math::Vec4(context.DeltaSeconds(),
-                                                      static_cast<float>(context.TotalSeconds()), 0.0f, 0.0f)};
+                                                      static_cast<float>(context.TotalSeconds()), 0.0f, 0.0f),
+                            .camera_position = ExtractCameraPosition(active_camera),
+                            .exposure = desc_.post_process.exposure,
+                            .directional_light = ResolveDirectionalLight(world),
+                            .environment_light = ResolveEnvironmentLight(world)};
+        props.point_light_count = ResolvePointLights(world, world_transform_cache_, props.point_lights);
 
         context.SetPerFrameProps(props);
         context.SetFrameBuffer(scene_framebuffer_);
@@ -957,6 +1126,7 @@ namespace CoreEngine {
                 pending_uploads.push_back(PendingModelUpload{
                         .handle = ModelHandle{.id = it.key(), .generation = record.generation},
                         .result = std::move(*record.decoded_result),
+                        .material_pipeline = record.material_pipeline,
                         .completion = record.completion,
                 });
                 record.decoded_result.reset();
@@ -985,7 +1155,7 @@ namespace CoreEngine {
                 continue;
             }
 
-            UploadedModelResources resources = BuildModelResources(upload.result.asset);
+            UploadedModelResources resources = BuildModelResources(upload.result.asset, upload.material_pipeline);
             std::string error_message = resources.error_message;
 
             bool keep_uploaded_meshes = false;
@@ -1095,8 +1265,51 @@ namespace CoreEngine {
         return loaded_texture;
     }
 
-    MaterialHandle RenderSystem::ResolveModelMaterial(const ModelMaterialAsset &material) {
+    MaterialHandle RenderSystem::ResolveModelMaterial(const ModelMaterialAsset &material,
+                                                      ModelMaterialPipeline pipeline) {
         const ModelTextureAsset *base_color_texture = FindModelTexture(material, ModelTextureSemantic::BaseColor);
+        if (pipeline == ModelMaterialPipeline::PbrStandard) {
+            PbrStandardDesc desc = PbrStandardDesc::Linear(material.base_color, material.metallic, material.roughness);
+
+            if (base_color_texture != nullptr) {
+                desc.base_color_texture = LoadModelTexture(*base_color_texture);
+            }
+
+            if (const ModelTextureAsset *normal_texture = FindModelTexture(material, ModelTextureSemantic::Normal)) {
+                desc.normal_texture = LoadModelTexture(*normal_texture);
+            }
+
+            if (const ModelTextureAsset *metallic_texture =
+                        FindModelTexture(material, ModelTextureSemantic::Metallic)) {
+                desc.metallic_texture = LoadModelTexture(*metallic_texture);
+            }
+
+            if (const ModelTextureAsset *roughness_texture =
+                        FindModelTexture(material, ModelTextureSemantic::Roughness)) {
+                desc.roughness_texture = LoadModelTexture(*roughness_texture);
+            }
+
+            if (const ModelTextureAsset *metallic_roughness_texture =
+                        FindModelTexture(material, ModelTextureSemantic::MetallicRoughness)) {
+                desc.metallic_roughness_texture = LoadModelTexture(*metallic_roughness_texture);
+            }
+
+            if (const ModelTextureAsset *ambient_occlusion_texture =
+                        FindModelTexture(material, ModelTextureSemantic::Occlusion)) {
+                desc.ambient_occlusion_texture = LoadModelTexture(*ambient_occlusion_texture);
+            }
+
+            if (const ModelTextureAsset *emissive_texture =
+                        FindModelTexture(material, ModelTextureSemantic::Emissive)) {
+                desc.emissive_texture = LoadModelTexture(*emissive_texture);
+                if (desc.emissive_texture.IsValid()) {
+                    desc.props.emissive = {1.f, 1.f, 1.f, 0.f};
+                }
+            }
+
+            return Material::PbrStandard(desc).Resolve(*this);
+        }
+
         if (base_color_texture != nullptr) {
             const TextureHandle albedo = LoadModelTexture(*base_color_texture);
             if (albedo.IsValid()) {
@@ -1107,7 +1320,8 @@ namespace CoreEngine {
         return Material::Unlit(UnlitProps{.color = material.base_color}).Resolve(*this);
     }
 
-    RenderSystem::UploadedModelResources RenderSystem::BuildModelResources(const ModelAsset &asset) {
+    RenderSystem::UploadedModelResources RenderSystem::BuildModelResources(const ModelAsset &asset,
+                                                                           ModelMaterialPipeline material_pipeline) {
         UploadedModelResources resources;
         if (backend_ == nullptr || !asset.IsValid()) {
             resources.error_message = "Invalid model asset";
@@ -1121,7 +1335,9 @@ namespace CoreEngine {
         resources.nodes = asset.nodes;
 
         if (asset.materials.empty()) {
-            const MaterialHandle material = Material::Unlit().Resolve(*this);
+            const MaterialHandle material = material_pipeline == ModelMaterialPipeline::PbrStandard
+                                                    ? Material::PbrStandard().Resolve(*this)
+                                                    : Material::Unlit().Resolve(*this);
             if (!material.IsValid()) {
                 resources.error_message = backend_->LastError().empty() ? "Failed to resolve default model material"
                                                                         : std::string{backend_->LastError()};
@@ -1130,7 +1346,7 @@ namespace CoreEngine {
             resources.materials.push_back(material);
         } else {
             for (const ModelMaterialAsset &material_asset: asset.materials) {
-                const MaterialHandle material = ResolveModelMaterial(material_asset);
+                const MaterialHandle material = ResolveModelMaterial(material_asset, material_pipeline);
                 if (!material.IsValid()) {
                     resources.error_message = backend_->LastError().empty() ? "Failed to resolve model material"
                                                                             : std::string{backend_->LastError()};
@@ -1186,6 +1402,7 @@ namespace CoreEngine {
         desc.sample_color = true;
         desc.has_depth = true;
         desc.sample_depth = true;
+        desc.color_format = desc_.scene_color_format;
         desc.depth_format = FrameBufferFormat::Depth32Float;
 
         scene_framebuffer_ = backend_->CreateFrameBuffer(desc);

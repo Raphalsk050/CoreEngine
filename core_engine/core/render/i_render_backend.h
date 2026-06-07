@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string_view>
@@ -15,9 +17,39 @@
 #include "debug/depth_visualization.h"
 
 namespace CoreEngine {
+    inline constexpr std::size_t kMaxPbrPointLights = 8u;
+
+    struct DirectionalLightFrameData {
+        Math::Vec3 direction{0.f, -1.f, 0.f};
+        float illuminance_lux = 0.f;
+        Math::Vec3 color{1.f, 1.f, 1.f};
+        bool enabled = false;
+    };
+
+    struct EnvironmentLightFrameData {
+        Math::Vec3 diffuse_irradiance{0.f, 0.f, 0.f};
+        float intensity = 1.f;
+        Math::Vec3 specular_radiance{0.f, 0.f, 0.f};
+        float specular_intensity = 1.f;
+        bool enabled = false;
+    };
+
+    struct PointLightFrameData {
+        Math::Vec3 position{0.f, 0.f, 0.f};
+        float range = 0.f;
+        Math::Vec3 color{1.f, 1.f, 1.f};
+        float luminous_intensity_cd = 0.f;
+    };
+
     struct PerFrameProps {
         const CameraData &camera;
         Math::Vec4 frame_clock;
+        Math::Vec3 camera_position{0.f, 0.f, 0.f};
+        float exposure = 1.f;
+        DirectionalLightFrameData directional_light{};
+        EnvironmentLightFrameData environment_light{};
+        std::array<PointLightFrameData, kMaxPbrPointLights> point_lights{};
+        std::uint32_t point_light_count = 0u;
     };
 
     class IRenderBackend {
@@ -55,7 +87,7 @@ namespace CoreEngine {
         virtual void RenderDepthToColor(FrameBufferDepthView source, FrameBufferHandle destination,
                                         const DepthVisualizationDesc &desc) = 0;
 
-        virtual void CompositeFrameBuffer(FrameBufferHandle source) = 0;
+        virtual void CompositeFrameBuffer(FrameBufferHandle source, const PostProcessDesc &post_process) = 0;
 
         [[nodiscard]] virtual MeshHandle UploadMesh(const MeshDesc &desc) = 0;
 

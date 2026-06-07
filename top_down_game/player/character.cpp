@@ -88,8 +88,10 @@ namespace TopDownGame {
 
     void Character::InitializeCharacterRenderer() {
         (void) context_.render_system.SetPrimitiveRenderer(
-                character_node_, CoreEngine::PrimitiveRendererDesc::Unlit(CoreEngine::PrimitiveType::Sphere,
-                                                                          CoreEngine::Math::Vec4(1.0f)));
+                character_node_, CoreEngine::PrimitiveRendererDesc::WithMaterial(
+                                         CoreEngine::PrimitiveType::Sphere,
+                                         CoreEngine::Material::PbrStandard(
+                                                 CoreEngine::PbrStandardDesc::Linear(CoreEngine::Math::Vec4(1.0f)))));
     }
 
     void Character::InitializeCharacterAbilities() {
