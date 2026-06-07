@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-#include "player/character_attributes.h"
+#include "core/ability/character_attributes.h"
 
 namespace TopDownGame {
     enum class ModifierOperation : std::uint8_t {

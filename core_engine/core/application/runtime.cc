@@ -43,11 +43,16 @@ namespace CoreEngine {
         return runtime.Run(*app);
     }
 
-    void Runtime::RequestShutdown() { shutdown_requested_.store(true, std::memory_order_release); }
+    void Runtime::RequestShutdown() {
+        shutdown_requested_.store(true, std::memory_order_release);
+    }
 
-    bool Runtime::IsShutdownRequested() const { return shutdown_requested_.load(std::memory_order_acquire); }
+    bool Runtime::IsShutdownRequested() const {
+        return shutdown_requested_.load(std::memory_order_acquire);
+    }
 
-    Runtime::Runtime(const EngineConfig &config) : config_(config), platform_services_(CreatePlatformServices()) {}
+    Runtime::Runtime(const EngineConfig &config) : config_(config), platform_services_(CreatePlatformServices()) {
+    }
 
     Runtime::~Runtime() = default;
 
@@ -98,9 +103,13 @@ namespace CoreEngine {
         return 0;
     }
 
-    World &Runtime::GetWorld() { return *world_; }
+    World &Runtime::GetWorld() {
+        return *world_;
+    }
 
-    const World &Runtime::GetWorld() const { return *world_; }
+    const World &Runtime::GetWorld() const {
+        return *world_;
+    }
 
     bool Runtime::Initialize() {
         shutdown_requested_.store(false, std::memory_order_release);
@@ -210,7 +219,14 @@ namespace CoreEngine {
     void Runtime::InitializeOnlineSystem() {
         online_system_ = std::make_unique<OnlineSystem>(kDefaultSteamAppId);
         if (!online_system_->Initialize()) {
-            Log::Warn("Online", "Online system failed to initialize.");
+            Log::Error("Online", "Online system failed to initialize.");
+        }
+    }
+
+    void Runtime::InitializeAbilitySystem() {
+        ability_system_ = std::make_unique<AbilitySystem>();
+        if (!ability_system_->Initialize()) {
+            Log::Error("Ability", "Ability system failed to initialize.");
         }
     }
 
@@ -249,6 +265,10 @@ namespace CoreEngine {
 
         input_system_->BeginFrame();
         window_system_->BeginFrame();
+        
+        if (ability_system_ != nullptr) {
+            ability_system_->Update(frame);
+        }
 
         if (platform_services_ != nullptr) {
             platform_services_->PumpEvents(*window_system_);

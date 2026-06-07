@@ -1,5 +1,5 @@
 #pragma once
-#include "player/character_attributes.h"
+#include "core/ability/character_attributes.h"
 
 namespace TopDownGame {
     struct Attribute {

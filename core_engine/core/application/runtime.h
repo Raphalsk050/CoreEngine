@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "application.h"
+#include "core/ability/ability_system.h"
 #include "core/application/frame_context.h"
 #include "core/audio/audio_system.h"
 #include "core/ecs/world.h"
@@ -51,13 +52,17 @@ namespace CoreEngine {
 
         void InitializeOnlineSystem();
 
+        void InitializeAbilitySystem();
+
         [[nodiscard]] bool InitializeRenderBackend();
 
         void Tick(const FrameContext &frame);
 
         void Shutdown();
 
-        [[nodiscard]] Logger &GetLogger() const { return *logger_; }
+        [[nodiscard]] Logger &GetLogger() const {
+            return *logger_;
+        }
 
         bool running_ = false;
         EngineConfig config_;
@@ -67,6 +72,7 @@ namespace CoreEngine {
         std::shared_ptr<ConsoleSink> console_sink_;
         std::unique_ptr<WindowSystem> window_system_;
         std::unique_ptr<AudioSystem> audio_system_;
+        std::unique_ptr<AbilitySystem> ability_system_;
         std::unique_ptr<InputSystem> input_system_;
         std::unique_ptr<OnlineSystem> online_system_;
         std::unique_ptr<RenderSystem> render_system_;

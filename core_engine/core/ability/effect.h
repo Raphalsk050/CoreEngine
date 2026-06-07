@@ -1,12 +1,12 @@
 #pragma once
 #include <functional>
 #include <vector>
-#include "attribute_modifier.h"
+#include "core/ability/attribute_modifier.h"
 
 namespace TopDownGame {
     struct Effect {
-        float duration;
         std::vector<AttributeModifier> attribute_modifiers;
+        float duration;
     };
 
     struct ActiveEffect {

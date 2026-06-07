@@ -36,6 +36,21 @@ namespace TopDownGame {
         }
     }
 
+    float Character::GetMovementSpeed() {
+    }
+
+    float Character::GetJumpHeight() {
+    }
+
+    float Character::GetStamina() {
+    }
+
+    float Character::GetHealth() {
+    }
+
+    float Character::GetShield() {
+    }
+
     void Character::InitializeCharacterRenderer() {
         // TODO(rafael): The engine now sucks because to creating a simple cube requires a bunch of shit and boilerplate
         // code. The API should be more ergonomic and user-friendly.
