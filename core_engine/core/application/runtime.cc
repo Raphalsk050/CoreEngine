@@ -69,6 +69,7 @@ namespace CoreEngine {
                 .online_system = *online_system_,
                 .window_system = *window_system_,
                 .render_system = *render_system_,
+                .ability_system = *ability_system_,
         };
 
         app.Init(engineContext);
@@ -85,6 +86,7 @@ namespace CoreEngine {
                             .online_system = *online_system_,
                             .window_system = *window_system_,
                             .render_system = *render_system_,
+                            .ability_system = *ability_system_,
                     },
                     deltaTime,
             };
@@ -119,6 +121,7 @@ namespace CoreEngine {
         InitializeSink();
         InitializeWorld();
         InitializeOnlineSystem();
+        InitializeAbilitySystem();
 
         resolved_render_backend_ = SelectAvailableRenderBackend(config_.render_backend);
         if (resolved_render_backend_ != config_.render_backend) {
@@ -224,7 +227,7 @@ namespace CoreEngine {
     }
 
     void Runtime::InitializeAbilitySystem() {
-        ability_system_ = std::make_unique<AbilitySystem>();
+        ability_system_ = std::make_unique<AbilitySystem>(*world_);
         if (!ability_system_->Initialize()) {
             Log::Error("Ability", "Ability system failed to initialize.");
         }
@@ -265,7 +268,7 @@ namespace CoreEngine {
 
         input_system_->BeginFrame();
         window_system_->BeginFrame();
-        
+
         if (ability_system_ != nullptr) {
             ability_system_->Update(frame);
         }
@@ -322,6 +325,7 @@ namespace CoreEngine {
             platform_services_->Shutdown();
         }
 
+        ability_system_.reset();
         world_.reset();
 
         Log::Unbind();

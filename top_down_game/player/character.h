@@ -5,21 +5,24 @@
 #include "i_possessable.h"
 
 namespace TopDownGame {
-    class Character : public IPossessable, public IGameplayAbilityInterface {
+    class Character : public IPossessable, public CoreEngine::IGameplayAbilityInterface {
 
     public:
+        float GetHealth() override;
+        float GetShield() override;
+        float GetStamina() override;
+        float GetRunMovementSpeed() override;
+        float GetWalkMovementSpeed() override;
+        float GetJumpHeight() override;
+
         Character(const CoreEngine::EngineContext &context);
         void OnPossessed() override;
         void OnUnpossessed() override;
-        void AddMovementInput(CoreEngine::InputVector2 input) override;
-        float GetMovementSpeed() override;
-        float GetJumpHeight() override;
-        float GetStamina() override;
-        float GetHealth() override;
-        float GetShield() override;
+        void AddMovementInput(CoreEngine::InputVector2 input, float delta_time) override;
 
     protected:
         void InitializeCharacterRenderer();
+        void InitializeCharacterAbilities();
 
     protected:
         bool is_possessed_ = false;

@@ -3,10 +3,10 @@
 #include <vector>
 #include "core/ability/attribute_modifier.h"
 
-namespace TopDownGame {
+namespace CoreEngine {
     struct Effect {
         std::vector<AttributeModifier> attribute_modifiers;
-        float duration;
+        float duration = 0.0f;
     };
 
     struct ActiveEffect {

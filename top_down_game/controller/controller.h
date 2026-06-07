@@ -4,7 +4,6 @@
 
 #include <memory>
 
-
 #include "camera/camera.h"
 #include "core/input/input_system.h"
 #include "player/character.h"
@@ -31,7 +30,7 @@ namespace TopDownGame {
     private:
         bool BindControls() const;
         void UpdateCamera() const;
-        void UpdatePossessed();
+        void UpdatePossessed(float delta_time);
 
     private:
         const CoreEngine::EngineContext &context_;

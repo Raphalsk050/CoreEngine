@@ -3,7 +3,7 @@
 
 #include "core/ability/character_attributes.h"
 
-namespace TopDownGame {
+namespace CoreEngine {
     enum class ModifierOperation : std::uint8_t {
         Add,
         Multiply,

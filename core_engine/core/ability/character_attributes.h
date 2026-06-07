@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 
-namespace TopDownGame {
+namespace CoreEngine {
     enum class AttributeType : std::uint8_t {
         Life,
         Shield,

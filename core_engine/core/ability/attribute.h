@@ -1,7 +1,7 @@
 #pragma once
 #include "core/ability/character_attributes.h"
 
-namespace TopDownGame {
+namespace CoreEngine {
     struct Attribute {
         AttributeType type;
         float base_value = 0.0f;

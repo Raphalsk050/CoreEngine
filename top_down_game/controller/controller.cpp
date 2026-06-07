@@ -23,7 +23,7 @@ namespace TopDownGame {
         if (camera_ != nullptr) {
             mouse_delta_ = frame.input_system.MouseDelta();
             UpdateCamera();
-            UpdatePossessed();
+            UpdatePossessed(frame.delta_time);
         }
     }
 
@@ -45,11 +45,13 @@ namespace TopDownGame {
 
         camera_->AddLookDelta(camera_yaw, camera_pitch);
     }
-    void Controller::UpdatePossessed() {
+
+    void Controller::UpdatePossessed(float delta_time) {
         if (possessed_ != nullptr) {
-            possessed_->AddMovementInput(context_.input_system.GetAxis2D(MoveAction));
+            possessed_->AddMovementInput(context_.input_system.GetAxis2D(MoveAction), delta_time);
         }
     }
+
     void Controller::Possess(IPossessable &possessable) {
 
         if (possessed_ == &possessable) {
