@@ -13,6 +13,8 @@ namespace CoreEngine::Primitives {
     [[nodiscard]] std::span<const uint32_t> PlaneIndices();
     [[nodiscard]] std::span<const StaticMeshVertex> QuadVertices();
     [[nodiscard]] std::span<const uint32_t> QuadIndices();
+    [[nodiscard]] std::span<const StaticMeshVertex> SphereVertices();
+    [[nodiscard]] std::span<const uint32_t> SphereIndices();
 
     [[nodiscard]] MeshDesc MeshFor(PrimitiveType type);
 } // namespace CoreEngine::Primitives

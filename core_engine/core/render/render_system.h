@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/assets/i_model_importer.h"
@@ -16,7 +17,9 @@
 #include "core/render/camera_data.h"
 #include "core/render/i_render_backend.h"
 #include "core/render/i_render_context.h"
+#include "core/render/material.h"
 #include "core/render/mesh_desc.h"
+#include "core/render/primitive_topology.h"
 #include "core/render/primitive_type.h"
 #include "core/render/render_batch.h"
 #include "core/render/render_clear_color.h"
@@ -35,6 +38,46 @@ namespace CoreEngine {
     struct ModelInstantiationDesc {
         std::string root_name = "Model";
         bool visible = true;
+    };
+
+    /**
+     * @brief Describes a renderable built from an engine primitive mesh.
+     *
+     * Responsibility: keep simple primitive creation explicit while avoiding
+     * repeated mesh upload, material resolution, and component boilerplate in gameplay code.
+     */
+    struct PrimitiveRendererDesc {
+        PrimitiveType type = PrimitiveType::Cube;
+        Material material = Material::Unlit();
+        bool visible = true;
+        bool cast_shadows = true;
+        PrimitiveTopology topology = PrimitiveTopology::TriangleList;
+
+        [[nodiscard]] static PrimitiveRendererDesc Unlit(
+                PrimitiveType primitive_type, const Math::Vec4 &color = Math::Vec4(1.0f), bool primitive_visible = true,
+                bool primitive_cast_shadows = true,
+                PrimitiveTopology primitive_topology = PrimitiveTopology::TriangleList) {
+            return PrimitiveRendererDesc{
+                    .type = primitive_type,
+                    .material = Material::Unlit(UnlitProps{.color = color}),
+                    .visible = primitive_visible,
+                    .cast_shadows = primitive_cast_shadows,
+                    .topology = primitive_topology,
+            };
+        }
+
+        [[nodiscard]] static PrimitiveRendererDesc WithMaterial(
+                PrimitiveType primitive_type, Material primitive_material, bool primitive_visible = true,
+                bool primitive_cast_shadows = true,
+                PrimitiveTopology primitive_topology = PrimitiveTopology::TriangleList) {
+            return PrimitiveRendererDesc{
+                    .type = primitive_type,
+                    .material = std::move(primitive_material),
+                    .visible = primitive_visible,
+                    .cast_shadows = primitive_cast_shadows,
+                    .topology = primitive_topology,
+            };
+        }
     };
 
     struct ModelInstance {
@@ -95,6 +138,8 @@ namespace CoreEngine {
 
         [[nodiscard]] ModelInstance InstantiateModel(World &world, ModelHandle handle, Node parent = {},
                                                      const ModelInstantiationDesc &desc = {}) const;
+
+        [[nodiscard]] bool SetPrimitiveRenderer(Node node, const PrimitiveRendererDesc &desc);
 
         [[nodiscard]] std::string GetModelLoadError(ModelHandle handle) const;
 

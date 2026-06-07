@@ -282,6 +282,34 @@ namespace CoreEngine {
         return backend_->UploadMesh(desc);
     }
 
+    bool RenderSystem::SetPrimitiveRenderer(Node node, const PrimitiveRendererDesc &desc) {
+        if (!node.IsValid()) {
+            return false;
+        }
+
+        const MeshHandle mesh = GetOrCreatePrimitive(desc.type);
+        const MaterialHandle material = desc.material.Resolve(*this);
+        if (!mesh.IsValid() || !material.IsValid()) {
+            return false;
+        }
+
+        MeshRendererComponent renderer{
+                .mesh = mesh,
+                .material = material,
+                .visible = desc.visible,
+                .cast_shadows = desc.cast_shadows,
+                .topology = desc.topology,
+        };
+
+        if (MeshRendererComponent *existing = node.TryGetComponent<MeshRendererComponent>()) {
+            *existing = renderer;
+            return true;
+        }
+
+        node.AddComponent<MeshRendererComponent>(renderer);
+        return true;
+    }
+
     MaterialHandle RenderSystem::ResolveMaterial(const MaterialDesc &desc) {
         if (!initialized_ || backend_ == nullptr) {
             return {};
