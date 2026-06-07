@@ -76,6 +76,10 @@ namespace TopDownGame {
                                      CoreEngine::BaseAttributes::stamina_attribute);
     }
 
+    CoreEngine::Node &Character::GetNode() {
+        return character_node_;
+    }
+
     float Character::GetHealth() {
         return ResolveAttributeValue(context_.ability_system, character_node_, CoreEngine::LifeAttributeIndex,
                                      CoreEngine::BaseAttributes::life_attribute);

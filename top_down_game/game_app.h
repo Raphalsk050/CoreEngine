@@ -4,6 +4,7 @@
 
 #include "controller/controller.h"
 #include "core/i_game_app.h"
+#include "game_world/scenario.h"
 #include "player/player.h"
 
 namespace TopDownGame {
@@ -22,5 +23,6 @@ namespace TopDownGame {
     private:
         std::unique_ptr<Controller> controller_;
         std::unique_ptr<Player> player_;
+        std::unique_ptr<Scenario> scenario_;
     };
 } // namespace TopDownGame

@@ -43,6 +43,7 @@ namespace TopDownGame {
         const float camera_pitch =
                 CoreEngine::Math::Deg2Rad(-mouse_delta_.y * camera_info.camera_mouse_look_speed_degrees);
 
+        camera_->SetCameraPosition(possessed_->GetNode().GetPosition());
         camera_->AddLookDelta(camera_yaw, camera_pitch);
     }
 

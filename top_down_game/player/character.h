@@ -11,6 +11,7 @@ namespace TopDownGame {
         float GetHealth() override;
         float GetShield() override;
         float GetStamina() override;
+        CoreEngine::Node &GetNode() override;
         float GetRunMovementSpeed() override;
         float GetWalkMovementSpeed() override;
         float GetJumpHeight() override;
