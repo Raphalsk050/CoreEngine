@@ -9,4 +9,5 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 add_subdirectory(core_engine)
 add_subdirectory(app)
+add_subdirectory(pbr_demo)
 add_subdirectory(top_down_game)
