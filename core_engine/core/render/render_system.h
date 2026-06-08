@@ -271,6 +271,7 @@ namespace CoreEngine {
             TextureViewHandle active_brdf_lut_srv{};
             std::string source_key{};
             std::string source_path{};
+            PbrPrecomputedIblPaths pending_precomputed_load_paths{};
             PbrPrecomputedIblPaths pending_precomputed_bake_paths{};
             std::string pending_precomputed_bake_source_key{};
             std::uint32_t irradiance_resolution = 0;
@@ -282,6 +283,7 @@ namespace CoreEngine {
             bool generated = false;
             bool owns_source_texture = false;
             bool using_precomputed_cache = false;
+            bool precomputed_cache_loading = false;
             bool save_generated_precomputed_cache = false;
         };
         enum class ShadowCasterFilter {
@@ -348,6 +350,8 @@ namespace CoreEngine {
                                       TextureViewHandle prefiltered_specular, TextureViewHandle brdf_lut);
 
         [[nodiscard]] bool LoadPbrPrecomputedIbl(const PbrPrecomputedIblPaths &paths);
+
+        [[nodiscard]] bool TryFinalizePbrPrecomputedIblLoad();
 
         [[nodiscard]] bool SaveGeneratedPbrIblCache();
 

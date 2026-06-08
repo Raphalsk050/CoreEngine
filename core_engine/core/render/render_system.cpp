@@ -2265,6 +2265,8 @@ namespace CoreEngine {
         pbr_ibl_resources_.precomputed_prefiltered_specular_srv = {};
         pbr_ibl_resources_.precomputed_brdf_lut_texture = {};
         pbr_ibl_resources_.precomputed_brdf_lut_srv = {};
+        pbr_ibl_resources_.pending_precomputed_load_paths = {};
+        pbr_ibl_resources_.precomputed_cache_loading = false;
         UseRuntimePbrIblResources();
     }
 
@@ -2275,28 +2277,28 @@ namespace CoreEngine {
 
         DestroyPbrPrecomputedIblResources();
 
-        TextureHandle environment_cube = backend_->LoadTexture2D(TextureLoadDesc{
+        pbr_ibl_resources_.precomputed_environment_cube_texture = backend_->LoadTexture2DAsync(TextureLoadDesc{
                 .path = paths.environment_cube_path,
                 .format = TextureFormat::Auto,
                 .generate_mipmaps = false,
                 .flip_vertically = false,
                 .premultiply_alpha = false,
         });
-        TextureHandle irradiance = backend_->LoadTexture2D(TextureLoadDesc{
+        pbr_ibl_resources_.precomputed_irradiance_texture = backend_->LoadTexture2DAsync(TextureLoadDesc{
                 .path = paths.irradiance_cube_path,
                 .format = TextureFormat::Auto,
                 .generate_mipmaps = false,
                 .flip_vertically = false,
                 .premultiply_alpha = false,
         });
-        TextureHandle prefiltered_specular = backend_->LoadTexture2D(TextureLoadDesc{
+        pbr_ibl_resources_.precomputed_prefiltered_specular_texture = backend_->LoadTexture2DAsync(TextureLoadDesc{
                 .path = paths.prefiltered_specular_cube_path,
                 .format = TextureFormat::Auto,
                 .generate_mipmaps = false,
                 .flip_vertically = false,
                 .premultiply_alpha = false,
         });
-        TextureHandle brdf_lut = backend_->LoadTexture2D(TextureLoadDesc{
+        pbr_ibl_resources_.precomputed_brdf_lut_texture = backend_->LoadTexture2DAsync(TextureLoadDesc{
                 .path = paths.brdf_lut_path,
                 .format = TextureFormat::Auto,
                 .generate_mipmaps = false,
@@ -2304,26 +2306,48 @@ namespace CoreEngine {
                 .premultiply_alpha = false,
         });
 
-        if (!environment_cube.IsValid() || !irradiance.IsValid() || !prefiltered_specular.IsValid() ||
-            !brdf_lut.IsValid()) {
-            if (environment_cube.IsValid()) {
-                backend_->DestroyTexture(environment_cube);
-            }
-            if (irradiance.IsValid()) {
-                backend_->DestroyTexture(irradiance);
-            }
-            if (prefiltered_specular.IsValid()) {
-                backend_->DestroyTexture(prefiltered_specular);
-            }
-            if (brdf_lut.IsValid()) {
-                backend_->DestroyTexture(brdf_lut);
-            }
+        if (!pbr_ibl_resources_.precomputed_environment_cube_texture.IsValid() ||
+            !pbr_ibl_resources_.precomputed_irradiance_texture.IsValid() ||
+            !pbr_ibl_resources_.precomputed_prefiltered_specular_texture.IsValid() ||
+            !pbr_ibl_resources_.precomputed_brdf_lut_texture.IsValid()) {
+            DestroyPbrPrecomputedIblResources();
             UseRuntimePbrIblResources();
             return false;
         }
 
+        pbr_ibl_resources_.pending_precomputed_load_paths = paths;
+        pbr_ibl_resources_.precomputed_cache_loading = true;
+        pbr_ibl_resources_.using_precomputed_cache = true;
+        return true;
+    }
+
+    bool RenderSystem::TryFinalizePbrPrecomputedIblLoad() {
+        if (backend_ == nullptr || !pbr_ibl_resources_.precomputed_cache_loading) {
+            return pbr_ibl_resources_.generated;
+        }
+
+        const std::array<TextureHandle, 4> textures{
+                pbr_ibl_resources_.precomputed_environment_cube_texture,
+                pbr_ibl_resources_.precomputed_irradiance_texture,
+                pbr_ibl_resources_.precomputed_prefiltered_specular_texture,
+                pbr_ibl_resources_.precomputed_brdf_lut_texture,
+        };
+
+        for (TextureHandle texture: textures) {
+            const TextureLoadState state = backend_->GetTextureLoadState(texture);
+            if (state == TextureLoadState::Failed || state == TextureLoadState::Invalid) {
+                Log::Warn("Render", "Failed to load precomputed PBR IBL cache '{}'",
+                          ResolvePrecomputedIblManifestPath(pbr_ibl_resources_.pending_precomputed_load_paths));
+                DestroyPbrPrecomputedIblResources();
+                return false;
+            }
+            if (state != TextureLoadState::Ready) {
+                return false;
+            }
+        }
+
         TextureViewHandle environment_cube_srv = backend_->CreateTextureView(TextureViewDesc{
-                .texture = environment_cube,
+                .texture = pbr_ibl_resources_.precomputed_environment_cube_texture,
                 .type = TextureViewType::ShaderResource,
                 .dimension = TextureDimension::TextureCube,
                 .mip_level = 0u,
@@ -2332,7 +2356,7 @@ namespace CoreEngine {
                 .array_slice_count = 6u,
         });
         TextureViewHandle irradiance_srv = backend_->CreateTextureView(TextureViewDesc{
-                .texture = irradiance,
+                .texture = pbr_ibl_resources_.precomputed_irradiance_texture,
                 .type = TextureViewType::ShaderResource,
                 .dimension = TextureDimension::TextureCube,
                 .mip_level = 0u,
@@ -2341,7 +2365,7 @@ namespace CoreEngine {
                 .array_slice_count = 6u,
         });
         TextureViewHandle prefiltered_specular_srv = backend_->CreateTextureView(TextureViewDesc{
-                .texture = prefiltered_specular,
+                .texture = pbr_ibl_resources_.precomputed_prefiltered_specular_texture,
                 .type = TextureViewType::ShaderResource,
                 .dimension = TextureDimension::TextureCube,
                 .mip_level = 0u,
@@ -2350,7 +2374,7 @@ namespace CoreEngine {
                 .array_slice_count = 6u,
         });
         TextureViewHandle brdf_lut_srv = backend_->CreateTextureView(TextureViewDesc{
-                .texture = brdf_lut,
+                .texture = pbr_ibl_resources_.precomputed_brdf_lut_texture,
                 .type = TextureViewType::ShaderResource,
                 .dimension = TextureDimension::Texture2D,
                 .mip_level = 0u,
@@ -2373,25 +2397,22 @@ namespace CoreEngine {
             if (brdf_lut_srv.IsValid()) {
                 backend_->DestroyTextureView(brdf_lut_srv);
             }
-            backend_->DestroyTexture(environment_cube);
-            backend_->DestroyTexture(irradiance);
-            backend_->DestroyTexture(prefiltered_specular);
-            backend_->DestroyTexture(brdf_lut);
+            DestroyPbrPrecomputedIblResources();
             UseRuntimePbrIblResources();
             return false;
         }
 
-        pbr_ibl_resources_.precomputed_environment_cube_texture = environment_cube;
         pbr_ibl_resources_.precomputed_environment_cube_srv = environment_cube_srv;
-        pbr_ibl_resources_.precomputed_irradiance_texture = irradiance;
         pbr_ibl_resources_.precomputed_irradiance_srv = irradiance_srv;
-        pbr_ibl_resources_.precomputed_prefiltered_specular_texture = prefiltered_specular;
         pbr_ibl_resources_.precomputed_prefiltered_specular_srv = prefiltered_specular_srv;
-        pbr_ibl_resources_.precomputed_brdf_lut_texture = brdf_lut;
         pbr_ibl_resources_.precomputed_brdf_lut_srv = brdf_lut_srv;
         pbr_ibl_resources_.using_precomputed_cache = true;
+        pbr_ibl_resources_.precomputed_cache_loading = false;
+        pbr_ibl_resources_.generated = true;
+        pbr_ibl_resources_.generation_pending = false;
         SetActivePbrIblResources(environment_cube_srv, irradiance_srv, prefiltered_specular_srv, brdf_lut_srv);
-        Log::Info("Render", "Loaded precomputed PBR IBL cache '{}'", ResolvePrecomputedIblManifestPath(paths));
+        Log::Info("Render", "Loaded precomputed PBR IBL cache '{}'",
+                  ResolvePrecomputedIblManifestPath(pbr_ibl_resources_.pending_precomputed_load_paths));
         return true;
     }
 
@@ -2657,7 +2678,6 @@ namespace CoreEngine {
             pbr_ibl_resources_.generation_pending = !source_key.empty();
 
             if (use_precomputed_ibl && LoadPbrPrecomputedIbl(precomputed_paths)) {
-                pbr_ibl_resources_.generated = true;
                 pbr_ibl_resources_.generation_pending = false;
             } else if (!runtime_source_key.empty()) {
                 pbr_ibl_resources_.source_key = runtime_source_key;
@@ -2688,6 +2708,10 @@ namespace CoreEngine {
                 pbr_ibl_resources_.source_key = {};
                 pbr_ibl_resources_.generation_pending = false;
             }
+        }
+
+        if (pbr_ibl_resources_.precomputed_cache_loading) {
+            (void) TryFinalizePbrPrecomputedIblLoad();
         }
 
         if (pbr_ibl_resources_.generation_pending &&
