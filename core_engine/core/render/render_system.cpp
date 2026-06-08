@@ -1729,43 +1729,6 @@ namespace CoreEngine {
                 .depth_format = FrameBufferFormat::Depth32Float,
                 .depth_test = true,
         });
-        pbr_equirect_to_cube_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
-                .debug_name = "PBR_EquirectToCube",
-                .vertex_shader_source = BuiltinShaders::kCompositeVS,
-                .pixel_shader_source = BuiltinShaders::kPbrEquirectToCubePS,
-                .bindings = {ShaderBindingDesc::Texture("g_EquirectangularTexture", ShaderBindingScope::Pass,
-                                                        ShaderStage::Pixel, "g_IblSampler"),
-                             ShaderBindingDesc::UniformBuffer("IblGenerate", sizeof(Math::Vec4),
-                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
-                .color_format = FrameBufferFormat::RGBA16Float,
-        });
-        pbr_irradiance_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
-                .debug_name = "PBR_IrradianceCube",
-                .vertex_shader_source = BuiltinShaders::kCompositeVS,
-                .pixel_shader_source = BuiltinShaders::kPbrIrradianceCubePS,
-                .bindings = {ShaderBindingDesc::Texture("g_EnvironmentCube", ShaderBindingScope::Pass,
-                                                        ShaderStage::Pixel, "g_IblSampler"),
-                             ShaderBindingDesc::UniformBuffer("IblGenerate", sizeof(Math::Vec4),
-                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
-                .color_format = FrameBufferFormat::RGBA16Float,
-        });
-        pbr_prefiltered_specular_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
-                .debug_name = "PBR_PrefilteredSpecular",
-                .vertex_shader_source = BuiltinShaders::kCompositeVS,
-                .pixel_shader_source = BuiltinShaders::kPbrPrefilteredSpecularCubePS,
-                .bindings = {ShaderBindingDesc::Texture("g_EnvironmentCube", ShaderBindingScope::Pass,
-                                                        ShaderStage::Pixel, "g_IblSampler"),
-                             ShaderBindingDesc::UniformBuffer("IblGenerate", sizeof(Math::Vec4),
-                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
-                .color_format = FrameBufferFormat::RGBA16Float,
-        });
-        pbr_brdf_lut_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
-                .debug_name = "PBR_BrdfLut",
-                .vertex_shader_source = BuiltinShaders::kCompositeVS,
-                .pixel_shader_source = BuiltinShaders::kPbrBrdfLutPS,
-                .bindings = {},
-                .color_format = FrameBufferFormat::RGBA16Float,
-        });
         pbr_skybox_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
                 .debug_name = "PBR_EnvironmentSkybox",
                 .vertex_shader_source = BuiltinShaders::kCompositeVS,
@@ -1816,8 +1779,6 @@ namespace CoreEngine {
         });
 
         const bool programs_ready = pbr_shadow_depth_program_.IsValid() &&
-                                    pbr_equirect_to_cube_program_.IsValid() && pbr_irradiance_program_.IsValid() &&
-                                    pbr_prefiltered_specular_program_.IsValid() && pbr_brdf_lut_program_.IsValid() &&
                                     pbr_skybox_program_.IsValid() &&
                                     pbr_skybox_fallback_program_.IsValid() &&
                                     pbr_debug_texture_2d_program_.IsValid() &&
@@ -2015,11 +1976,41 @@ namespace CoreEngine {
 
     bool RenderSystem::CreatePbrIblResources() {
         const PbrIblSettings &settings = desc_.pbr.ibl;
-        const std::uint32_t environment_resolution = settings.enabled ? settings.environment_cube_resolution : 16u;
-        const std::uint32_t irradiance_resolution = settings.enabled ? settings.irradiance_resolution : 8u;
-        const std::uint32_t prefiltered_resolution = settings.enabled ? settings.prefiltered_specular_resolution : 16u;
-        const std::uint32_t prefiltered_mips = settings.enabled ? settings.prefiltered_specular_mip_count : 1u;
-        const std::uint32_t brdf_resolution = settings.enabled ? settings.brdf_lut_resolution : 16u;
+        pbr_ibl_resources_.environment_resolution = settings.enabled ? settings.environment_cube_resolution : 16u;
+        pbr_ibl_resources_.irradiance_resolution = settings.enabled ? settings.irradiance_resolution : 8u;
+        pbr_ibl_resources_.prefiltered_resolution =
+                settings.enabled ? settings.prefiltered_specular_resolution : 16u;
+        pbr_ibl_resources_.prefiltered_mip_count =
+                settings.enabled ? settings.prefiltered_specular_mip_count : 1u;
+        pbr_ibl_resources_.brdf_lut_resolution = settings.enabled ? settings.brdf_lut_resolution : 16u;
+        return true;
+    }
+
+    bool RenderSystem::EnsurePbrIblGenerationResources() {
+        if (pbr_ibl_resources_.environment_cube_texture.IsValid() &&
+            pbr_ibl_resources_.irradiance_texture.IsValid() &&
+            pbr_ibl_resources_.prefiltered_specular_texture.IsValid() &&
+            pbr_ibl_resources_.brdf_lut_texture.IsValid() &&
+            pbr_ibl_resources_.environment_cube_srv.IsValid() &&
+            pbr_ibl_resources_.irradiance_srv.IsValid() &&
+            pbr_ibl_resources_.prefiltered_specular_srv.IsValid() &&
+            pbr_ibl_resources_.brdf_lut_srv.IsValid() &&
+            pbr_ibl_resources_.brdf_lut_rtv.IsValid()) {
+            UseRuntimePbrIblResources();
+            return true;
+        }
+
+        DestroyPbrRuntimeIblResources();
+        const auto fail = [this]() {
+            DestroyPbrRuntimeIblResources();
+            return false;
+        };
+
+        const std::uint32_t environment_resolution = pbr_ibl_resources_.environment_resolution;
+        const std::uint32_t irradiance_resolution = pbr_ibl_resources_.irradiance_resolution;
+        const std::uint32_t prefiltered_resolution = pbr_ibl_resources_.prefiltered_resolution;
+        const std::uint32_t prefiltered_mips = pbr_ibl_resources_.prefiltered_mip_count;
+        const std::uint32_t brdf_resolution = pbr_ibl_resources_.brdf_lut_resolution;
 
         pbr_ibl_resources_.environment_cube_texture = backend_->CreateTexture(TextureDesc{
                 .debug_name = "PBR_EnvironmentCube",
@@ -2066,7 +2057,7 @@ namespace CoreEngine {
             !pbr_ibl_resources_.irradiance_texture.IsValid() ||
             !pbr_ibl_resources_.prefiltered_specular_texture.IsValid() ||
             !pbr_ibl_resources_.brdf_lut_texture.IsValid()) {
-            return false;
+            return fail();
         }
 
         pbr_ibl_resources_.environment_cube_srv = backend_->CreateTextureView(TextureViewDesc{
@@ -2119,7 +2110,7 @@ namespace CoreEngine {
             !pbr_ibl_resources_.irradiance_srv.IsValid() ||
             !pbr_ibl_resources_.prefiltered_specular_srv.IsValid() ||
             !pbr_ibl_resources_.brdf_lut_srv.IsValid() || !pbr_ibl_resources_.brdf_lut_rtv.IsValid()) {
-            return false;
+            return fail();
         }
 
         for (std::uint32_t face = 0u; face < 6u; ++face) {
@@ -2143,7 +2134,7 @@ namespace CoreEngine {
             });
             if (!pbr_ibl_resources_.environment_cube_rtvs[face].IsValid() ||
                 !pbr_ibl_resources_.irradiance_rtvs[face].IsValid()) {
-                return false;
+                return fail();
             }
         }
 
@@ -2160,7 +2151,7 @@ namespace CoreEngine {
                         .array_slice_count = 1u,
                 });
                 if (!view.IsValid()) {
-                    return false;
+                    return fail();
                 }
                 pbr_ibl_resources_.prefiltered_specular_rtvs.push_back(view);
             }
@@ -2173,6 +2164,54 @@ namespace CoreEngine {
         pbr_ibl_resources_.brdf_lut_resolution = brdf_resolution;
         UseRuntimePbrIblResources();
         return true;
+    }
+
+    bool RenderSystem::EnsurePbrIblGenerationPrograms() {
+        if (pbr_equirect_to_cube_program_.IsValid() && pbr_irradiance_program_.IsValid() &&
+            pbr_prefiltered_specular_program_.IsValid() && pbr_brdf_lut_program_.IsValid()) {
+            return true;
+        }
+
+        pbr_equirect_to_cube_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_EquirectToCube",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrEquirectToCubePS,
+                .bindings = {ShaderBindingDesc::Texture("g_EquirectangularTexture", ShaderBindingScope::Pass,
+                                                        ShaderStage::Pixel, "g_IblSampler"),
+                             ShaderBindingDesc::UniformBuffer("IblGenerate", sizeof(Math::Vec4),
+                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
+                .color_format = FrameBufferFormat::RGBA16Float,
+        });
+        pbr_irradiance_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_IrradianceCube",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrIrradianceCubePS,
+                .bindings = {ShaderBindingDesc::Texture("g_EnvironmentCube", ShaderBindingScope::Pass,
+                                                        ShaderStage::Pixel, "g_IblSampler"),
+                             ShaderBindingDesc::UniformBuffer("IblGenerate", sizeof(Math::Vec4),
+                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
+                .color_format = FrameBufferFormat::RGBA16Float,
+        });
+        pbr_prefiltered_specular_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_PrefilteredSpecular",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrPrefilteredSpecularCubePS,
+                .bindings = {ShaderBindingDesc::Texture("g_EnvironmentCube", ShaderBindingScope::Pass,
+                                                        ShaderStage::Pixel, "g_IblSampler"),
+                             ShaderBindingDesc::UniformBuffer("IblGenerate", sizeof(Math::Vec4),
+                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
+                .color_format = FrameBufferFormat::RGBA16Float,
+        });
+        pbr_brdf_lut_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_BrdfLut",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrBrdfLutPS,
+                .bindings = {},
+                .color_format = FrameBufferFormat::RGBA16Float,
+        });
+
+        return pbr_equirect_to_cube_program_.IsValid() && pbr_irradiance_program_.IsValid() &&
+               pbr_prefiltered_specular_program_.IsValid() && pbr_brdf_lut_program_.IsValid();
     }
 
     void RenderSystem::SetActivePbrIblResources(TextureViewHandle environment_cube, TextureViewHandle irradiance,
@@ -2392,8 +2431,7 @@ namespace CoreEngine {
         return true;
     }
 
-    void RenderSystem::DestroyPbrIblResources() {
-        DestroyPbrPrecomputedIblResources();
+    void RenderSystem::DestroyPbrRuntimeIblResources() {
         for (TextureViewHandle view: pbr_ibl_resources_.environment_cube_rtvs) {
             if (view.IsValid()) {
                 backend_->DestroyTextureView(view);
@@ -2436,6 +2474,23 @@ namespace CoreEngine {
         if (pbr_ibl_resources_.brdf_lut_texture.IsValid()) {
             backend_->DestroyTexture(pbr_ibl_resources_.brdf_lut_texture);
         }
+        pbr_ibl_resources_.environment_cube_texture = {};
+        pbr_ibl_resources_.environment_cube_srv = {};
+        pbr_ibl_resources_.environment_cube_rtvs = {};
+        pbr_ibl_resources_.irradiance_texture = {};
+        pbr_ibl_resources_.irradiance_srv = {};
+        pbr_ibl_resources_.irradiance_rtvs = {};
+        pbr_ibl_resources_.prefiltered_specular_texture = {};
+        pbr_ibl_resources_.prefiltered_specular_srv = {};
+        pbr_ibl_resources_.prefiltered_specular_rtvs.clear();
+        pbr_ibl_resources_.brdf_lut_texture = {};
+        pbr_ibl_resources_.brdf_lut_srv = {};
+        pbr_ibl_resources_.brdf_lut_rtv = {};
+    }
+
+    void RenderSystem::DestroyPbrIblResources() {
+        DestroyPbrPrecomputedIblResources();
+        DestroyPbrRuntimeIblResources();
         if (pbr_ibl_resources_.owns_source_texture && pbr_ibl_resources_.source_equirectangular_texture.IsValid()) {
             backend_->DestroyTexture(pbr_ibl_resources_.source_equirectangular_texture);
         }
@@ -2639,6 +2694,14 @@ namespace CoreEngine {
             pbr_ibl_resources_.source_equirectangular_texture.IsValid() &&
             backend_->GetTextureLoadState(pbr_ibl_resources_.source_equirectangular_texture) ==
                     TextureLoadState::Ready) {
+            if (!EnsurePbrIblGenerationResources() || !EnsurePbrIblGenerationPrograms()) {
+                pbr_ibl_resources_.generation_pending = false;
+                pbr_ibl_resources_.save_generated_precomputed_cache = false;
+                Log::Warn("Render", "Failed to create PBR IBL generation resources; environment lighting disabled.");
+                backend_->SetPbrGlobalResources(pbr_global_resources_);
+                return;
+            }
+
             for (std::uint32_t face = 0u; face < 6u; ++face) {
                 const Math::Vec4 params{static_cast<float>(face), 0.f, 0.f,
                                         static_cast<float>(pbr_ibl_resources_.environment_resolution)};

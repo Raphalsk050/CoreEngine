@@ -332,6 +332,12 @@ namespace CoreEngine {
 
         [[nodiscard]] bool CreatePbrIblResources();
 
+        [[nodiscard]] bool EnsurePbrIblGenerationResources();
+
+        [[nodiscard]] bool EnsurePbrIblGenerationPrograms();
+
+        void DestroyPbrRuntimeIblResources();
+
         void DestroyPbrIblResources();
 
         void DestroyPbrPrecomputedIblResources();
