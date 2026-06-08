@@ -254,6 +254,7 @@ namespace CoreEngine {
         desc.enable_imgui = config_.enable_imgui;
         desc.width = config_.window_width;
         desc.height = config_.window_height;
+        desc.pbr = config_.pbr;
 
         if (!render_system_->Initialize(desc, window_system_->GetNativeHandle())) {
             Log::Error("Render", render_system_->LastError());

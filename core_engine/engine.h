@@ -3,6 +3,7 @@
 #include <string>
 
 #include "core/render/render_backend_type.h"
+#include "core/render/render_desc.h"
 
 namespace CoreEngine {
     struct EngineConfig {
@@ -15,6 +16,7 @@ namespace CoreEngine {
         bool vsync = true;
         bool enable_imgui = false;
         RenderBackendType render_backend = RenderBackendType::None;
+        PbrRenderSettings pbr{};
         std::string window_title = "Sample game";
     };
 

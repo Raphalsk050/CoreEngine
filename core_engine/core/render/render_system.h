@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -15,6 +16,7 @@
 #include "core/ecs/node.h"
 #include "core/render/camera.h"
 #include "core/render/camera_data.h"
+#include "core/render/debug/render_debug_registry.h"
 #include "core/render/i_render_backend.h"
 #include "core/render/i_render_context.h"
 #include "core/render/material.h"
@@ -24,6 +26,7 @@
 #include "core/render/render_batch.h"
 #include "core/render/render_clear_color.h"
 #include "core/render/render_graph.h"
+#include "core/render/render_mobility.h"
 
 namespace CoreEngine {
     class FrameClock;
@@ -34,6 +37,9 @@ namespace CoreEngine {
     struct CameraComponent;
     struct TransformComponent;
     class DefaultSceneRenderPass;
+    class PbrDebugPass;
+    class PbrIblPass;
+    class PbrShadowPass;
 
     struct ModelInstantiationDesc {
         std::string root_name = "Model";
@@ -51,17 +57,20 @@ namespace CoreEngine {
         Material material = Material::Unlit();
         bool visible = true;
         bool cast_shadows = true;
+        RenderMobility mobility = RenderMobility::Dynamic;
         PrimitiveTopology topology = PrimitiveTopology::TriangleList;
 
         [[nodiscard]] static PrimitiveRendererDesc Unlit(
                 PrimitiveType primitive_type, const Math::Vec4 &color = Math::Vec4(1.0f), bool primitive_visible = true,
                 bool primitive_cast_shadows = true,
+                RenderMobility primitive_mobility = RenderMobility::Dynamic,
                 PrimitiveTopology primitive_topology = PrimitiveTopology::TriangleList) {
             return PrimitiveRendererDesc{
                     .type = primitive_type,
                     .material = Material::Unlit(UnlitProps{.color = color}),
                     .visible = primitive_visible,
                     .cast_shadows = primitive_cast_shadows,
+                    .mobility = primitive_mobility,
                     .topology = primitive_topology,
             };
         }
@@ -69,12 +78,14 @@ namespace CoreEngine {
         [[nodiscard]] static PrimitiveRendererDesc WithMaterial(
                 PrimitiveType primitive_type, Material primitive_material, bool primitive_visible = true,
                 bool primitive_cast_shadows = true,
+                RenderMobility primitive_mobility = RenderMobility::Dynamic,
                 PrimitiveTopology primitive_topology = PrimitiveTopology::TriangleList) {
             return PrimitiveRendererDesc{
                     .type = primitive_type,
                     .material = std::move(primitive_material),
                     .visible = primitive_visible,
                     .cast_shadows = primitive_cast_shadows,
+                    .mobility = primitive_mobility,
                     .topology = primitive_topology,
             };
         }
@@ -189,14 +200,105 @@ namespace CoreEngine {
 
         [[nodiscard]] RenderGraph &Graph();
 
+        void SetDebugView(RenderDebugView view);
+
+        [[nodiscard]] bool SetDebugView(std::string_view name);
+
+        void ClearDebugView();
+
+        [[nodiscard]] std::span<const RenderDebugView> GetAvailableDebugViews() const;
+
+        [[nodiscard]] const RenderDebugStats &GetDebugStats() const;
+
     private:
         friend class DefaultSceneRenderPass;
+        friend class PbrDebugPass;
+        friend class PbrIblPass;
+        friend class PbrShadowPass;
 
         struct AsyncModelLoadRequest;
         struct ModelRegistry;
         struct UploadedModelResources;
+        struct PbrShadowResources {
+            TextureHandle directional_texture{};
+            TextureViewHandle directional_srv{};
+            std::array<TextureViewHandle, kMaxPbrCascades> directional_dsvs{};
+            TextureHandle point_texture{};
+            TextureViewHandle point_srv{};
+            std::array<TextureViewHandle, kMaxPbrShadowedPointLights * kPbrPointShadowFaceCount> point_dsvs{};
+            std::uint32_t cascade_count = 0;
+            std::uint32_t max_point_lights = 0;
+            std::uint32_t directional_resolution = 0;
+            std::uint32_t point_resolution = 0;
+        };
+        struct PbrPrecomputedIblPaths {
+            std::string environment_cube_path{};
+            std::string irradiance_cube_path{};
+            std::string prefiltered_specular_cube_path{};
+            std::string brdf_lut_path{};
+            std::string manifest_path{};
+
+            [[nodiscard]] bool IsComplete() const {
+                return !environment_cube_path.empty() && !irradiance_cube_path.empty() &&
+                       !prefiltered_specular_cube_path.empty() && !brdf_lut_path.empty();
+            }
+        };
+        struct PbrIblResources {
+            TextureHandle source_equirectangular_texture{};
+            TextureHandle environment_cube_texture{};
+            TextureViewHandle environment_cube_srv{};
+            std::array<TextureViewHandle, 6> environment_cube_rtvs{};
+            TextureHandle irradiance_texture{};
+            TextureViewHandle irradiance_srv{};
+            std::array<TextureViewHandle, 6> irradiance_rtvs{};
+            TextureHandle prefiltered_specular_texture{};
+            TextureViewHandle prefiltered_specular_srv{};
+            std::vector<TextureViewHandle> prefiltered_specular_rtvs{};
+            TextureHandle brdf_lut_texture{};
+            TextureViewHandle brdf_lut_srv{};
+            TextureViewHandle brdf_lut_rtv{};
+            TextureHandle precomputed_environment_cube_texture{};
+            TextureViewHandle precomputed_environment_cube_srv{};
+            TextureHandle precomputed_irradiance_texture{};
+            TextureViewHandle precomputed_irradiance_srv{};
+            TextureHandle precomputed_prefiltered_specular_texture{};
+            TextureViewHandle precomputed_prefiltered_specular_srv{};
+            TextureHandle precomputed_brdf_lut_texture{};
+            TextureViewHandle precomputed_brdf_lut_srv{};
+            TextureViewHandle active_environment_cube_srv{};
+            TextureViewHandle active_irradiance_srv{};
+            TextureViewHandle active_prefiltered_specular_srv{};
+            TextureViewHandle active_brdf_lut_srv{};
+            std::string source_key{};
+            std::string source_path{};
+            PbrPrecomputedIblPaths pending_precomputed_bake_paths{};
+            std::string pending_precomputed_bake_source_key{};
+            std::uint32_t irradiance_resolution = 0;
+            std::uint32_t environment_resolution = 0;
+            std::uint32_t prefiltered_resolution = 0;
+            std::uint32_t prefiltered_mip_count = 0;
+            std::uint32_t brdf_lut_resolution = 0;
+            bool generation_pending = false;
+            bool generated = false;
+            bool owns_source_texture = false;
+            bool using_precomputed_cache = false;
+            bool save_generated_precomputed_cache = false;
+        };
+        enum class ShadowCasterFilter {
+            All,
+            StaticOnly,
+            DynamicOnly,
+        };
 
         void ExecuteDefaultScenePass(RenderPassContext &context);
+
+        void ExecutePbrShadowPass(RenderPassContext &context);
+
+        void ExecutePbrIblPass(RenderPassContext &context);
+
+        void ExecutePbrDebugPass(RenderPassContext &context);
+
+        void DrawPbrSkybox(RenderPassContext &context, const CameraData &camera, float intensity);
 
         void PumpModelUploads();
 
@@ -220,6 +322,31 @@ namespace CoreEngine {
 
         void DestroySceneFrameBuffer();
 
+        [[nodiscard]] bool CreatePbrResources();
+
+        void DestroyPbrResources();
+
+        [[nodiscard]] bool CreatePbrShadowResources();
+
+        void DestroyPbrShadowResources();
+
+        [[nodiscard]] bool CreatePbrIblResources();
+
+        void DestroyPbrIblResources();
+
+        void DestroyPbrPrecomputedIblResources();
+
+        void UseRuntimePbrIblResources();
+
+        void SetActivePbrIblResources(TextureViewHandle environment_cube, TextureViewHandle irradiance,
+                                      TextureViewHandle prefiltered_specular, TextureViewHandle brdf_lut);
+
+        [[nodiscard]] bool LoadPbrPrecomputedIbl(const PbrPrecomputedIblPaths &paths);
+
+        [[nodiscard]] bool SaveGeneratedPbrIblCache();
+
+        void GatherShadowCasters(World &world, ShadowCasterFilter filter = ShadowCasterFilter::All);
+
         [[nodiscard]] CameraData ResolveWorldCamera(World &world) const;
 
         [[nodiscard]] CameraData BuildCameraData(const Math::Vec3 &position, const Math::Quat &rotation,
@@ -241,10 +368,29 @@ namespace CoreEngine {
         int surface_height_ = 1;
 
         BatchAccumulator accumulator_;
+        GeometryBatchAccumulator shadow_accumulator_;
         std::unordered_map<entt::entity, Math::Mat4> world_transform_cache_;
         RenderGraph render_graph_;
         RenderPassHandle default_scene_pass_;
+        RenderPassHandle pbr_shadow_pass_;
+        RenderPassHandle pbr_ibl_pass_;
+        RenderPassHandle pbr_debug_pass_;
         RenderFrameResources render_frame_resources_;
+        RenderDebugRegistry debug_registry_;
+        PbrShadowResources pbr_shadow_resources_{};
+        PbrIblResources pbr_ibl_resources_{};
+        PbrShadowFrameData pbr_shadow_frame_data_{};
+        PbrGlobalResources pbr_global_resources_{};
+        ShaderProgramHandle pbr_shadow_depth_program_{};
+        ShaderProgramHandle pbr_equirect_to_cube_program_{};
+        ShaderProgramHandle pbr_irradiance_program_{};
+        ShaderProgramHandle pbr_prefiltered_specular_program_{};
+        ShaderProgramHandle pbr_brdf_lut_program_{};
+        ShaderProgramHandle pbr_skybox_program_{};
+        ShaderProgramHandle pbr_skybox_fallback_program_{};
+        ShaderProgramHandle pbr_debug_texture_2d_program_{};
+        ShaderProgramHandle pbr_debug_texture_array_program_{};
+        ShaderProgramHandle pbr_debug_texture_cube_program_{};
         std::array<MeshHandle, kPrimitiveCount> primitive_cache_{};
         FrameBufferHandle scene_framebuffer_{};
         bool initialized_ = false;

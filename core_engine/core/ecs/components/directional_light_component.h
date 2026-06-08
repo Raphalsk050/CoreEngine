@@ -14,5 +14,9 @@ namespace CoreEngine {
         float illuminance_lux = 0.f;
         Math::Vec3 color{1.f, 1.f, 1.f};
         bool enabled = true;
+        bool cast_shadows = true;
+        float shadow_strength = 1.f;
+        float shadow_bias = 0.0015f;
+        float shadow_normal_bias = 0.02f;
     };
 } // namespace CoreEngine

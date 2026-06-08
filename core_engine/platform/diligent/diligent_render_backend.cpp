@@ -8,6 +8,8 @@
 #include <cstring>
 #include <deque>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -84,7 +86,17 @@ namespace CoreEngine {
             Math::Vec4 environment_light_enabled;
             std::array<Math::Vec4, kMaxPbrPointLights> point_light_position_range;
             std::array<Math::Vec4, kMaxPbrPointLights> point_light_color_intensity;
+            std::array<Math::Vec4, kMaxPbrPointLights> point_light_shadow_params;
             Math::Vec4 point_light_params;
+            std::array<Math::Mat4, kMaxPbrCascades> directional_shadow_view_proj;
+            Math::Vec4 directional_shadow_splits;
+            Math::Vec4 directional_shadow_params;
+            Math::Vec4 directional_shadow_extra;
+            Math::Vec4 point_shadow_params;
+            std::array<Math::Mat4, kMaxPbrShadowedPointLights * kPbrPointShadowFaceCount> point_shadow_view_proj;
+            Math::Vec4 reflection_probe_position_radius;
+            Math::Vec4 reflection_probe_params;
+            Math::Vec4 pbr_debug_params;
         };
 
         struct PerObjectCB {
@@ -133,6 +145,12 @@ namespace CoreEngine {
             std::vector<DiligentUniformBinding> uniforms;
             std::vector<DiligentTextureBinding> textures;
             std::vector<uint8_t> properties_data;
+            Diligent::IShaderResourceVariable *pbr_directional_shadow_var = nullptr;
+            Diligent::IShaderResourceVariable *pbr_point_shadow_var = nullptr;
+            Diligent::IShaderResourceVariable *pbr_irradiance_var = nullptr;
+            Diligent::IShaderResourceVariable *pbr_prefiltered_specular_var = nullptr;
+            Diligent::IShaderResourceVariable *pbr_brdf_lut_var = nullptr;
+            Diligent::IShaderResourceVariable *pbr_sampler_var = nullptr;
             uint32_t generation = 0;
         };
 
@@ -160,6 +178,13 @@ namespace CoreEngine {
             uint64_t revision = 0;
         };
 
+        struct DiligentTextureViewData {
+            TextureHandle texture;
+            TextureViewType type = TextureViewType::ShaderResource;
+            Diligent::RefCntAutoPtr<Diligent::ITextureView> view;
+            uint32_t generation = 0;
+        };
+
         struct DiligentTextureLoadTask {
             TextureHandle handle;
             TextureLoadDesc desc;
@@ -181,6 +206,14 @@ namespace CoreEngine {
             uint32_t width = 0;
             uint32_t height = 0;
             uint32_t generation = 0;
+        };
+
+        struct DiligentPbrGlobalResources {
+            TextureViewHandle directional_shadow_map{};
+            TextureViewHandle point_shadow_map{};
+            TextureViewHandle irradiance_map{};
+            TextureViewHandle prefiltered_specular_map{};
+            TextureViewHandle brdf_lut{};
         };
     } // namespace
 
@@ -204,6 +237,7 @@ namespace CoreEngine {
         tsl::robin_map<uint32_t, DiligentShaderProgramData> shader_program_registry;
         tsl::robin_map<uint32_t, DiligentFrameBufferData> frame_buffer_registry;
         tsl::robin_map<uint32_t, DiligentTextureData> texture_registry;
+        tsl::robin_map<uint32_t, DiligentTextureViewData> texture_view_registry;
         tsl::robin_map<uint64_t, MaterialHandle> material_hash_cache;
         mutable std::mutex texture_registry_mutex;
         std::mutex texture_load_queue_mutex;
@@ -221,11 +255,17 @@ namespace CoreEngine {
         Diligent::IShaderResourceVariable *composite_scene_color_var = nullptr;
         Diligent::IShaderResourceVariable *composite_scene_sampler_var = nullptr;
         FrameBufferHandle active_frame_buffer{};
+        Diligent::ITextureView *active_color_target = nullptr;
+        Diligent::ITextureView *active_depth_target = nullptr;
+        bool active_external_render_targets = false;
         ShaderProgramHandle active_shader_program{};
         ShaderProgramHandle depth_visualization_program{};
+        DiligentPbrGlobalResources pbr_globals{};
 
         uint32_t next_texture_id_ = 1;
         uint32_t texture_generation_ = 1;
+        uint32_t next_texture_view_id = 1;
+        uint32_t texture_view_generation = 1;
         uint32_t next_mesh_id = 1;
         uint32_t next_material_id = 1;
         uint32_t next_shader_program_id = 1;
@@ -381,8 +421,91 @@ namespace CoreEngine {
                 case TextureFormat::Auto:           return Diligent::TEX_FORMAT_UNKNOWN;
                 case TextureFormat::RGBA8Unorm:     return Diligent::TEX_FORMAT_RGBA8_UNORM;
                 case TextureFormat::RGBA8UnormSrgb: return Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB;
+                case TextureFormat::RGBA16Float:    return Diligent::TEX_FORMAT_RGBA16_FLOAT;
+                case TextureFormat::RGBA32Float:    return Diligent::TEX_FORMAT_RGBA32_FLOAT;
+                case TextureFormat::R16Float:       return Diligent::TEX_FORMAT_R16_FLOAT;
+                case TextureFormat::R32Float:       return Diligent::TEX_FORMAT_R32_FLOAT;
+                case TextureFormat::RG16Float:      return Diligent::TEX_FORMAT_RG16_FLOAT;
+                case TextureFormat::Depth32Float:   return Diligent::TEX_FORMAT_D32_FLOAT;
             }
             return Diligent::TEX_FORMAT_UNKNOWN;
+        }
+
+        Diligent::RESOURCE_DIMENSION ToDiligentTextureDimension(TextureDimension dimension) {
+            switch (dimension) {
+                case TextureDimension::Texture2D:       return Diligent::RESOURCE_DIM_TEX_2D;
+                case TextureDimension::Texture2DArray:  return Diligent::RESOURCE_DIM_TEX_2D_ARRAY;
+                case TextureDimension::TextureCube:     return Diligent::RESOURCE_DIM_TEX_CUBE;
+                case TextureDimension::TextureCubeArray: return Diligent::RESOURCE_DIM_TEX_CUBE_ARRAY;
+            }
+
+            return Diligent::RESOURCE_DIM_UNDEFINED;
+        }
+
+        Diligent::TEXTURE_VIEW_TYPE ToDiligentTextureViewType(TextureViewType type) {
+            switch (type) {
+                case TextureViewType::ShaderResource: return Diligent::TEXTURE_VIEW_SHADER_RESOURCE;
+                case TextureViewType::RenderTarget:   return Diligent::TEXTURE_VIEW_RENDER_TARGET;
+                case TextureViewType::DepthStencil:   return Diligent::TEXTURE_VIEW_DEPTH_STENCIL;
+            }
+
+            return Diligent::TEXTURE_VIEW_UNDEFINED;
+        }
+
+        Diligent::BIND_FLAGS ToDiligentTextureBindFlags(TextureUsage usage) {
+            Diligent::BIND_FLAGS flags = Diligent::BIND_NONE;
+            if (HasTextureUsage(usage, TextureUsage::ShaderResource)) {
+                flags |= Diligent::BIND_SHADER_RESOURCE;
+            }
+            if (HasTextureUsage(usage, TextureUsage::RenderTarget)) {
+                flags |= Diligent::BIND_RENDER_TARGET;
+            }
+            if (HasTextureUsage(usage, TextureUsage::DepthStencil)) {
+                flags |= Diligent::BIND_DEPTH_STENCIL;
+            }
+            return flags;
+        }
+
+        DiligentTextureData CreateTextureData(Diligent::IRenderDevice *device, const TextureDesc &desc) {
+            DiligentTextureData data;
+            if (device == nullptr || !desc.IsValid()) {
+                data.state = TextureLoadState::Failed;
+                data.error_message = "Invalid texture creation request";
+                return data;
+            }
+
+            Diligent::TextureDesc texture_desc;
+            texture_desc.Name = desc.debug_name.c_str();
+            texture_desc.Type = ToDiligentTextureDimension(desc.dimension);
+            texture_desc.Width = static_cast<Diligent::Uint32>(desc.width);
+            texture_desc.Height = static_cast<Diligent::Uint32>(desc.height);
+            texture_desc.ArraySize = desc.array_size;
+            texture_desc.MipLevels = desc.mip_levels;
+            texture_desc.Format = ToDiligentTextureFormat(desc.format);
+            texture_desc.Usage = Diligent::USAGE_DEFAULT;
+            texture_desc.BindFlags = ToDiligentTextureBindFlags(desc.usage);
+
+            if (texture_desc.Type == Diligent::RESOURCE_DIM_UNDEFINED ||
+                texture_desc.Format == Diligent::TEX_FORMAT_UNKNOWN || texture_desc.BindFlags == Diligent::BIND_NONE) {
+                data.state = TextureLoadState::Failed;
+                data.error_message = "Unsupported texture creation request";
+                return data;
+            }
+
+            device->CreateTexture(texture_desc, nullptr, &data.texture);
+            if (!data.texture) {
+                data.state = TextureLoadState::Failed;
+                data.error_message = "Failed to create texture: " + desc.debug_name;
+                return data;
+            }
+
+            if (HasTextureUsage(desc.usage, TextureUsage::ShaderResource)) {
+                data.texture_view = data.texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+            }
+
+            data.state = TextureLoadState::Ready;
+            data.revision = 1;
+            return data;
         }
 
         Diligent::TextureLoadInfo MakeTextureLoadInfo(const TextureLoadDesc &desc) {
@@ -507,6 +630,181 @@ namespace CoreEngine {
             return data;
         }
 
+        [[nodiscard]] std::uint32_t DiligentBytesPerTexel(Diligent::TEXTURE_FORMAT format) noexcept {
+            switch (format) {
+                case Diligent::TEX_FORMAT_RGBA32_FLOAT: return 16u;
+                case Diligent::TEX_FORMAT_RGBA16_FLOAT: return 8u;
+                case Diligent::TEX_FORMAT_RG16_FLOAT:   return 4u;
+                case Diligent::TEX_FORMAT_RGBA8_UNORM:
+                case Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB:
+                case Diligent::TEX_FORMAT_BGRA8_UNORM:
+                case Diligent::TEX_FORMAT_BGRA8_UNORM_SRGB: return 4u;
+                case Diligent::TEX_FORMAT_R16_FLOAT:        return 2u;
+                case Diligent::TEX_FORMAT_R8_UNORM:         return 1u;
+                default:                                    return 0u;
+            }
+        }
+
+        [[nodiscard]] bool CreateParentDirectories(std::string_view output_path, std::string &error_message) {
+            const std::filesystem::path path{std::string{output_path}};
+            const std::filesystem::path parent = path.parent_path();
+            if (parent.empty()) {
+                return true;
+            }
+
+            std::error_code error;
+            std::filesystem::create_directories(parent, error);
+            if (error) {
+                error_message = "Failed to create DDS output directory: " + parent.string();
+                return false;
+            }
+
+            return true;
+        }
+
+        [[nodiscard]] bool PatchDdsCubeMetadata(std::string_view output_path, const Diligent::TextureDesc &source_desc,
+                                                std::string &error_message) {
+            if (source_desc.Type != Diligent::RESOURCE_DIM_TEX_CUBE &&
+                source_desc.Type != Diligent::RESOURCE_DIM_TEX_CUBE_ARRAY) {
+                return true;
+            }
+
+            const Diligent::Uint32 face_count = source_desc.GetArraySize();
+            if (face_count == 0u || (face_count % 6u) != 0u) {
+                error_message = "DDS cubemap export requires a whole number of cube faces";
+                return false;
+            }
+
+            std::fstream file{std::filesystem::path{std::string{output_path}},
+                              std::ios::binary | std::ios::in | std::ios::out};
+            if (!file) {
+                error_message = "Failed to reopen DDS file for cubemap metadata patch: " + std::string{output_path};
+                return false;
+            }
+
+            constexpr std::streamoff kDdsMagicSize = 4;
+            constexpr std::streamoff kDdsHeaderSize = 124;
+            constexpr std::streamoff kDx10MiscFlagOffset = 8;
+            constexpr std::streamoff kDx10ArraySizeOffset = 12;
+            constexpr std::uint32_t kD3D11TextureCubeMiscFlag = 0x4u;
+
+            const std::uint32_t cube_count = static_cast<std::uint32_t>(face_count / 6u);
+            file.seekp(kDdsMagicSize + kDdsHeaderSize + kDx10MiscFlagOffset);
+            file.write(reinterpret_cast<const char *>(&kD3D11TextureCubeMiscFlag), sizeof(kD3D11TextureCubeMiscFlag));
+            file.seekp(kDdsMagicSize + kDdsHeaderSize + kDx10ArraySizeOffset);
+            file.write(reinterpret_cast<const char *>(&cube_count), sizeof(cube_count));
+
+            if (!file) {
+                error_message = "Failed to patch DDS cubemap metadata: " + std::string{output_path};
+                return false;
+            }
+
+            return true;
+        }
+
+        [[nodiscard]] bool SaveGpuTextureAsDds(Diligent::IRenderDevice *device, Diligent::IDeviceContext *context,
+                                               Diligent::ITexture *source, std::string_view output_path,
+                                               std::string &error_message) {
+            if (device == nullptr || context == nullptr || source == nullptr || output_path.empty()) {
+                error_message = "Invalid DDS export request";
+                return false;
+            }
+
+            const Diligent::TextureDesc source_desc = source->GetDesc();
+            const std::uint32_t bytes_per_texel = DiligentBytesPerTexel(source_desc.Format);
+            if (bytes_per_texel == 0u || source_desc.MipLevels == 0u || source_desc.Width == 0u ||
+                source_desc.Height == 0u || source_desc.Is3D()) {
+                error_message = "DDS export does not support this texture format or dimension";
+                return false;
+            }
+
+            Diligent::TextureDesc staging_desc = source_desc;
+            staging_desc.Name = "DDS export staging texture";
+            staging_desc.Usage = Diligent::USAGE_STAGING;
+            staging_desc.BindFlags = Diligent::BIND_NONE;
+            staging_desc.CPUAccessFlags = Diligent::CPU_ACCESS_READ;
+            staging_desc.MiscFlags = Diligent::MISC_TEXTURE_FLAG_NONE;
+
+            Diligent::RefCntAutoPtr<Diligent::ITexture> staging_texture;
+            device->CreateTexture(staging_desc, nullptr, &staging_texture);
+            if (!staging_texture) {
+                error_message = "Failed to create DDS export staging texture";
+                return false;
+            }
+
+            const std::uint32_t mip_count = source_desc.MipLevels;
+            const std::uint32_t slice_count = source_desc.GetArraySize();
+            Diligent::CopyTextureAttribs copy_attribs{};
+            copy_attribs.pSrcTexture = source;
+            copy_attribs.SrcTextureTransitionMode = Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+            copy_attribs.pDstTexture = staging_texture;
+            copy_attribs.DstTextureTransitionMode = Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+            for (std::uint32_t slice = 0u; slice < slice_count; ++slice) {
+                for (std::uint32_t mip = 0u; mip < mip_count; ++mip) {
+                    copy_attribs.SrcSlice = slice;
+                    copy_attribs.DstSlice = slice;
+                    copy_attribs.SrcMipLevel = mip;
+                    copy_attribs.DstMipLevel = mip;
+                    context->CopyTexture(copy_attribs);
+                }
+            }
+            context->WaitForIdle();
+
+            std::vector<std::vector<std::uint8_t>> subresource_storage;
+            subresource_storage.resize(static_cast<std::size_t>(mip_count) * static_cast<std::size_t>(slice_count));
+            std::vector<Diligent::TextureSubResData> subresources{subresource_storage.size()};
+
+            for (std::uint32_t slice = 0u; slice < slice_count; ++slice) {
+                for (std::uint32_t mip = 0u; mip < mip_count; ++mip) {
+                    Diligent::MappedTextureSubresource mapped{};
+                    context->MapTextureSubresource(staging_texture, mip, slice, Diligent::MAP_READ,
+                                                   Diligent::MAP_FLAG_NONE, nullptr, mapped);
+                    if (mapped.pData == nullptr) {
+                        error_message = "Failed to map DDS export staging texture";
+                        return false;
+                    }
+
+                    const std::uint32_t mip_width = (source_desc.Width >> mip) == 0u ? 1u : source_desc.Width >> mip;
+                    const std::uint32_t mip_height =
+                            (source_desc.Height >> mip) == 0u ? 1u : source_desc.Height >> mip;
+                    const std::uint64_t tight_stride =
+                            static_cast<std::uint64_t>(mip_width) * static_cast<std::uint64_t>(bytes_per_texel);
+                    const std::size_t subresource_index =
+                            static_cast<std::size_t>(slice) * static_cast<std::size_t>(mip_count) + mip;
+                    std::vector<std::uint8_t> &storage = subresource_storage[subresource_index];
+                    storage.resize(static_cast<std::size_t>(tight_stride * mip_height));
+
+                    const auto *source_row = static_cast<const std::uint8_t *>(mapped.pData);
+                    auto *target_row = storage.data();
+                    for (std::uint32_t row = 0u; row < mip_height; ++row) {
+                        std::memcpy(target_row, source_row, static_cast<std::size_t>(tight_stride));
+                        source_row += mapped.Stride;
+                        target_row += tight_stride;
+                    }
+
+                    context->UnmapTextureSubresource(staging_texture, mip, slice);
+                    subresources[subresource_index] = Diligent::TextureSubResData{storage.data(), tight_stride};
+                }
+            }
+
+            if (!CreateParentDirectories(output_path, error_message)) {
+                return false;
+            }
+
+            const std::string output_file{output_path};
+            Diligent::TextureDesc save_desc = source_desc;
+            Diligent::TextureData texture_data{subresources.data(), static_cast<Diligent::Uint32>(subresources.size())};
+            if (!Diligent::SaveTextureAsDDS(output_file.c_str(), save_desc, texture_data)) {
+                error_message = "Failed to write DDS file: " + output_file;
+                return false;
+            }
+            if (!PatchDdsCubeMetadata(output_file, source_desc, error_message)) {
+                return false;
+            }
+
+            return true;
+        }
+
         DiligentTextureSnapshot GetTextureSnapshot(const DiligentRenderBackend::Impl &impl, TextureHandle handle) {
             std::lock_guard lock{impl.texture_registry_mutex};
             const auto it = impl.texture_registry.find(handle.id);
@@ -519,6 +817,16 @@ namespace CoreEngine {
                     .state = it.value().state,
                     .revision = it.value().revision,
             };
+        }
+
+        Diligent::RefCntAutoPtr<Diligent::ITextureView> GetTextureViewSnapshot(
+                const DiligentRenderBackend::Impl &impl, TextureViewHandle handle) {
+            const auto it = impl.texture_view_registry.find(handle.id);
+            if (it == impl.texture_view_registry.end() || it.value().generation != handle.generation) {
+                return {};
+            }
+
+            return it.value().view;
         }
 
         void MarkTextureLoadFailed(DiligentRenderBackend::Impl &impl, TextureHandle handle, std::string error_message) {
@@ -744,6 +1052,17 @@ namespace CoreEngine {
 
             auto vs = CompileShader(impl.device, Diligent::SHADER_TYPE_VERTEX, desc.vertex_shader_source.c_str(), "VS");
             auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL, desc.pixel_shader_source.c_str(), "PS");
+            const bool uses_pbr_directional_shadow =
+                    desc.pixel_shader_source.find("g_DirectionalShadowMap") != std::string::npos;
+            const bool uses_pbr_point_shadow =
+                    desc.pixel_shader_source.find("g_PointShadowMap") != std::string::npos;
+            const bool uses_pbr_irradiance = desc.pixel_shader_source.find("g_IrradianceMap") != std::string::npos;
+            const bool uses_pbr_prefiltered =
+                    desc.pixel_shader_source.find("g_PrefilteredSpecularMap") != std::string::npos;
+            const bool uses_pbr_brdf_lut = desc.pixel_shader_source.find("g_BrdfLut") != std::string::npos;
+            const bool uses_pbr_sampler = desc.pixel_shader_source.find("g_PbrSampler") != std::string::npos;
+            const bool uses_pbr_globals = uses_pbr_directional_shadow || uses_pbr_point_shadow ||
+                                          uses_pbr_irradiance || uses_pbr_prefiltered || uses_pbr_brdf_lut;
 
             // Explicit offsets keep the vertex contract stable if math type packing changes.
             constexpr Diligent::Uint32 kStride = sizeof(StaticMeshVertex);
@@ -778,7 +1097,7 @@ namespace CoreEngine {
             pci.pPS = ps;
 
             std::vector<Diligent::ShaderResourceVariableDesc> vars;
-            vars.reserve(2u + uniforms.size() + desc.bindings.size() * 2u);
+            vars.reserve(2u + uniforms.size() + desc.bindings.size() * 2u + 6u);
             vars.push_back({Diligent::SHADER_TYPE_VERTEX, "PerFrame", Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
             if (desc.pixel_shader_source.find("g_CameraPositionExposure") != std::string::npos) {
                 vars.push_back(
@@ -805,6 +1124,31 @@ namespace CoreEngine {
                     vars.push_back({ToDiligentShaderStages(binding.stages), binding.sampler_name.c_str(),
                                     Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
                 }
+            }
+
+            if (uses_pbr_directional_shadow) {
+                vars.push_back({Diligent::SHADER_TYPE_PIXEL, "g_DirectionalShadowMap",
+                                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
+            }
+            if (uses_pbr_point_shadow) {
+                vars.push_back({Diligent::SHADER_TYPE_PIXEL, "g_PointShadowMap",
+                                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
+            }
+            if (uses_pbr_irradiance) {
+                vars.push_back({Diligent::SHADER_TYPE_PIXEL, "g_IrradianceMap",
+                                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
+            }
+            if (uses_pbr_prefiltered) {
+                vars.push_back({Diligent::SHADER_TYPE_PIXEL, "g_PrefilteredSpecularMap",
+                                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
+            }
+            if (uses_pbr_brdf_lut) {
+                vars.push_back({Diligent::SHADER_TYPE_PIXEL, "g_BrdfLut",
+                                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
+            }
+            if (uses_pbr_sampler) {
+                vars.push_back({Diligent::SHADER_TYPE_PIXEL, "g_PbrSampler",
+                                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
             }
 
             pci.PSODesc.ResourceLayout.Variables = vars.data();
@@ -864,7 +1208,7 @@ namespace CoreEngine {
                 }
             }
 
-            if (has_material_textures) {
+            if (has_material_textures || uses_pbr_globals || uses_pbr_sampler) {
                 Diligent::SamplerDesc sampler;
                 sampler.AddressU = Diligent::TEXTURE_ADDRESS_CLAMP;
                 sampler.AddressV = Diligent::TEXTURE_ADDRESS_CLAMP;
@@ -883,6 +1227,18 @@ namespace CoreEngine {
             if (!mat.srb) {
                 impl.last_error = "Failed to create material shader resource binding";
                 return {};
+            }
+
+            mat.pbr_directional_shadow_var =
+                    mat.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "g_DirectionalShadowMap");
+            mat.pbr_point_shadow_var = mat.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "g_PointShadowMap");
+            mat.pbr_irradiance_var = mat.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "g_IrradianceMap");
+            mat.pbr_prefiltered_specular_var =
+                    mat.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "g_PrefilteredSpecularMap");
+            mat.pbr_brdf_lut_var = mat.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "g_BrdfLut");
+            mat.pbr_sampler_var = mat.srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, "g_PbrSampler");
+            if (mat.pbr_sampler_var != nullptr && mat.sampler) {
+                mat.pbr_sampler_var->Set(mat.sampler);
             }
 
             for (const ShaderTextureData &texture: desc.textures) {
@@ -1117,27 +1473,47 @@ namespace CoreEngine {
                                                                           : desc.vertex_shader_source.c_str();
 
             auto vs = CompileShader(impl.device, Diligent::SHADER_TYPE_VERTEX, vertex_source, "ShaderProgramVS");
-            auto ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL, desc.pixel_shader_source.c_str(),
-                                    "ShaderProgramPS");
+            Diligent::RefCntAutoPtr<Diligent::IShader> ps;
+            if (!desc.pixel_shader_source.empty()) {
+                ps = CompileShader(impl.device, Diligent::SHADER_TYPE_PIXEL, desc.pixel_shader_source.c_str(),
+                                   "ShaderProgramPS");
+            }
 
-            if (!vs || !ps) {
+            if (!vs || (desc.has_color_target && !ps)) {
                 return program;
             }
 
             const Diligent::SwapChainDesc swap_desc = impl.swap_chain->GetDesc();
             const Diligent::TEXTURE_FORMAT color_format =
-                    ResolveFrameBufferColorFormat(desc.color_format, swap_desc.ColorBufferFormat);
+                    desc.has_color_target ? ResolveFrameBufferColorFormat(desc.color_format, swap_desc.ColorBufferFormat)
+                                          : Diligent::TEX_FORMAT_UNKNOWN;
             const Diligent::TEXTURE_FORMAT depth_format =
                     desc.depth_test ? ResolveFrameBufferDepthFormat(desc.depth_format, swap_desc.DepthBufferFormat)
                                     : Diligent::TEX_FORMAT_UNKNOWN;
 
-            if (color_format == Diligent::TEX_FORMAT_UNKNOWN ||
+            if ((desc.has_color_target && color_format == Diligent::TEX_FORMAT_UNKNOWN) ||
                 (desc.depth_test && depth_format == Diligent::TEX_FORMAT_UNKNOWN)) {
                 return program;
             }
 
             std::vector<Diligent::ShaderResourceVariableDesc> vars;
-            vars.reserve(desc.bindings.size() * 2u);
+            vars.reserve(desc.bindings.size() * 2u + 2u);
+            const bool uses_per_frame = std::string_view{vertex_source}.find("PerFrame") != std::string_view::npos ||
+                                        desc.pixel_shader_source.find("PerFrame") != std::string::npos;
+            const bool uses_per_object =
+                    std::string_view{vertex_source}.find("PerObject") != std::string_view::npos;
+            if (uses_per_frame) {
+                vars.push_back({Diligent::SHADER_TYPE_VERTEX, "PerFrame",
+                                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
+                if (desc.pixel_shader_source.find("PerFrame") != std::string::npos) {
+                    vars.push_back({Diligent::SHADER_TYPE_PIXEL, "PerFrame",
+                                    Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
+                }
+            }
+            if (uses_per_object) {
+                vars.push_back({Diligent::SHADER_TYPE_VERTEX, "PerObject",
+                                Diligent::SHADER_RESOURCE_VARIABLE_TYPE_STATIC});
+            }
 
             for (const ShaderBindingDesc &binding: desc.bindings) {
                 if (!binding.IsValid()) {
@@ -1154,14 +1530,34 @@ namespace CoreEngine {
             }
 
             Diligent::GraphicsPipelineStateCreateInfo pci;
-            pci.PSODesc.Name = "ShaderProgram";
+            pci.PSODesc.Name = desc.debug_name.empty() ? "ShaderProgram" : desc.debug_name.c_str();
             pci.PSODesc.PipelineType = Diligent::PIPELINE_TYPE_GRAPHICS;
-            pci.GraphicsPipeline.NumRenderTargets = 1;
-            pci.GraphicsPipeline.RTVFormats[0] = color_format;
+            pci.GraphicsPipeline.NumRenderTargets = desc.has_color_target ? 1u : 0u;
+            if (desc.has_color_target) {
+                pci.GraphicsPipeline.RTVFormats[0] = color_format;
+            }
             pci.GraphicsPipeline.DSVFormat = depth_format;
             pci.GraphicsPipeline.PrimitiveTopology = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
             pci.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_NONE;
             pci.GraphicsPipeline.DepthStencilDesc.DepthEnable = desc.depth_test;
+            pci.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = desc.depth_test;
+            if (std::string_view{vertex_source}.find("ATTRIB0") != std::string_view::npos) {
+                constexpr Diligent::Uint32 kStride = sizeof(StaticMeshVertex);
+                static Diligent::LayoutElement layout[] = {
+                        {0, 0, 3, Diligent::VT_FLOAT32, false,
+                         static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, position)), kStride},
+                        {1, 0, 3, Diligent::VT_FLOAT32, false,
+                         static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, normal)), kStride},
+                        {2, 0, 3, Diligent::VT_FLOAT32, false,
+                         static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, color)), kStride},
+                        {3, 0, 2, Diligent::VT_FLOAT32, false,
+                         static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, uv)), kStride},
+                        {4, 0, 4, Diligent::VT_FLOAT32, false,
+                         static_cast<Diligent::Uint32>(offsetof(StaticMeshVertex, custom0)), kStride},
+                };
+                pci.GraphicsPipeline.InputLayout.LayoutElements = layout;
+                pci.GraphicsPipeline.InputLayout.NumElements = 5;
+            }
             pci.PSODesc.ResourceLayout.Variables = vars.data();
             pci.PSODesc.ResourceLayout.NumVariables = static_cast<Diligent::Uint32>(vars.size());
             pci.pVS = vs;
@@ -1172,6 +1568,19 @@ namespace CoreEngine {
                 return {};
             }
 
+            if (auto *per_frame_vs = program.pso->GetStaticVariableByName(Diligent::SHADER_TYPE_VERTEX, "PerFrame")) {
+                per_frame_vs->Set(impl.per_frame_cb);
+            }
+            if (ps) {
+                if (auto *per_frame_ps =
+                            program.pso->GetStaticVariableByName(Diligent::SHADER_TYPE_PIXEL, "PerFrame")) {
+                    per_frame_ps->Set(impl.per_frame_cb);
+                }
+            }
+            if (auto *per_object = program.pso->GetStaticVariableByName(Diligent::SHADER_TYPE_VERTEX, "PerObject")) {
+                per_object->Set(impl.per_object_cb);
+            }
+
             Diligent::SamplerDesc sampler;
             sampler.AddressU = Diligent::TEXTURE_ADDRESS_CLAMP;
             sampler.AddressV = Diligent::TEXTURE_ADDRESS_CLAMP;
@@ -1179,13 +1588,17 @@ namespace CoreEngine {
             impl.device->CreateSampler(sampler, &program.sampler);
 
             program.pso->CreateShaderResourceBinding(&program.srb, true);
-            if (!program.srb) {
+            if (!program.srb && !desc.bindings.empty()) {
                 return {};
             }
 
             for (const ShaderBindingDesc &binding: desc.bindings) {
                 if (!binding.IsValid()) {
                     continue;
+                }
+
+                if (!program.srb) {
+                    return {};
                 }
 
                 if (binding.type == ShaderBindingType::UniformBuffer) {
@@ -1319,6 +1732,35 @@ namespace CoreEngine {
         return GetTextureSnapshot(*impl_, handle).state;
     }
 
+    bool DiligentRenderBackend::SaveTextureAsDds(TextureHandle handle, std::string_view path) {
+        if (!impl_ || !impl_->device || !impl_->immediate_context || !handle.IsValid() || path.empty()) {
+            if (impl_) {
+                impl_->last_error = "Invalid DDS texture save request";
+            }
+            return false;
+        }
+
+        Diligent::RefCntAutoPtr<Diligent::ITexture> texture;
+        {
+            std::lock_guard lock{impl_->texture_registry_mutex};
+            const auto it = impl_->texture_registry.find(handle.id);
+            if (it == impl_->texture_registry.end() || it.value().generation != handle.generation ||
+                it.value().state != TextureLoadState::Ready || !it.value().texture) {
+                impl_->last_error = "DDS texture save requested for an invalid or non-ready texture";
+                return false;
+            }
+            texture = it.value().texture;
+        }
+
+        std::string error_message;
+        if (!SaveGpuTextureAsDds(impl_->device, impl_->immediate_context, texture, path, error_message)) {
+            impl_->last_error = error_message.empty() ? "Failed to save texture DDS" : std::move(error_message);
+            return false;
+        }
+
+        return true;
+    }
+
     void DiligentRenderBackend::DestroyTexture(TextureHandle handle) {
         if (!impl_ || !handle.IsValid()) {
             return;
@@ -1331,6 +1773,104 @@ namespace CoreEngine {
         }
 
         impl_->texture_registry.erase(it);
+        for (auto view_it = impl_->texture_view_registry.begin(); view_it != impl_->texture_view_registry.end();) {
+            if (view_it.value().texture == handle) {
+                view_it = impl_->texture_view_registry.erase(view_it);
+                continue;
+            }
+
+            ++view_it;
+        }
+    }
+
+    TextureHandle DiligentRenderBackend::CreateTexture(const TextureDesc &desc) {
+        if (!impl_ || !impl_->device || !desc.IsValid()) {
+            if (impl_) {
+                impl_->last_error = "Invalid texture creation request";
+            }
+            return {};
+        }
+
+        DiligentTextureData data = CreateTextureData(impl_->device, desc);
+        if (!data.texture) {
+            impl_->last_error = data.error_message.empty() ? "Failed to create texture" : data.error_message;
+            return {};
+        }
+
+        std::lock_guard lock{impl_->texture_registry_mutex};
+        const uint32_t id = impl_->next_texture_id_++;
+        data.generation = impl_->texture_generation_++;
+        impl_->texture_registry[id] = std::move(data);
+
+        return TextureHandle{.id = id, .generation = impl_->texture_registry[id].generation};
+    }
+
+    TextureViewHandle DiligentRenderBackend::CreateTextureView(const TextureViewDesc &desc) {
+        if (!impl_ || !impl_->device || !desc.IsValid()) {
+            if (impl_) {
+                impl_->last_error = "Invalid texture view creation request";
+            }
+            return {};
+        }
+
+        Diligent::RefCntAutoPtr<Diligent::ITexture> texture;
+        {
+            std::lock_guard lock{impl_->texture_registry_mutex};
+            const auto texture_it = impl_->texture_registry.find(desc.texture.id);
+            if (texture_it == impl_->texture_registry.end() ||
+                texture_it.value().generation != desc.texture.generation || !texture_it.value().texture) {
+                impl_->last_error = "Texture view references an invalid texture";
+                return {};
+            }
+
+            texture = texture_it.value().texture;
+        }
+
+        Diligent::TextureViewDesc view_desc;
+        view_desc.ViewType = ToDiligentTextureViewType(desc.type);
+        view_desc.TextureDim = ToDiligentTextureDimension(desc.dimension);
+        view_desc.MostDetailedMip = desc.mip_level;
+        view_desc.NumMipLevels = desc.mip_count;
+        view_desc.FirstArraySlice = desc.array_slice;
+        view_desc.NumArraySlices = desc.array_slice_count;
+
+        Diligent::RefCntAutoPtr<Diligent::ITextureView> view;
+        texture->CreateView(view_desc, &view);
+        if (!view) {
+            impl_->last_error = "Failed to create texture view";
+            return {};
+        }
+
+        const uint32_t id = impl_->next_texture_view_id++;
+        DiligentTextureViewData data{
+                .texture = desc.texture,
+                .type = desc.type,
+                .view = std::move(view),
+                .generation = impl_->texture_view_generation++,
+        };
+        impl_->texture_view_registry[id] = std::move(data);
+        return TextureViewHandle{.id = id, .generation = impl_->texture_view_registry[id].generation};
+    }
+
+    void DiligentRenderBackend::DestroyTextureView(TextureViewHandle handle) {
+        if (!impl_ || !handle.IsValid()) {
+            return;
+        }
+
+        const auto it = impl_->texture_view_registry.find(handle.id);
+        if (it == impl_->texture_view_registry.end() || it.value().generation != handle.generation) {
+            return;
+        }
+
+        if (impl_->active_external_render_targets &&
+            (impl_->active_color_target == it.value().view.RawPtr() ||
+             impl_->active_depth_target == it.value().view.RawPtr())) {
+            impl_->active_color_target = nullptr;
+            impl_->active_depth_target = nullptr;
+            impl_->active_external_render_targets = false;
+        }
+
+        impl_->texture_view_registry.erase(it);
     }
 
     void DiligentRenderBackend::BindShaderTexture(std::string_view name, TextureHandle handle) {
@@ -1538,7 +2078,10 @@ namespace CoreEngine {
         Diligent::ITextureView *rtv = nullptr;
         Diligent::ITextureView *dsv = nullptr;
 
-        if (impl_->active_frame_buffer.IsValid()) {
+        if (impl_->active_external_render_targets) {
+            rtv = impl_->active_color_target;
+            dsv = impl_->active_depth_target;
+        } else if (impl_->active_frame_buffer.IsValid()) {
             const auto it = impl_->frame_buffer_registry.find(impl_->active_frame_buffer.id);
             if (it != impl_->frame_buffer_registry.end() &&
                 it.value().generation == impl_->active_frame_buffer.generation) {
@@ -1627,8 +2170,12 @@ namespace CoreEngine {
             std::lock_guard lock{impl_->texture_registry_mutex};
             impl_->texture_registry.clear();
         }
+        impl_->texture_view_registry.clear();
         impl_->imgui.reset();
         impl_->active_frame_buffer = {};
+        impl_->active_color_target = nullptr;
+        impl_->active_depth_target = nullptr;
+        impl_->active_external_render_targets = false;
         impl_->active_shader_program = {};
         impl_->depth_visualization_program = {};
         impl_->composite_scene_color_var = nullptr;
@@ -1714,6 +2261,9 @@ namespace CoreEngine {
                                                    it.value().depth_dsv,
                                                    Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         impl_->active_frame_buffer = handle;
+        impl_->active_color_target = nullptr;
+        impl_->active_depth_target = nullptr;
+        impl_->active_external_render_targets = false;
     }
 
     void DiligentRenderBackend::SetSwapChainFrameBuffer() {
@@ -1725,6 +2275,51 @@ namespace CoreEngine {
         impl_->immediate_context->SetRenderTargets(1, rtvs, impl_->swap_chain->GetDepthBufferDSV(),
                                                    Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
         impl_->active_frame_buffer = {};
+        impl_->active_color_target = nullptr;
+        impl_->active_depth_target = nullptr;
+        impl_->active_external_render_targets = false;
+    }
+
+    void DiligentRenderBackend::SetRenderTargets(TextureViewHandle color_view, TextureViewHandle depth_view) {
+        if (!impl_ || !impl_->immediate_context) {
+            return;
+        }
+
+        Diligent::ITextureView *rtv = nullptr;
+        Diligent::ITextureView *dsv = nullptr;
+
+        if (color_view.IsValid()) {
+            const auto color_it = impl_->texture_view_registry.find(color_view.id);
+            if (color_it == impl_->texture_view_registry.end() ||
+                color_it.value().generation != color_view.generation ||
+                color_it.value().type != TextureViewType::RenderTarget) {
+                return;
+            }
+            rtv = color_it.value().view.RawPtr();
+        }
+
+        if (depth_view.IsValid()) {
+            const auto depth_it = impl_->texture_view_registry.find(depth_view.id);
+            if (depth_it == impl_->texture_view_registry.end() ||
+                depth_it.value().generation != depth_view.generation ||
+                depth_it.value().type != TextureViewType::DepthStencil) {
+                return;
+            }
+            dsv = depth_it.value().view.RawPtr();
+        }
+
+        if (rtv == nullptr && dsv == nullptr) {
+            return;
+        }
+
+        Diligent::ITextureView *rtvs[] = {rtv};
+        const Diligent::Uint32 render_target_count = rtv != nullptr ? 1u : 0u;
+        impl_->immediate_context->SetRenderTargets(render_target_count, rtv != nullptr ? rtvs : nullptr, dsv,
+                                                   Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        impl_->active_frame_buffer = {};
+        impl_->active_color_target = rtv;
+        impl_->active_depth_target = dsv;
+        impl_->active_external_render_targets = true;
     }
 
     FrameBufferColorView DiligentRenderBackend::GetFrameBufferColorView(FrameBufferHandle handle) const {
@@ -1849,8 +2444,10 @@ namespace CoreEngine {
         }
 
         DiligentShaderProgramData data = CreateShaderProgramData(*impl_, desc);
-        if (!data.pso || !data.srb) {
-            impl_->last_error = "Failed to create shader program";
+        if (!data.pso) {
+            impl_->last_error = desc.debug_name.empty()
+                                        ? "Failed to create shader program"
+                                        : "Failed to create shader program: " + desc.debug_name;
             return {};
         }
 
@@ -1885,7 +2482,7 @@ namespace CoreEngine {
 
         const auto it = impl_->shader_program_registry.find(handle.id);
         if (it == impl_->shader_program_registry.end() || it.value().generation != handle.generation ||
-            !it.value().pso || !it.value().srb) {
+            !it.value().pso) {
             impl_->active_shader_program = {};
             return;
         }
@@ -1944,6 +2541,37 @@ namespace CoreEngine {
         }
     }
 
+    void DiligentRenderBackend::BindShaderTexture(std::string_view name, TextureViewHandle view) {
+        if (!impl_ || !view.IsValid() || !impl_->active_shader_program.IsValid()) {
+            return;
+        }
+
+        const auto view_it = impl_->texture_view_registry.find(view.id);
+        if (view_it == impl_->texture_view_registry.end() || view_it.value().generation != view.generation ||
+            !view_it.value().view) {
+            return;
+        }
+
+        auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
+        if (program_it == impl_->shader_program_registry.end() ||
+            program_it.value().generation != impl_->active_shader_program.generation) {
+            return;
+        }
+        DiligentShaderProgramData &program = program_it.value();
+
+        for (DiligentTextureBinding &texture: program.textures) {
+            if (std::string_view{texture.name} != name) {
+                continue;
+            }
+
+            texture.texture_variable->Set(view_it.value().view);
+            if (texture.sampler_variable != nullptr) {
+                texture.sampler_variable->Set(program.sampler);
+            }
+            return;
+        }
+    }
+
     void DiligentRenderBackend::BindShaderUniform(std::string_view name, std::span<const std::uint8_t> data) {
         if (data.empty() || !impl_->immediate_context || !impl_->active_shader_program.IsValid()) {
             return;
@@ -1995,7 +2623,9 @@ namespace CoreEngine {
                                    props.environment_light.specular_radiance.z,
                                    props.environment_light.specular_intensity),
                 .environment_light_enabled =
-                        Math::Vec4(props.environment_light.enabled ? 1.f : 0.f, 0.f, 0.f, 0.f),
+                        Math::Vec4(props.environment_light.enabled ? 1.f : 0.f,
+                                   props.environment_light.texture_ibl_enabled ? 1.f : 0.f,
+                                   props.environment_light.ibl_prefiltered_mip_count, 0.f),
         };
 
         const std::uint32_t point_light_count =
@@ -2006,10 +2636,36 @@ namespace CoreEngine {
                     Math::Vec4(light.position.x, light.position.y, light.position.z, light.range);
             cb.point_light_color_intensity[light_index] =
                     Math::Vec4(light.color.x, light.color.y, light.color.z, light.luminous_intensity_cd);
+            cb.point_light_shadow_params[light_index] =
+                    Math::Vec4(light.casts_shadows ? 1.f : 0.f, static_cast<float>(light.shadow_index),
+                               light.shadow_normal_bias, light.shadow_bias);
         }
         cb.point_light_params = Math::Vec4(static_cast<float>(point_light_count), 0.f, 0.f, 0.f);
+        cb.directional_shadow_view_proj = props.shadows.directional_shadow_view_proj;
+        cb.directional_shadow_splits = props.shadows.directional_shadow_splits;
+        cb.directional_shadow_params = props.shadows.directional_shadow_params;
+        cb.directional_shadow_extra = props.shadows.directional_shadow_extra;
+        cb.point_shadow_params = props.shadows.point_shadow_params;
+        cb.point_shadow_view_proj = props.shadows.point_shadow_view_proj;
+        cb.reflection_probe_position_radius = props.reflection_probe_position_radius;
+        cb.reflection_probe_params = props.reflection_probe_params;
+        cb.pbr_debug_params = props.pbr_debug_params;
 
         UpdateBuffer(impl_->immediate_context, impl_->per_frame_cb, &cb, sizeof(cb));
+    }
+
+    void DiligentRenderBackend::SetPbrGlobalResources(const PbrGlobalResources &resources) {
+        if (!impl_) {
+            return;
+        }
+
+        impl_->pbr_globals = DiligentPbrGlobalResources{
+                .directional_shadow_map = resources.directional_shadow_map,
+                .point_shadow_map = resources.point_shadow_map,
+                .irradiance_map = resources.irradiance_map,
+                .prefiltered_specular_map = resources.prefiltered_specular_map,
+                .brdf_lut = resources.brdf_lut,
+        };
     }
 
     void DiligentRenderBackend::SubmitBatch(const RenderBatch &batch) {
@@ -2054,6 +2710,27 @@ namespace CoreEngine {
             texture.bound_revision = snapshot.revision;
         }
 
+        const auto bind_pbr_view = [this](Diligent::IShaderResourceVariable *variable, TextureViewHandle handle) {
+            if (variable == nullptr || !handle.IsValid()) {
+                return;
+            }
+
+            Diligent::RefCntAutoPtr<Diligent::ITextureView> view = GetTextureViewSnapshot(*impl_, handle);
+            if (!view) {
+                return;
+            }
+
+            variable->Set(view, Diligent::SET_SHADER_RESOURCE_FLAG_ALLOW_OVERWRITE);
+        };
+        bind_pbr_view(mat.pbr_directional_shadow_var, impl_->pbr_globals.directional_shadow_map);
+        bind_pbr_view(mat.pbr_point_shadow_var, impl_->pbr_globals.point_shadow_map);
+        bind_pbr_view(mat.pbr_irradiance_var, impl_->pbr_globals.irradiance_map);
+        bind_pbr_view(mat.pbr_prefiltered_specular_var, impl_->pbr_globals.prefiltered_specular_map);
+        bind_pbr_view(mat.pbr_brdf_lut_var, impl_->pbr_globals.brdf_lut);
+        if (mat.pbr_sampler_var != nullptr && mat.sampler) {
+            mat.pbr_sampler_var->Set(mat.sampler);
+        }
+
         impl_->immediate_context->CommitShaderResources(mat.srb, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         const auto draw_instance = [this, &msh](const RenderInstance &inst) {
@@ -2076,6 +2753,58 @@ namespace CoreEngine {
         }
     }
 
+    void DiligentRenderBackend::SubmitGeometryBatch(const GeometryBatch &batch) {
+        if (!impl_->active_shader_program.IsValid()) {
+            return;
+        }
+
+        const auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
+        const auto mesh_it = impl_->mesh_registry.find(batch.mesh.id);
+        if (program_it == impl_->shader_program_registry.end() || mesh_it == impl_->mesh_registry.end() ||
+            program_it.value().generation != impl_->active_shader_program.generation ||
+            mesh_it.value().generation != batch.mesh.generation || !program_it.value().pso ||
+            !mesh_it.value().vertex_buffer || !mesh_it.value().index_buffer) {
+            return;
+        }
+
+        DiligentShaderProgramData &program = program_it.value();
+        const DiligentMeshData &mesh = mesh_it.value();
+
+        impl_->immediate_context->SetPipelineState(program.pso);
+
+        const uint64_t vb_offset = 0;
+        Diligent::IBuffer *vbs[] = {mesh.vertex_buffer};
+        impl_->immediate_context->SetVertexBuffers(0, 1, vbs, &vb_offset,
+                                                   Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                                   Diligent::SET_VERTEX_BUFFERS_FLAG_RESET);
+
+        impl_->immediate_context->SetIndexBuffer(mesh.index_buffer, 0,
+                                                 Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+        const auto draw_instance = [this, &program, &mesh](const RenderInstance &inst) {
+            PerObjectCB object_cb{inst.transform};
+            UpdateBuffer(impl_->immediate_context, impl_->per_object_cb, &object_cb, sizeof(object_cb));
+            if (program.srb) {
+                impl_->immediate_context->CommitShaderResources(program.srb,
+                                                                Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            }
+
+            Diligent::DrawIndexedAttribs draw;
+            draw.IndexType = Diligent::VT_UINT32;
+            draw.NumIndices = mesh.index_count;
+            draw.Flags = Diligent::DRAW_FLAG_VERIFY_ALL;
+            impl_->immediate_context->DrawIndexed(draw);
+        };
+
+        for (const RenderInstance &inst: batch.InlineInstances()) {
+            draw_instance(inst);
+        }
+
+        for (const RenderInstance &inst: batch.OverflowInstances()) {
+            draw_instance(inst);
+        }
+    }
+
     void DiligentRenderBackend::Draw(std::uint32_t vertex_count, std::uint32_t instance_count) {
         if (vertex_count == 0u || instance_count == 0u || !impl_->immediate_context ||
             !impl_->active_shader_program.IsValid()) {
@@ -2084,14 +2813,15 @@ namespace CoreEngine {
 
         const auto program_it = impl_->shader_program_registry.find(impl_->active_shader_program.id);
         if (program_it == impl_->shader_program_registry.end() ||
-            program_it.value().generation != impl_->active_shader_program.generation || !program_it.value().pso ||
-            !program_it.value().srb) {
+            program_it.value().generation != impl_->active_shader_program.generation || !program_it.value().pso) {
             return;
         }
 
         impl_->immediate_context->SetPipelineState(program_it.value().pso);
-        impl_->immediate_context->CommitShaderResources(program_it.value().srb,
-                                                        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        if (program_it.value().srb) {
+            impl_->immediate_context->CommitShaderResources(program_it.value().srb,
+                                                            Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        }
 
         Diligent::DrawAttribs draw;
         draw.NumVertices = vertex_count;

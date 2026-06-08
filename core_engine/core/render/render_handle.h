@@ -20,11 +20,13 @@ namespace CoreEngine {
     struct FrameBufferHandleTag {};
     struct RenderPassHandleTag {};
     struct TextureHandleTag {};
+    struct TextureViewHandleTag {};
     struct ModelHandleTag {};
     // clang-format on
 
     using MeshHandle = GeneratedHandle<MeshHandleTag>;
     using TextureHandle = GeneratedHandle<TextureHandleTag>;
+    using TextureViewHandle = GeneratedHandle<TextureViewHandleTag>;
     using MaterialHandle = GeneratedHandle<MaterialHandleTag>;
     using ShaderProgramHandle = GeneratedHandle<ShaderProgramHandleTag>;
     using FrameBufferHandle = GeneratedHandle<FrameBufferHandleTag>;

@@ -70,9 +70,21 @@ namespace CoreEngine {
 
         void DestroyFrameBuffer(FrameBufferHandle handle) const { backend_.DestroyFrameBuffer(handle); }
 
+        [[nodiscard]] TextureHandle CreateTexture(const TextureDesc &desc) const { return backend_.CreateTexture(desc); }
+
+        [[nodiscard]] TextureViewHandle CreateTextureView(const TextureViewDesc &desc) const {
+            return backend_.CreateTextureView(desc);
+        }
+
+        void DestroyTextureView(TextureViewHandle handle) const { backend_.DestroyTextureView(handle); }
+
         void SetFrameBuffer(FrameBufferHandle handle) const { backend_.SetFrameBuffer(handle); }
 
         void SetSwapChainFrameBuffer() const { backend_.SetSwapChainFrameBuffer(); }
+
+        void SetRenderTargets(TextureViewHandle color_view, TextureViewHandle depth_view) const {
+            backend_.SetRenderTargets(color_view, depth_view);
+        }
 
         [[nodiscard]] ShaderProgramHandle CreateShaderProgram(const ShaderProgramDesc &desc) const {
             return backend_.CreateShaderProgram(desc);
@@ -93,6 +105,8 @@ namespace CoreEngine {
         void BindTexture(std::string_view name, FrameBufferDepthView view) const {
             backend_.BindShaderTexture(name, view);
         }
+
+        void BindTexture(std::string_view name, TextureViewHandle view) const { backend_.BindShaderTexture(name, view); }
 
         void BindUniform(std::string_view name, std::span<const std::uint8_t> data) const {
             backend_.BindShaderUniform(name, data);
@@ -146,7 +160,13 @@ namespace CoreEngine {
 
         void SetPerFrameProps(PerFrameProps props) const { backend_.SetPerFrameProps(props); }
 
+        void SetPbrGlobalResources(const PbrGlobalResources &resources) const {
+            backend_.SetPbrGlobalResources(resources);
+        }
+
         void SubmitBatch(const RenderBatch &batch) const { backend_.SubmitBatch(batch); }
+
+        void SubmitGeometryBatch(const GeometryBatch &batch) const { backend_.SubmitGeometryBatch(batch); }
 
     private:
         IRenderBackend &backend_;

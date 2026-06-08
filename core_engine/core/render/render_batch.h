@@ -35,6 +35,27 @@ namespace CoreEngine {
         std::vector<RenderInstance> overflow_instances_;
     };
 
+    struct GeometryBatch {
+        MeshHandle mesh;
+
+        void AddInstance(const RenderInstance &instance);
+
+        void ClearInstances();
+
+        [[nodiscard]] std::span<const RenderInstance> InlineInstances() const;
+
+        [[nodiscard]] std::span<const RenderInstance> OverflowInstances() const;
+
+        [[nodiscard]] std::size_t InstanceCount() const;
+
+    private:
+        static constexpr std::size_t kInlineInstanceCount = 8;
+
+        std::array<RenderInstance, kInlineInstanceCount> inline_instances_{};
+        std::size_t inline_instance_count_ = 0;
+        std::vector<RenderInstance> overflow_instances_;
+    };
+
     class BatchAccumulator {
     public:
         void Add(MaterialHandle material, MeshHandle mesh, const Math::Mat4 &transform);
@@ -58,6 +79,34 @@ namespace CoreEngine {
         };
 
         std::vector<RenderBatch> batches_;
+        tsl::robin_map<BatchKey, std::size_t, BatchKeyHash> batch_indices_;
+        std::size_t active_batch_count_ = 0;
+    };
+
+    class GeometryBatchAccumulator {
+    public:
+        void Add(MeshHandle mesh, const Math::Mat4 &transform);
+
+        void Reserve(std::size_t expected_instances);
+
+        [[nodiscard]] std::span<const GeometryBatch> Batches() const {
+            return {batches_.data(), active_batch_count_};
+        }
+
+        void Clear();
+
+    private:
+        struct BatchKey {
+            MeshHandle mesh;
+
+            bool operator==(const BatchKey &other) const = default;
+        };
+
+        struct BatchKeyHash {
+            [[nodiscard]] std::size_t operator()(const BatchKey &key) const noexcept;
+        };
+
+        std::vector<GeometryBatch> batches_;
         tsl::robin_map<BatchKey, std::size_t, BatchKeyHash> batch_indices_;
         std::size_t active_batch_count_ = 0;
     };

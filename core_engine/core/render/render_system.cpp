@@ -1,13 +1,19 @@
 #include "core/render/render_system.h"
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
 #include <exception>
+#include <filesystem>
 #include <cmath>
+#include <fstream>
+#include <limits>
 #include <mutex>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -21,13 +27,18 @@
 #include "core/ecs/components/hierarchy_component.h"
 #include "core/ecs/components/mesh_renderer_component.h"
 #include "core/ecs/components/point_light_component.h"
+#include "core/ecs/components/reflection_probe_component.h"
 #include "core/ecs/components/transform_component.h"
 #include "core/ecs/node.h"
 #include "core/ecs/world.h"
 #include "core/log/logger.h"
+#include "core/render/builtin_shaders.h"
 #include "core/render/material.h"
 #include "core/render/primitives.h"
 #include "core/render/render_pass/default_scene_render_pass.h"
+#include "core/render/render_pass/pbr_debug_pass.h"
+#include "core/render/render_pass/pbr_ibl_pass.h"
+#include "core/render/render_pass/pbr_shadow_pass.h"
 #include "core/time/frame_clock.h"
 
 namespace CoreEngine {
@@ -92,6 +103,29 @@ namespace CoreEngine {
             ModelMaterialPipeline material_pipeline = ModelMaterialPipeline::Unlit;
             FuturePromise<ModelHandle> completion;
         };
+
+        using RenderCpuClock = std::chrono::steady_clock;
+
+        [[nodiscard]] float CpuElapsedMilliseconds(RenderCpuClock::time_point begin,
+                                                   RenderCpuClock::time_point end) {
+            return std::chrono::duration<float, std::milli>(end - begin).count();
+        }
+
+        void AccumulateStageCpuTime(RenderDebugStats &stats, RenderPassStage stage, float elapsed_ms) {
+            switch (stage) {
+                case RenderPassStage::FrameSetup:         stats.frame_setup_cpu_ms += elapsed_ms; break;
+                case RenderPassStage::Shadow:             stats.shadow_cpu_ms += elapsed_ms; break;
+                case RenderPassStage::ForwardOpaque:      stats.forward_opaque_cpu_ms += elapsed_ms; break;
+                case RenderPassStage::Debug:              stats.debug_cpu_ms += elapsed_ms; break;
+                case RenderPassStage::UI:                 stats.ui_cpu_ms += elapsed_ms; break;
+                case RenderPassStage::Present:            stats.present_cpu_ms += elapsed_ms; break;
+                case RenderPassStage::DepthPrePass:
+                case RenderPassStage::GBuffer:
+                case RenderPassStage::Lighting:
+                case RenderPassStage::ForwardTransparent:
+                case RenderPassStage::PostProcess:        break;
+            }
+        }
 
         [[nodiscard]] const ModelTextureAsset *FindModelTexture(const ModelMaterialAsset &material,
                                                                 ModelTextureSemantic semantic) {
@@ -173,8 +207,404 @@ namespace CoreEngine {
             return {inverse_view.data[12], inverse_view.data[13], inverse_view.data[14]};
         }
 
+        [[nodiscard]] Math::Vec3 ExtractCameraForward(const CameraData &camera) {
+            constexpr float kDirectionEpsilon = 1.0e-8f;
+            const Math::Mat4 inverse_view = Math::Inverse(camera.view);
+            Math::Vec3 forward{inverse_view.data[8], inverse_view.data[9], inverse_view.data[10]};
+            if (Math::LengthSquared(forward) <= kDirectionEpsilon) {
+                return {0.f, 0.f, 1.f};
+            }
+
+            return Math::Normalize(forward);
+        }
+
         [[nodiscard]] Math::Vec3 ExtractWorldPosition(const Math::Mat4 &world_matrix) {
             return {world_matrix.data[12], world_matrix.data[13], world_matrix.data[14]};
+        }
+
+        struct DirectionalShadowCascadeData {
+            Math::Mat4 view_proj{1.f};
+            float split_depth = 0.f;
+        };
+
+        [[nodiscard]] Math::Vec3 TransformPoint(const Math::Mat4 &matrix, const Math::Vec3 &point) noexcept {
+            constexpr float kHomogeneousEpsilon = 1.0e-6f;
+            const float x = matrix.data[0] * point.x + matrix.data[4] * point.y + matrix.data[8] * point.z +
+                            matrix.data[12];
+            const float y = matrix.data[1] * point.x + matrix.data[5] * point.y + matrix.data[9] * point.z +
+                            matrix.data[13];
+            const float z = matrix.data[2] * point.x + matrix.data[6] * point.y + matrix.data[10] * point.z +
+                            matrix.data[14];
+            const float w = matrix.data[3] * point.x + matrix.data[7] * point.y + matrix.data[11] * point.z +
+                            matrix.data[15];
+
+            if (std::fabs(w) <= kHomogeneousEpsilon) {
+                return {x, y, z};
+            }
+
+            const float inv_w = 1.f / w;
+            return {x * inv_w, y * inv_w, z * inv_w};
+        }
+
+        [[nodiscard]] Math::Vec3 ExtractCameraRight(const CameraData &camera) {
+            const Math::Mat4 inverse_view = Math::Inverse(camera.view);
+            Math::Vec3 right{inverse_view.data[0], inverse_view.data[1], inverse_view.data[2]};
+            return Math::LengthSquared(right) <= 1.0e-8f ? Math::Vec3{1.f, 0.f, 0.f} : Math::Normalize(right);
+        }
+
+        [[nodiscard]] Math::Vec3 ExtractCameraUp(const CameraData &camera) {
+            const Math::Mat4 inverse_view = Math::Inverse(camera.view);
+            Math::Vec3 up{inverse_view.data[4], inverse_view.data[5], inverse_view.data[6]};
+            return Math::LengthSquared(up) <= 1.0e-8f ? Math::Vec3{0.f, 1.f, 0.f} : Math::Normalize(up);
+        }
+
+        [[nodiscard]] bool IsPerspectiveProjection(const Math::Mat4 &projection) noexcept {
+            return std::fabs(projection.At(3, 2)) > 0.5f && std::fabs(projection.At(3, 3)) < 0.5f;
+        }
+
+        [[nodiscard]] float ExtractProjectionNear(const Math::Mat4 &projection) noexcept {
+            constexpr float kProjectionEpsilon = 1.0e-5f;
+            const float depth_scale = projection.At(2, 2);
+            const float depth_bias = projection.At(2, 3);
+            if (std::fabs(depth_scale) <= kProjectionEpsilon || !std::isfinite(depth_scale) ||
+                !std::isfinite(depth_bias)) {
+                return 0.01f;
+            }
+
+            return std::max(-depth_bias / depth_scale, 0.001f);
+        }
+
+        [[nodiscard]] float ExtractProjectionFar(const Math::Mat4 &projection, float near_z) noexcept {
+            constexpr float kProjectionEpsilon = 1.0e-5f;
+            const float depth_scale = projection.At(2, 2);
+            const float depth_bias = projection.At(2, 3);
+            float far_z = near_z + 1000.f;
+            if (IsPerspectiveProjection(projection)) {
+                const float denominator = 1.f - depth_scale;
+                if (std::fabs(denominator) > kProjectionEpsilon && std::isfinite(depth_bias)) {
+                    far_z = depth_bias / denominator;
+                }
+            } else if (std::fabs(depth_scale) > kProjectionEpsilon) {
+                far_z = near_z + (1.f / depth_scale);
+            }
+
+            if (!std::isfinite(far_z) || far_z <= near_z + kProjectionEpsilon) {
+                return near_z + 1000.f;
+            }
+
+            return far_z;
+        }
+
+        [[nodiscard]] float ProjectionHalfWidthAtDepth(const Math::Mat4 &projection, float depth) noexcept {
+            constexpr float kProjectionEpsilon = 1.0e-5f;
+            const float x_scale = std::fabs(projection.At(0, 0));
+            if (x_scale <= kProjectionEpsilon || !std::isfinite(x_scale)) {
+                return std::max(depth, 1.f);
+            }
+
+            return IsPerspectiveProjection(projection) ? depth / x_scale : 1.f / x_scale;
+        }
+
+        [[nodiscard]] float ProjectionHalfHeightAtDepth(const Math::Mat4 &projection, float depth) noexcept {
+            constexpr float kProjectionEpsilon = 1.0e-5f;
+            const float y_scale = std::fabs(projection.At(1, 1));
+            if (y_scale <= kProjectionEpsilon || !std::isfinite(y_scale)) {
+                return std::max(depth, 1.f);
+            }
+
+            return IsPerspectiveProjection(projection) ? depth / y_scale : 1.f / y_scale;
+        }
+
+        [[nodiscard]] std::array<Math::Vec3, 8> BuildFrustumSliceCorners(const CameraData &camera,
+                                                                         const Math::Vec3 &camera_position,
+                                                                         const Math::Vec3 &camera_right,
+                                                                         const Math::Vec3 &camera_up,
+                                                                         const Math::Vec3 &camera_forward,
+                                                                         float slice_near, float slice_far) {
+            const float near_half_width = ProjectionHalfWidthAtDepth(camera.projection, slice_near);
+            const float near_half_height = ProjectionHalfHeightAtDepth(camera.projection, slice_near);
+            const float far_half_width = ProjectionHalfWidthAtDepth(camera.projection, slice_far);
+            const float far_half_height = ProjectionHalfHeightAtDepth(camera.projection, slice_far);
+            const Math::Vec3 near_center = camera_position + camera_forward * slice_near;
+            const Math::Vec3 far_center = camera_position + camera_forward * slice_far;
+
+            return {
+                    near_center - camera_right * near_half_width - camera_up * near_half_height,
+                    near_center + camera_right * near_half_width - camera_up * near_half_height,
+                    near_center - camera_right * near_half_width + camera_up * near_half_height,
+                    near_center + camera_right * near_half_width + camera_up * near_half_height,
+                    far_center - camera_right * far_half_width - camera_up * far_half_height,
+                    far_center + camera_right * far_half_width - camera_up * far_half_height,
+                    far_center - camera_right * far_half_width + camera_up * far_half_height,
+                    far_center + camera_right * far_half_width + camera_up * far_half_height,
+            };
+        }
+
+        [[nodiscard]] DirectionalShadowCascadeData BuildDirectionalShadowCascade(
+                const CameraData &camera, const Math::Vec3 &camera_position, const Math::Vec3 &camera_right,
+                const Math::Vec3 &camera_up, const Math::Vec3 &camera_forward, const Math::Vec3 &light_direction,
+                float slice_near, float slice_far, std::uint32_t shadow_resolution,
+                const PbrCascadeSettings &settings) {
+            constexpr float kMinCascadeRadius = 1.0f;
+            const std::array<Math::Vec3, 8> corners =
+                    BuildFrustumSliceCorners(camera, camera_position, camera_right, camera_up, camera_forward,
+                                             slice_near, slice_far);
+
+            Math::Vec3 center{0.f, 0.f, 0.f};
+            for (const Math::Vec3 &corner: corners) {
+                center += corner;
+            }
+            center = center / static_cast<float>(corners.size());
+
+            float radius = kMinCascadeRadius;
+            for (const Math::Vec3 &corner: corners) {
+                radius = std::max(radius, Math::Length(corner - center));
+            }
+            radius *= std::max(settings.bounds_padding, 1.f);
+
+            const Math::Vec3 light_up = std::fabs(light_direction.y) < 0.95f ? Math::Vec3{0.f, 1.f, 0.f}
+                                                                             : Math::Vec3{1.f, 0.f, 0.f};
+            const Math::Mat4 light_view = Math::LookAtLH({0.f, 0.f, 0.f}, light_direction, light_up);
+            Math::Vec3 light_center = TransformPoint(light_view, center);
+            if (settings.texel_snap && shadow_resolution > 0u) {
+                const float texel_size = (radius * 2.f) / static_cast<float>(shadow_resolution);
+                if (texel_size > 0.f && std::isfinite(texel_size)) {
+                    light_center.x = std::round(light_center.x / texel_size) * texel_size;
+                    light_center.y = std::round(light_center.y / texel_size) * texel_size;
+                }
+            }
+
+            float min_z = std::numeric_limits<float>::max();
+            float max_z = std::numeric_limits<float>::lowest();
+            for (const Math::Vec3 &corner: corners) {
+                const Math::Vec3 light_corner = TransformPoint(light_view, corner);
+                min_z = std::min(min_z, light_corner.z);
+                max_z = std::max(max_z, light_corner.z);
+            }
+
+            const float depth_padding = radius * std::max(settings.caster_depth_padding, 0.f);
+            const float near_z = min_z - depth_padding;
+            const float far_z = std::max(max_z + depth_padding, near_z + 1.f);
+            const Math::Mat4 projection =
+                    Math::OrthoLH(light_center.x - radius, light_center.x + radius, light_center.y - radius,
+                                  light_center.y + radius, near_z, far_z);
+
+            return {.view_proj = projection * light_view, .split_depth = slice_far};
+        }
+
+        [[nodiscard]] Math::Vec3 PointShadowFaceDirection(std::uint32_t face) {
+            static constexpr std::array<Math::Vec3, 6> kDirections{
+                    Math::Vec3{1.f, 0.f, 0.f},  Math::Vec3{-1.f, 0.f, 0.f}, Math::Vec3{0.f, 1.f, 0.f},
+                    Math::Vec3{0.f, -1.f, 0.f}, Math::Vec3{0.f, 0.f, 1.f},  Math::Vec3{0.f, 0.f, -1.f},
+            };
+            return kDirections[std::min<std::uint32_t>(face, 5u)];
+        }
+
+        [[nodiscard]] Math::Vec3 PointShadowFaceUp(std::uint32_t face) {
+            static constexpr std::array<Math::Vec3, 6> kUp{
+                    Math::Vec3{0.f, -1.f, 0.f}, Math::Vec3{0.f, -1.f, 0.f}, Math::Vec3{0.f, 0.f, 1.f},
+                    Math::Vec3{0.f, 0.f, -1.f}, Math::Vec3{0.f, -1.f, 0.f}, Math::Vec3{0.f, -1.f, 0.f},
+            };
+            return kUp[std::min<std::uint32_t>(face, 5u)];
+        }
+
+        [[nodiscard]] float DebugModeFromName(std::string_view name) {
+            if (name == "material/base-color") {
+                return 1.f;
+            }
+            if (name == "material/world-normal") {
+                return 2.f;
+            }
+            if (name == "material/metallic") {
+                return 3.f;
+            }
+            if (name == "material/roughness") {
+                return 4.f;
+            }
+            if (name == "material/ao") {
+                return 5.f;
+            }
+            if (name == "material/emissive") {
+                return 6.f;
+            }
+            if (name == "lighting/shadow-factor") {
+                return 7.f;
+            }
+            if (name == "lighting/cascade-index") {
+                return 8.f;
+            }
+            if (name == "lighting/light-counts") {
+                return 9.f;
+            }
+            if (name == "probes/reflection-influence") {
+                return 10.f;
+            }
+            if (name == "probes/reflection-selected") {
+                return 11.f;
+            }
+            if (name == "ibl/specular-roughness-lod") {
+                return 12.f;
+            }
+
+            return 0.f;
+        }
+
+        [[nodiscard]] std::uint64_t TextureBytes(std::uint32_t width, std::uint32_t height, std::uint32_t slices,
+                                                 std::uint32_t bytes_per_pixel) {
+            return static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height) *
+                   static_cast<std::uint64_t>(slices) * static_cast<std::uint64_t>(bytes_per_pixel);
+        }
+
+        [[nodiscard]] bool FileExists(std::string_view path) {
+            if (path.empty()) {
+                return false;
+            }
+
+            std::error_code error;
+            return std::filesystem::exists(std::filesystem::path{path}, error) && !error;
+        }
+
+        template <typename Paths>
+        [[nodiscard]] std::string MakePrecomputedIblKey(const Paths &paths) {
+            return "precomputed:" + paths.environment_cube_path + "|" + paths.irradiance_cube_path + "|" +
+                   paths.prefiltered_specular_cube_path + "|" + paths.brdf_lut_path;
+        }
+
+        template <typename Paths>
+        [[nodiscard]] std::string ResolvePrecomputedIblManifestPath(const Paths &paths) {
+            if (!paths.manifest_path.empty()) {
+                return paths.manifest_path;
+            }
+            if (!paths.environment_cube_path.empty()) {
+                return paths.environment_cube_path + ".manifest";
+            }
+            return {};
+        }
+
+        [[nodiscard]] std::string MakePathIblSourceKey(std::string_view path) {
+            std::string key = "path:" + std::string{path};
+            const std::filesystem::path source_path{std::string{path}};
+            std::error_code error;
+            const auto file_size = std::filesystem::file_size(source_path, error);
+            if (!error) {
+                key += "|size:" + std::to_string(file_size);
+            }
+            error.clear();
+            const auto write_time = std::filesystem::last_write_time(source_path, error);
+            if (!error) {
+                key += "|mtime:" + std::to_string(write_time.time_since_epoch().count());
+            }
+            return key;
+        }
+
+        [[nodiscard]] std::string MakeHandleIblSourceKey(std::string_view prefix, TextureHandle handle) {
+            return std::string{prefix} + ":" + std::to_string(handle.id) + ":" + std::to_string(handle.generation);
+        }
+
+        [[nodiscard]] std::uint32_t ParseManifestUint(const std::unordered_map<std::string, std::string> &values,
+                                                      std::string_view key) {
+            const auto it = values.find(std::string{key});
+            if (it == values.end()) {
+                return 0u;
+            }
+
+            try {
+                return static_cast<std::uint32_t>(std::stoul(it->second));
+            } catch (...) {
+                return 0u;
+            }
+        }
+
+        [[nodiscard]] std::unordered_map<std::string, std::string> ReadPbrIblManifest(std::string_view path) {
+            std::unordered_map<std::string, std::string> values;
+            std::ifstream file{std::filesystem::path{std::string{path}}};
+            if (!file) {
+                return values;
+            }
+
+            std::string line;
+            while (std::getline(file, line)) {
+                const std::size_t separator = line.find('=');
+                if (separator == std::string::npos || separator == 0u) {
+                    continue;
+                }
+                values[line.substr(0u, separator)] = line.substr(separator + 1u);
+            }
+
+            return values;
+        }
+
+        template <typename Paths>
+        [[nodiscard]] bool HasCurrentPrecomputedIbl(const Paths &paths, std::string_view source_key,
+                                                    bool require_manifest, std::uint32_t environment_resolution,
+                                                    std::uint32_t irradiance_resolution,
+                                                    std::uint32_t prefiltered_resolution,
+                                                    std::uint32_t prefiltered_mip_count,
+                                                    std::uint32_t brdf_lut_resolution) {
+            if (!paths.IsComplete() || !FileExists(paths.environment_cube_path) ||
+                !FileExists(paths.irradiance_cube_path) || !FileExists(paths.prefiltered_specular_cube_path) ||
+                !FileExists(paths.brdf_lut_path)) {
+                return false;
+            }
+
+            const std::string manifest_path = ResolvePrecomputedIblManifestPath(paths);
+            if (manifest_path.empty() || !FileExists(manifest_path)) {
+                return !require_manifest;
+            }
+            if (source_key.empty()) {
+                return true;
+            }
+
+            const std::unordered_map<std::string, std::string> values = ReadPbrIblManifest(manifest_path);
+            const auto version_it = values.find("version");
+            const auto source_it = values.find("source_key");
+            if (version_it == values.end() || version_it->second != "2" || source_it == values.end() ||
+                source_it->second != source_key) {
+                return false;
+            }
+
+            return ParseManifestUint(values, "environment_resolution") == environment_resolution &&
+                   ParseManifestUint(values, "irradiance_resolution") == irradiance_resolution &&
+                   ParseManifestUint(values, "prefiltered_resolution") == prefiltered_resolution &&
+                   ParseManifestUint(values, "prefiltered_mip_count") == prefiltered_mip_count &&
+                   ParseManifestUint(values, "brdf_lut_resolution") == brdf_lut_resolution;
+        }
+
+        template <typename Paths>
+        [[nodiscard]] bool WritePbrIblManifest(const Paths &paths, std::string_view source_key,
+                                               std::uint32_t environment_resolution,
+                                               std::uint32_t irradiance_resolution,
+                                               std::uint32_t prefiltered_resolution,
+                                               std::uint32_t prefiltered_mip_count,
+                                               std::uint32_t brdf_lut_resolution) {
+            const std::string manifest_path = ResolvePrecomputedIblManifestPath(paths);
+            if (manifest_path.empty()) {
+                return false;
+            }
+
+            const std::filesystem::path output_path{manifest_path};
+            const std::filesystem::path parent = output_path.parent_path();
+            if (!parent.empty()) {
+                std::error_code error;
+                std::filesystem::create_directories(parent, error);
+                if (error) {
+                    return false;
+                }
+            }
+
+            std::ofstream file{output_path, std::ios::trunc};
+            if (!file) {
+                return false;
+            }
+
+            file << "version=2\n";
+            file << "source_key=" << source_key << '\n';
+            file << "environment_resolution=" << environment_resolution << '\n';
+            file << "irradiance_resolution=" << irradiance_resolution << '\n';
+            file << "prefiltered_resolution=" << prefiltered_resolution << '\n';
+            file << "prefiltered_mip_count=" << prefiltered_mip_count << '\n';
+            file << "brdf_lut_resolution=" << brdf_lut_resolution << '\n';
+            return static_cast<bool>(file);
         }
 
         [[nodiscard]] bool IsColorFrameBufferFormat(FrameBufferFormat format) {
@@ -211,12 +641,73 @@ namespace CoreEngine {
             return std::isfinite(value) ? std::max(value, 0.f) : 0.f;
         }
 
+        [[nodiscard]] std::uint32_t ClampAtLeastOne(std::uint32_t value, std::uint32_t max_value) {
+            return std::clamp(value == 0u ? 1u : value, 1u, max_value);
+        }
+
+        [[nodiscard]] PbrRenderSettings ApplyPbrPreset(PbrRenderSettings settings) {
+            switch (settings.preset) {
+                case PbrQualityPreset::Low:    return PbrRenderSettings::Low();
+                case PbrQualityPreset::Medium: return PbrRenderSettings::Medium();
+                case PbrQualityPreset::High:   return PbrRenderSettings::High();
+                case PbrQualityPreset::Ultra:  return PbrRenderSettings::Ultra();
+                case PbrQualityPreset::Custom: return settings;
+            }
+
+            return PbrRenderSettings::Medium();
+        }
+
+        [[nodiscard]] PbrRenderSettings SanitizePbrSettings(PbrRenderSettings settings) {
+            const bool keep_visual_debug = settings.visual_debug;
+            settings = ApplyPbrPreset(settings);
+            settings.visual_debug = keep_visual_debug;
+            settings.shadows.cascade_count = ClampAtLeastOne(settings.shadows.cascade_count,
+                                                             static_cast<std::uint32_t>(kMaxPbrCascades));
+            settings.shadows.cascades.split_lambda =
+                    std::clamp(PositiveFiniteOrZero(settings.shadows.cascades.split_lambda), 0.f, 1.f);
+            settings.shadows.cascades.bounds_padding =
+                    std::clamp(PositiveFiniteOrZero(settings.shadows.cascades.bounds_padding), 1.f, 2.f);
+            settings.shadows.cascades.caster_depth_padding =
+                    std::clamp(PositiveFiniteOrZero(settings.shadows.cascades.caster_depth_padding), 0.f, 8.f);
+            settings.shadows.directional_shadow_resolution =
+                    std::clamp(settings.shadows.directional_shadow_resolution, 128u, 8192u);
+            settings.shadows.directional_shadow_distance =
+                    std::clamp(PositiveFiniteOrZero(settings.shadows.directional_shadow_distance), 1.f, 10000.f);
+            settings.shadows.directional_shadow_bias =
+                    std::clamp(PositiveFiniteOrZero(settings.shadows.directional_shadow_bias), 0.f, 0.1f);
+            settings.shadows.directional_shadow_normal_bias =
+                    std::clamp(PositiveFiniteOrZero(settings.shadows.directional_shadow_normal_bias), 0.f, 10.f);
+            settings.shadows.directional_shadow_pcf_radius =
+                    std::clamp(settings.shadows.directional_shadow_pcf_radius, 0u, 4u);
+            settings.shadows.max_shadowed_point_lights =
+                    std::min<std::uint32_t>(settings.shadows.max_shadowed_point_lights,
+                                            static_cast<std::uint32_t>(kMaxPbrShadowedPointLights));
+            settings.shadows.point_shadow_resolution =
+                    std::clamp(settings.shadows.point_shadow_resolution, 64u, 4096u);
+            settings.shadows.point_shadow_bias =
+                    std::clamp(PositiveFiniteOrZero(settings.shadows.point_shadow_bias), 0.f, 0.1f);
+            settings.shadows.point_shadow_normal_bias =
+                    std::clamp(PositiveFiniteOrZero(settings.shadows.point_shadow_normal_bias), 0.f, 10.f);
+            settings.shadows.point_shadow_pcf_radius = std::clamp(settings.shadows.point_shadow_pcf_radius, 0u, 3u);
+
+            settings.ibl.environment_cube_resolution =
+                    std::clamp(settings.ibl.environment_cube_resolution, 16u, 2048u);
+            settings.ibl.irradiance_resolution = std::clamp(settings.ibl.irradiance_resolution, 8u, 512u);
+            settings.ibl.prefiltered_specular_resolution =
+                    std::clamp(settings.ibl.prefiltered_specular_resolution, 16u, 2048u);
+            settings.ibl.prefiltered_specular_mip_count =
+                    ClampAtLeastOne(settings.ibl.prefiltered_specular_mip_count, 12u);
+            settings.ibl.brdf_lut_resolution = std::clamp(settings.ibl.brdf_lut_resolution, 16u, 1024u);
+            return settings;
+        }
+
         [[nodiscard]] RenderDesc SanitizeRenderDesc(RenderDesc desc) {
             if (!IsColorFrameBufferFormat(desc.scene_color_format)) {
                 desc.scene_color_format = FrameBufferFormat::RGBA16Float;
             }
 
             desc.post_process = SanitizePostProcess(desc.post_process);
+            desc.pbr = SanitizePbrSettings(desc.pbr);
             return desc;
         }
 
@@ -250,10 +741,12 @@ namespace CoreEngine {
 
         [[nodiscard]] std::uint32_t ResolvePointLights(
                 World &world, std::unordered_map<entt::entity, Math::Mat4> &world_transform_cache,
-                std::array<PointLightFrameData, kMaxPbrPointLights> &out_point_lights) {
+                std::array<PointLightFrameData, kMaxPbrPointLights> &out_point_lights,
+                std::uint32_t max_shadowed_point_lights) {
             constexpr float kMinPointLightRange = 0.001f;
 
             std::uint32_t light_count = 0u;
+            std::uint32_t shadowed_light_count = 0u;
             auto view = world.View<PointLightComponent>();
             for (auto entity: view) {
                 if (light_count >= kMaxPbrPointLights) {
@@ -278,6 +771,7 @@ namespace CoreEngine {
                                                         : ResolveCachedWorldMatrix(world, entity,
                                                                                    world_transform_cache);
 
+                const bool casts_shadows = light.cast_shadows && shadowed_light_count < max_shadowed_point_lights;
                 out_point_lights[light_count++] = PointLightFrameData{
                         .position = ExtractWorldPosition(world_matrix),
                         .range = range,
@@ -285,6 +779,11 @@ namespace CoreEngine {
                                 {PositiveFiniteOrZero(light.color.x), PositiveFiniteOrZero(light.color.y),
                                  PositiveFiniteOrZero(light.color.z)},
                         .luminous_intensity_cd = intensity,
+                        .shadow_near_z = std::clamp(PositiveFiniteOrZero(light.shadow_near_z), 0.001f, range),
+                        .shadow_bias = std::clamp(PositiveFiniteOrZero(light.shadow_bias), 0.f, 0.1f),
+                        .shadow_normal_bias = std::clamp(PositiveFiniteOrZero(light.shadow_normal_bias), 0.f, 10.f),
+                        .casts_shadows = casts_shadows,
+                        .shadow_index = casts_shadows ? shadowed_light_count++ : 0u,
                 };
             }
 
@@ -318,6 +817,88 @@ namespace CoreEngine {
 
             return {};
         }
+
+        struct ActiveReflectionProbe {
+            TextureHandle environment_map{};
+            Math::Vec3 position{0.f, 0.f, 0.f};
+            float radius = 0.f;
+            float intensity = 1.f;
+            std::int32_t priority = 0;
+            bool enabled = false;
+        };
+
+        struct PbrSkyboxParams {
+            Math::Vec4 camera_right_tan_x{};
+            Math::Vec4 camera_up_tan_y{};
+            Math::Vec4 camera_forward_intensity{};
+            Math::Vec4 fallback_horizon{};
+            Math::Vec4 fallback_zenith{};
+        };
+
+        [[nodiscard]] bool ContainsProbeReference(const ReflectionProbeComponent &probe,
+                                                  const Math::Vec3 &probe_position,
+                                                  const Math::Vec3 &reference_position,
+                                                  float radius) {
+            const Math::Vec3 delta = reference_position - probe_position;
+            const bool uses_box = probe.box_extent.x > 0.f || probe.box_extent.y > 0.f || probe.box_extent.z > 0.f;
+            if (uses_box) {
+                return std::fabs(delta.x) <= std::max(probe.box_extent.x, 0.f) &&
+                       std::fabs(delta.y) <= std::max(probe.box_extent.y, 0.f) &&
+                       std::fabs(delta.z) <= std::max(probe.box_extent.z, 0.f);
+            }
+
+            return Math::LengthSquared(delta) <= radius * radius;
+        }
+
+        [[nodiscard]] ActiveReflectionProbe ResolveActiveReflectionProbe(
+                World &world, std::unordered_map<entt::entity, Math::Mat4> &world_transform_cache,
+                const Math::Vec3 &reference_position) {
+            ActiveReflectionProbe selected{};
+            float selected_distance_sq = 0.f;
+
+            auto view = world.View<ReflectionProbeComponent>();
+            for (auto entity: view) {
+                const ReflectionProbeComponent &probe = view.get<ReflectionProbeComponent>(entity);
+                const float radius = std::max(PositiveFiniteOrZero(probe.radius), 0.001f);
+                if (!probe.enabled || (!probe.environment_map.IsValid() && !probe.use_scene_environment) ||
+                    PositiveFiniteOrZero(probe.intensity) <= 0.f) {
+                    continue;
+                }
+
+                const TransformComponent *transform = world.TryGetComponent<TransformComponent>(entity);
+                const HierarchyComponent *hierarchy = world.TryGetComponent<HierarchyComponent>(entity);
+                const Math::Mat4 world_matrix =
+                        transform == nullptr
+                                ? Math::Identity()
+                                : (hierarchy == nullptr || hierarchy->parent == entt::null
+                                           ? transform->WorldMatrix()
+                                           : ResolveCachedWorldMatrix(world, entity, world_transform_cache));
+                const Math::Vec3 probe_position = ExtractWorldPosition(world_matrix);
+                if (!ContainsProbeReference(probe, probe_position, reference_position, radius)) {
+                    continue;
+                }
+
+                const float distance_sq = Math::LengthSquared(reference_position - probe_position);
+                const bool better_probe = !selected.enabled || probe.priority > selected.priority ||
+                                          (probe.priority == selected.priority &&
+                                           distance_sq < selected_distance_sq);
+                if (!better_probe) {
+                    continue;
+                }
+
+                selected = ActiveReflectionProbe{
+                        .environment_map = probe.environment_map,
+                        .position = probe_position,
+                        .radius = radius,
+                        .intensity = PositiveFiniteOrZero(probe.intensity),
+                        .priority = probe.priority,
+                        .enabled = true,
+                };
+                selected_distance_sq = distance_sq;
+            }
+
+            return selected;
+        }
     } // namespace
 
     //clang-format off
@@ -342,6 +923,8 @@ namespace CoreEngine {
     RenderSystem::~RenderSystem() {
         if (initialized_ && backend_ != nullptr) {
             render_graph_.Clear(backend_.get());
+            DestroyPbrResources();
+            DestroySceneFrameBuffer();
         }
         DestroyAllModels();
     }
@@ -359,7 +942,15 @@ namespace CoreEngine {
         initialized_ = backend_ != nullptr && backend_->Initialize(desc_, native_window);
         if (initialized_) {
             initialized_ = CreateSceneFrameBuffer();
-            default_scene_pass_ = render_graph_.AddPass(std::make_unique<DefaultSceneRenderPass>(*this));
+            if (initialized_) {
+                initialized_ = CreatePbrResources();
+            }
+            if (initialized_) {
+                pbr_ibl_pass_ = render_graph_.AddPass(std::make_unique<PbrIblPass>(*this));
+                pbr_shadow_pass_ = render_graph_.AddPass(std::make_unique<PbrShadowPass>(*this));
+                default_scene_pass_ = render_graph_.AddPass(std::make_unique<DefaultSceneRenderPass>(*this));
+                pbr_debug_pass_ = render_graph_.AddPass(std::make_unique<PbrDebugPass>(*this));
+            }
         }
 
         return initialized_;
@@ -378,9 +969,15 @@ namespace CoreEngine {
             return;
         }
 
+        const auto frame_start = RenderCpuClock::now();
+        const auto upload_start = RenderCpuClock::now();
         PumpModelUploads();
+        const auto upload_end = RenderCpuClock::now();
 
         render_frame_resources_.Clear();
+        debug_registry_.BeginFrame();
+        RenderDebugStats &debug_stats = debug_registry_.Stats();
+        debug_stats.model_upload_cpu_ms = CpuElapsedMilliseconds(upload_start, upload_end);
 
         backend_->BeginFrame();
 
@@ -394,22 +991,33 @@ namespace CoreEngine {
         RenderPassContext pass_context{*backend_,      world,          frame_clock, timing, render_frame_resources_,
                                        surface_width_, surface_height_};
 
-        for (const RenderPassStage &stage: kScenePassStages) {
+        const auto execute_stage = [&](RenderPassStage stage) {
+            const auto stage_start = RenderCpuClock::now();
             render_graph_.Execute(stage, pass_context);
+            AccumulateStageCpuTime(debug_stats, stage, CpuElapsedMilliseconds(stage_start, RenderCpuClock::now()));
+        };
+
+        for (const RenderPassStage &stage: kScenePassStages) {
+            execute_stage(stage);
         }
 
+        const auto composite_start = RenderCpuClock::now();
         backend_->CompositeFrameBuffer(scene_framebuffer_, desc_.post_process);
+        debug_stats.composite_cpu_ms = CpuElapsedMilliseconds(composite_start, RenderCpuClock::now());
 
-        render_graph_.Execute(RenderPassStage::UI, pass_context);
+        execute_stage(RenderPassStage::UI);
         backend_->SetSwapChainFrameBuffer();
 
         if (desc_.enable_imgui) {
+            const auto imgui_start = RenderCpuClock::now();
             backend_->RenderImGui();
+            debug_stats.imgui_cpu_ms = CpuElapsedMilliseconds(imgui_start, RenderCpuClock::now());
         }
 
-        render_graph_.Execute(RenderPassStage::Present, pass_context);
+        execute_stage(RenderPassStage::Present);
 
         backend_->EndFrame();
+        debug_stats.frame_cpu_ms = CpuElapsedMilliseconds(frame_start, RenderCpuClock::now());
     }
 
     MeshHandle RenderSystem::GetOrCreatePrimitive(PrimitiveType type) {
@@ -456,6 +1064,7 @@ namespace CoreEngine {
                 .material = material,
                 .visible = desc.visible,
                 .cast_shadows = desc.cast_shadows,
+                .mobility = desc.mobility,
                 .topology = desc.topology,
         };
 
@@ -1036,9 +1645,13 @@ namespace CoreEngine {
 
     void RenderSystem::Shutdown() {
         default_scene_pass_ = {};
+        pbr_shadow_pass_ = {};
+        pbr_ibl_pass_ = {};
+        pbr_debug_pass_ = {};
         render_graph_.Clear(backend_.get());
 
         DestroyAllModels();
+        DestroyPbrResources();
         DestroySceneFrameBuffer();
 
         if (backend_ != nullptr) {
@@ -1046,6 +1659,8 @@ namespace CoreEngine {
         }
 
         primitive_cache_.fill({});
+        pbr_shadow_frame_data_ = {};
+        pbr_global_resources_ = {};
         initialized_ = false;
     }
 
@@ -1062,6 +1677,1337 @@ namespace CoreEngine {
     IRenderContext &RenderSystem::Context() { return *this; }
 
     RenderGraph &RenderSystem::Graph() { return render_graph_; }
+
+    void RenderSystem::SetDebugView(RenderDebugView view) {
+        if (!view.IsValid()) {
+            return;
+        }
+
+        const std::string name = view.name;
+        debug_registry_.RegisterView(std::move(view));
+        debug_registry_.Select(name);
+    }
+
+    bool RenderSystem::SetDebugView(std::string_view name) {
+        if (debug_registry_.Find(name) == nullptr) {
+            return false;
+        }
+
+        debug_registry_.Select(name);
+        return true;
+    }
+
+    void RenderSystem::ClearDebugView() { debug_registry_.ClearSelection(); }
+
+    std::span<const RenderDebugView> RenderSystem::GetAvailableDebugViews() const {
+        return debug_registry_.Views();
+    }
+
+    const RenderDebugStats &RenderSystem::GetDebugStats() const { return debug_registry_.Stats(); }
+
+    bool RenderSystem::CreatePbrResources() {
+        if (backend_ == nullptr) {
+            return false;
+        }
+
+        if (!CreatePbrShadowResources()) {
+            DestroyPbrResources();
+            return false;
+        }
+
+        if (!CreatePbrIblResources()) {
+            DestroyPbrResources();
+            return false;
+        }
+
+        pbr_shadow_depth_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_ShadowDepth",
+                .vertex_shader_source = BuiltinShaders::kPbrShadowDepthVS,
+                .pixel_shader_source = {},
+                .bindings = {},
+                .has_color_target = false,
+                .depth_format = FrameBufferFormat::Depth32Float,
+                .depth_test = true,
+        });
+        pbr_equirect_to_cube_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_EquirectToCube",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrEquirectToCubePS,
+                .bindings = {ShaderBindingDesc::Texture("g_EquirectangularTexture", ShaderBindingScope::Pass,
+                                                        ShaderStage::Pixel, "g_IblSampler"),
+                             ShaderBindingDesc::UniformBuffer("IblGenerate", sizeof(Math::Vec4),
+                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
+                .color_format = FrameBufferFormat::RGBA16Float,
+        });
+        pbr_irradiance_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_IrradianceCube",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrIrradianceCubePS,
+                .bindings = {ShaderBindingDesc::Texture("g_EnvironmentCube", ShaderBindingScope::Pass,
+                                                        ShaderStage::Pixel, "g_IblSampler"),
+                             ShaderBindingDesc::UniformBuffer("IblGenerate", sizeof(Math::Vec4),
+                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
+                .color_format = FrameBufferFormat::RGBA16Float,
+        });
+        pbr_prefiltered_specular_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_PrefilteredSpecular",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrPrefilteredSpecularCubePS,
+                .bindings = {ShaderBindingDesc::Texture("g_EnvironmentCube", ShaderBindingScope::Pass,
+                                                        ShaderStage::Pixel, "g_IblSampler"),
+                             ShaderBindingDesc::UniformBuffer("IblGenerate", sizeof(Math::Vec4),
+                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
+                .color_format = FrameBufferFormat::RGBA16Float,
+        });
+        pbr_brdf_lut_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_BrdfLut",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrBrdfLutPS,
+                .bindings = {},
+                .color_format = FrameBufferFormat::RGBA16Float,
+        });
+        pbr_skybox_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_EnvironmentSkybox",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrSkyboxPS,
+                .bindings = {ShaderBindingDesc::Texture("g_SkyboxCube", ShaderBindingScope::Pass,
+                                                        ShaderStage::Pixel, "g_SkyboxSampler"),
+                             ShaderBindingDesc::UniformBuffer("Skybox", sizeof(PbrSkyboxParams),
+                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
+                .color_format = desc_.scene_color_format,
+                .depth_format = FrameBufferFormat::Depth32Float,
+        });
+        pbr_skybox_fallback_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_EnvironmentSkyboxFallback",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrSkyboxFallbackPS,
+                .bindings = {ShaderBindingDesc::UniformBuffer("Skybox", sizeof(PbrSkyboxParams),
+                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
+                .color_format = desc_.scene_color_format,
+                .depth_format = FrameBufferFormat::Depth32Float,
+        });
+
+        pbr_debug_texture_2d_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_DebugTexture2D",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrDebugTexture2DPS,
+                .bindings = {ShaderBindingDesc::Texture("g_DebugTexture", ShaderBindingScope::Pass,
+                                                        ShaderStage::Pixel, "g_DebugSampler"),
+                             ShaderBindingDesc::UniformBuffer("DebugTexture", sizeof(Math::Vec4),
+                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
+        });
+        pbr_debug_texture_array_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_DebugTextureArray",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrDebugTexture2DArrayPS,
+                .bindings = {ShaderBindingDesc::Texture("g_DebugTexture", ShaderBindingScope::Pass,
+                                                        ShaderStage::Pixel, "g_DebugSampler"),
+                             ShaderBindingDesc::UniformBuffer("DebugTexture", sizeof(Math::Vec4),
+                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
+        });
+        pbr_debug_texture_cube_program_ = backend_->CreateShaderProgram(ShaderProgramDesc{
+                .debug_name = "PBR_DebugTextureCube",
+                .vertex_shader_source = BuiltinShaders::kCompositeVS,
+                .pixel_shader_source = BuiltinShaders::kPbrDebugTextureCubePS,
+                .bindings = {ShaderBindingDesc::Texture("g_DebugTexture", ShaderBindingScope::Pass,
+                                                        ShaderStage::Pixel, "g_DebugSampler"),
+                             ShaderBindingDesc::UniformBuffer("DebugTexture", sizeof(Math::Vec4),
+                                                              ShaderBindingScope::Pass, ShaderStage::Pixel)},
+        });
+
+        const bool programs_ready = pbr_shadow_depth_program_.IsValid() &&
+                                    pbr_equirect_to_cube_program_.IsValid() && pbr_irradiance_program_.IsValid() &&
+                                    pbr_prefiltered_specular_program_.IsValid() && pbr_brdf_lut_program_.IsValid() &&
+                                    pbr_skybox_program_.IsValid() &&
+                                    pbr_skybox_fallback_program_.IsValid() &&
+                                    pbr_debug_texture_2d_program_.IsValid() &&
+                                    pbr_debug_texture_array_program_.IsValid() &&
+                                    pbr_debug_texture_cube_program_.IsValid();
+        if (!programs_ready) {
+            DestroyPbrResources();
+        }
+        return programs_ready;
+    }
+
+    void RenderSystem::DestroyPbrResources() {
+        if (backend_ == nullptr) {
+            return;
+        }
+
+        if (pbr_shadow_depth_program_.IsValid()) {
+            backend_->DestroyShaderProgram(pbr_shadow_depth_program_);
+        }
+        if (pbr_debug_texture_2d_program_.IsValid()) {
+            backend_->DestroyShaderProgram(pbr_debug_texture_2d_program_);
+        }
+        if (pbr_equirect_to_cube_program_.IsValid()) {
+            backend_->DestroyShaderProgram(pbr_equirect_to_cube_program_);
+        }
+        if (pbr_irradiance_program_.IsValid()) {
+            backend_->DestroyShaderProgram(pbr_irradiance_program_);
+        }
+        if (pbr_prefiltered_specular_program_.IsValid()) {
+            backend_->DestroyShaderProgram(pbr_prefiltered_specular_program_);
+        }
+        if (pbr_brdf_lut_program_.IsValid()) {
+            backend_->DestroyShaderProgram(pbr_brdf_lut_program_);
+        }
+        if (pbr_skybox_program_.IsValid()) {
+            backend_->DestroyShaderProgram(pbr_skybox_program_);
+        }
+        if (pbr_skybox_fallback_program_.IsValid()) {
+            backend_->DestroyShaderProgram(pbr_skybox_fallback_program_);
+        }
+        if (pbr_debug_texture_array_program_.IsValid()) {
+            backend_->DestroyShaderProgram(pbr_debug_texture_array_program_);
+        }
+        if (pbr_debug_texture_cube_program_.IsValid()) {
+            backend_->DestroyShaderProgram(pbr_debug_texture_cube_program_);
+        }
+        pbr_shadow_depth_program_ = {};
+        pbr_equirect_to_cube_program_ = {};
+        pbr_irradiance_program_ = {};
+        pbr_prefiltered_specular_program_ = {};
+        pbr_brdf_lut_program_ = {};
+        pbr_skybox_program_ = {};
+        pbr_skybox_fallback_program_ = {};
+        pbr_debug_texture_2d_program_ = {};
+        pbr_debug_texture_array_program_ = {};
+        pbr_debug_texture_cube_program_ = {};
+
+        DestroyPbrShadowResources();
+        DestroyPbrIblResources();
+        pbr_global_resources_ = {};
+        backend_->SetPbrGlobalResources(pbr_global_resources_);
+    }
+
+    bool RenderSystem::CreatePbrShadowResources() {
+        const PbrShadowSettings &settings = desc_.pbr.shadows;
+        const std::uint32_t cascade_count =
+                settings.directional_shadows ? settings.cascade_count : 1u;
+        const std::uint32_t directional_resolution =
+                settings.directional_shadows ? settings.directional_shadow_resolution : 128u;
+        const std::uint32_t shadowed_point_lights =
+                settings.point_shadows ? settings.max_shadowed_point_lights : 0u;
+        const std::uint32_t point_light_capacity = std::max<std::uint32_t>(shadowed_point_lights, 1u);
+        const std::uint32_t point_resolution = settings.point_shadows ? settings.point_shadow_resolution : 64u;
+
+        pbr_shadow_resources_.directional_texture = backend_->CreateTexture(TextureDesc{
+                .debug_name = "PBR_DirectionalShadowArray",
+                .width = static_cast<int>(directional_resolution),
+                .height = static_cast<int>(directional_resolution),
+                .mip_levels = 1u,
+                .array_size = cascade_count,
+                .dimension = TextureDimension::Texture2DArray,
+                .format = TextureFormat::Depth32Float,
+                .usage = TextureUsage::ShaderResource | TextureUsage::DepthStencil,
+        });
+        if (!pbr_shadow_resources_.directional_texture.IsValid()) {
+            return false;
+        }
+
+        pbr_shadow_resources_.directional_srv = backend_->CreateTextureView(TextureViewDesc{
+                .texture = pbr_shadow_resources_.directional_texture,
+                .type = TextureViewType::ShaderResource,
+                .dimension = TextureDimension::Texture2DArray,
+                .mip_level = 0u,
+                .mip_count = 1u,
+                .array_slice = 0u,
+                .array_slice_count = cascade_count,
+        });
+        if (!pbr_shadow_resources_.directional_srv.IsValid()) {
+            return false;
+        }
+
+        for (std::uint32_t cascade = 0; cascade < cascade_count; ++cascade) {
+            pbr_shadow_resources_.directional_dsvs[cascade] = backend_->CreateTextureView(TextureViewDesc{
+                    .texture = pbr_shadow_resources_.directional_texture,
+                    .type = TextureViewType::DepthStencil,
+                    .dimension = TextureDimension::Texture2DArray,
+                    .mip_level = 0u,
+                    .mip_count = 1u,
+                    .array_slice = cascade,
+                    .array_slice_count = 1u,
+            });
+            if (!pbr_shadow_resources_.directional_dsvs[cascade].IsValid()) {
+                return false;
+            }
+        }
+
+        const std::uint32_t point_slice_count =
+                point_light_capacity * static_cast<std::uint32_t>(kPbrPointShadowFaceCount);
+        pbr_shadow_resources_.point_texture = backend_->CreateTexture(TextureDesc{
+                .debug_name = "PBR_PointShadowFaceArray",
+                .width = static_cast<int>(point_resolution),
+                .height = static_cast<int>(point_resolution),
+                .mip_levels = 1u,
+                .array_size = point_slice_count,
+                .dimension = TextureDimension::Texture2DArray,
+                .format = TextureFormat::Depth32Float,
+                .usage = TextureUsage::ShaderResource | TextureUsage::DepthStencil,
+        });
+        if (!pbr_shadow_resources_.point_texture.IsValid()) {
+            return false;
+        }
+
+        pbr_shadow_resources_.point_srv = backend_->CreateTextureView(TextureViewDesc{
+                .texture = pbr_shadow_resources_.point_texture,
+                .type = TextureViewType::ShaderResource,
+                .dimension = TextureDimension::Texture2DArray,
+                .mip_level = 0u,
+                .mip_count = 1u,
+                .array_slice = 0u,
+                .array_slice_count = point_slice_count,
+        });
+        if (!pbr_shadow_resources_.point_srv.IsValid()) {
+            return false;
+        }
+
+        for (std::uint32_t slice = 0; slice < point_slice_count; ++slice) {
+            pbr_shadow_resources_.point_dsvs[slice] = backend_->CreateTextureView(TextureViewDesc{
+                    .texture = pbr_shadow_resources_.point_texture,
+                    .type = TextureViewType::DepthStencil,
+                    .dimension = TextureDimension::Texture2DArray,
+                    .mip_level = 0u,
+                    .mip_count = 1u,
+                    .array_slice = slice,
+                    .array_slice_count = 1u,
+            });
+            if (!pbr_shadow_resources_.point_dsvs[slice].IsValid()) {
+                return false;
+            }
+        }
+
+        pbr_shadow_resources_.cascade_count = cascade_count;
+        pbr_shadow_resources_.max_point_lights = shadowed_point_lights;
+        pbr_shadow_resources_.directional_resolution = directional_resolution;
+        pbr_shadow_resources_.point_resolution = point_resolution;
+        pbr_global_resources_.directional_shadow_map = pbr_shadow_resources_.directional_srv;
+        pbr_global_resources_.point_shadow_map = pbr_shadow_resources_.point_srv;
+        return true;
+    }
+
+    void RenderSystem::DestroyPbrShadowResources() {
+        for (TextureViewHandle view: pbr_shadow_resources_.directional_dsvs) {
+            if (view.IsValid()) {
+                backend_->DestroyTextureView(view);
+            }
+        }
+        for (TextureViewHandle view: pbr_shadow_resources_.point_dsvs) {
+            if (view.IsValid()) {
+                backend_->DestroyTextureView(view);
+            }
+        }
+        if (pbr_shadow_resources_.directional_srv.IsValid()) {
+            backend_->DestroyTextureView(pbr_shadow_resources_.directional_srv);
+        }
+        if (pbr_shadow_resources_.point_srv.IsValid()) {
+            backend_->DestroyTextureView(pbr_shadow_resources_.point_srv);
+        }
+        if (pbr_shadow_resources_.directional_texture.IsValid()) {
+            backend_->DestroyTexture(pbr_shadow_resources_.directional_texture);
+        }
+        if (pbr_shadow_resources_.point_texture.IsValid()) {
+            backend_->DestroyTexture(pbr_shadow_resources_.point_texture);
+        }
+        pbr_shadow_resources_ = {};
+    }
+
+    bool RenderSystem::CreatePbrIblResources() {
+        const PbrIblSettings &settings = desc_.pbr.ibl;
+        const std::uint32_t environment_resolution = settings.enabled ? settings.environment_cube_resolution : 16u;
+        const std::uint32_t irradiance_resolution = settings.enabled ? settings.irradiance_resolution : 8u;
+        const std::uint32_t prefiltered_resolution = settings.enabled ? settings.prefiltered_specular_resolution : 16u;
+        const std::uint32_t prefiltered_mips = settings.enabled ? settings.prefiltered_specular_mip_count : 1u;
+        const std::uint32_t brdf_resolution = settings.enabled ? settings.brdf_lut_resolution : 16u;
+
+        pbr_ibl_resources_.environment_cube_texture = backend_->CreateTexture(TextureDesc{
+                .debug_name = "PBR_EnvironmentCube",
+                .width = static_cast<int>(environment_resolution),
+                .height = static_cast<int>(environment_resolution),
+                .mip_levels = 1u,
+                .array_size = 6u,
+                .dimension = TextureDimension::TextureCube,
+                .format = TextureFormat::RGBA16Float,
+                .usage = TextureUsage::ShaderResource | TextureUsage::RenderTarget,
+        });
+        pbr_ibl_resources_.irradiance_texture = backend_->CreateTexture(TextureDesc{
+                .debug_name = "PBR_IrradianceCube",
+                .width = static_cast<int>(irradiance_resolution),
+                .height = static_cast<int>(irradiance_resolution),
+                .mip_levels = 1u,
+                .array_size = 6u,
+                .dimension = TextureDimension::TextureCube,
+                .format = TextureFormat::RGBA16Float,
+                .usage = TextureUsage::ShaderResource | TextureUsage::RenderTarget,
+        });
+        pbr_ibl_resources_.prefiltered_specular_texture = backend_->CreateTexture(TextureDesc{
+                .debug_name = "PBR_PrefilteredSpecularCube",
+                .width = static_cast<int>(prefiltered_resolution),
+                .height = static_cast<int>(prefiltered_resolution),
+                .mip_levels = prefiltered_mips,
+                .array_size = 6u,
+                .dimension = TextureDimension::TextureCube,
+                .format = TextureFormat::RGBA16Float,
+                .usage = TextureUsage::ShaderResource | TextureUsage::RenderTarget,
+        });
+        pbr_ibl_resources_.brdf_lut_texture = backend_->CreateTexture(TextureDesc{
+                .debug_name = "PBR_BrdfLut",
+                .width = static_cast<int>(brdf_resolution),
+                .height = static_cast<int>(brdf_resolution),
+                .mip_levels = 1u,
+                .array_size = 1u,
+                .dimension = TextureDimension::Texture2D,
+                .format = TextureFormat::RG16Float,
+                .usage = TextureUsage::ShaderResource | TextureUsage::RenderTarget,
+        });
+
+        if (!pbr_ibl_resources_.environment_cube_texture.IsValid() ||
+            !pbr_ibl_resources_.irradiance_texture.IsValid() ||
+            !pbr_ibl_resources_.prefiltered_specular_texture.IsValid() ||
+            !pbr_ibl_resources_.brdf_lut_texture.IsValid()) {
+            return false;
+        }
+
+        pbr_ibl_resources_.environment_cube_srv = backend_->CreateTextureView(TextureViewDesc{
+                .texture = pbr_ibl_resources_.environment_cube_texture,
+                .type = TextureViewType::ShaderResource,
+                .dimension = TextureDimension::TextureCube,
+                .mip_level = 0u,
+                .mip_count = 1u,
+                .array_slice = 0u,
+                .array_slice_count = 6u,
+        });
+        pbr_ibl_resources_.irradiance_srv = backend_->CreateTextureView(TextureViewDesc{
+                .texture = pbr_ibl_resources_.irradiance_texture,
+                .type = TextureViewType::ShaderResource,
+                .dimension = TextureDimension::TextureCube,
+                .mip_level = 0u,
+                .mip_count = 1u,
+                .array_slice = 0u,
+                .array_slice_count = 6u,
+        });
+        pbr_ibl_resources_.prefiltered_specular_srv = backend_->CreateTextureView(TextureViewDesc{
+                .texture = pbr_ibl_resources_.prefiltered_specular_texture,
+                .type = TextureViewType::ShaderResource,
+                .dimension = TextureDimension::TextureCube,
+                .mip_level = 0u,
+                .mip_count = prefiltered_mips,
+                .array_slice = 0u,
+                .array_slice_count = 6u,
+        });
+        pbr_ibl_resources_.brdf_lut_srv = backend_->CreateTextureView(TextureViewDesc{
+                .texture = pbr_ibl_resources_.brdf_lut_texture,
+                .type = TextureViewType::ShaderResource,
+                .dimension = TextureDimension::Texture2D,
+                .mip_level = 0u,
+                .mip_count = 1u,
+                .array_slice = 0u,
+                .array_slice_count = 1u,
+        });
+        pbr_ibl_resources_.brdf_lut_rtv = backend_->CreateTextureView(TextureViewDesc{
+                .texture = pbr_ibl_resources_.brdf_lut_texture,
+                .type = TextureViewType::RenderTarget,
+                .dimension = TextureDimension::Texture2D,
+                .mip_level = 0u,
+                .mip_count = 1u,
+                .array_slice = 0u,
+                .array_slice_count = 1u,
+        });
+
+        if (!pbr_ibl_resources_.environment_cube_srv.IsValid() ||
+            !pbr_ibl_resources_.irradiance_srv.IsValid() ||
+            !pbr_ibl_resources_.prefiltered_specular_srv.IsValid() ||
+            !pbr_ibl_resources_.brdf_lut_srv.IsValid() || !pbr_ibl_resources_.brdf_lut_rtv.IsValid()) {
+            return false;
+        }
+
+        for (std::uint32_t face = 0u; face < 6u; ++face) {
+            pbr_ibl_resources_.environment_cube_rtvs[face] = backend_->CreateTextureView(TextureViewDesc{
+                    .texture = pbr_ibl_resources_.environment_cube_texture,
+                    .type = TextureViewType::RenderTarget,
+                    .dimension = TextureDimension::Texture2DArray,
+                    .mip_level = 0u,
+                    .mip_count = 1u,
+                    .array_slice = face,
+                    .array_slice_count = 1u,
+            });
+            pbr_ibl_resources_.irradiance_rtvs[face] = backend_->CreateTextureView(TextureViewDesc{
+                    .texture = pbr_ibl_resources_.irradiance_texture,
+                    .type = TextureViewType::RenderTarget,
+                    .dimension = TextureDimension::Texture2DArray,
+                    .mip_level = 0u,
+                    .mip_count = 1u,
+                    .array_slice = face,
+                    .array_slice_count = 1u,
+            });
+            if (!pbr_ibl_resources_.environment_cube_rtvs[face].IsValid() ||
+                !pbr_ibl_resources_.irradiance_rtvs[face].IsValid()) {
+                return false;
+            }
+        }
+
+        pbr_ibl_resources_.prefiltered_specular_rtvs.reserve(prefiltered_mips * 6u);
+        for (std::uint32_t mip = 0u; mip < prefiltered_mips; ++mip) {
+            for (std::uint32_t face = 0u; face < 6u; ++face) {
+                TextureViewHandle view = backend_->CreateTextureView(TextureViewDesc{
+                        .texture = pbr_ibl_resources_.prefiltered_specular_texture,
+                        .type = TextureViewType::RenderTarget,
+                        .dimension = TextureDimension::Texture2DArray,
+                        .mip_level = mip,
+                        .mip_count = 1u,
+                        .array_slice = face,
+                        .array_slice_count = 1u,
+                });
+                if (!view.IsValid()) {
+                    return false;
+                }
+                pbr_ibl_resources_.prefiltered_specular_rtvs.push_back(view);
+            }
+        }
+
+        pbr_ibl_resources_.environment_resolution = environment_resolution;
+        pbr_ibl_resources_.irradiance_resolution = irradiance_resolution;
+        pbr_ibl_resources_.prefiltered_resolution = prefiltered_resolution;
+        pbr_ibl_resources_.prefiltered_mip_count = prefiltered_mips;
+        pbr_ibl_resources_.brdf_lut_resolution = brdf_resolution;
+        UseRuntimePbrIblResources();
+        return true;
+    }
+
+    void RenderSystem::SetActivePbrIblResources(TextureViewHandle environment_cube, TextureViewHandle irradiance,
+                                                TextureViewHandle prefiltered_specular, TextureViewHandle brdf_lut) {
+        pbr_ibl_resources_.active_environment_cube_srv = environment_cube;
+        pbr_ibl_resources_.active_irradiance_srv = irradiance;
+        pbr_ibl_resources_.active_prefiltered_specular_srv = prefiltered_specular;
+        pbr_ibl_resources_.active_brdf_lut_srv = brdf_lut;
+        pbr_global_resources_.irradiance_map = irradiance;
+        pbr_global_resources_.prefiltered_specular_map = prefiltered_specular;
+        pbr_global_resources_.brdf_lut = brdf_lut;
+    }
+
+    void RenderSystem::UseRuntimePbrIblResources() {
+        pbr_ibl_resources_.using_precomputed_cache = false;
+        SetActivePbrIblResources(pbr_ibl_resources_.environment_cube_srv, pbr_ibl_resources_.irradiance_srv,
+                                 pbr_ibl_resources_.prefiltered_specular_srv, pbr_ibl_resources_.brdf_lut_srv);
+    }
+
+    void RenderSystem::DestroyPbrPrecomputedIblResources() {
+        if (pbr_ibl_resources_.precomputed_environment_cube_srv.IsValid()) {
+            backend_->DestroyTextureView(pbr_ibl_resources_.precomputed_environment_cube_srv);
+        }
+        if (pbr_ibl_resources_.precomputed_irradiance_srv.IsValid()) {
+            backend_->DestroyTextureView(pbr_ibl_resources_.precomputed_irradiance_srv);
+        }
+        if (pbr_ibl_resources_.precomputed_prefiltered_specular_srv.IsValid()) {
+            backend_->DestroyTextureView(pbr_ibl_resources_.precomputed_prefiltered_specular_srv);
+        }
+        if (pbr_ibl_resources_.precomputed_brdf_lut_srv.IsValid()) {
+            backend_->DestroyTextureView(pbr_ibl_resources_.precomputed_brdf_lut_srv);
+        }
+        if (pbr_ibl_resources_.precomputed_environment_cube_texture.IsValid()) {
+            backend_->DestroyTexture(pbr_ibl_resources_.precomputed_environment_cube_texture);
+        }
+        if (pbr_ibl_resources_.precomputed_irradiance_texture.IsValid()) {
+            backend_->DestroyTexture(pbr_ibl_resources_.precomputed_irradiance_texture);
+        }
+        if (pbr_ibl_resources_.precomputed_prefiltered_specular_texture.IsValid()) {
+            backend_->DestroyTexture(pbr_ibl_resources_.precomputed_prefiltered_specular_texture);
+        }
+        if (pbr_ibl_resources_.precomputed_brdf_lut_texture.IsValid()) {
+            backend_->DestroyTexture(pbr_ibl_resources_.precomputed_brdf_lut_texture);
+        }
+
+        pbr_ibl_resources_.precomputed_environment_cube_texture = {};
+        pbr_ibl_resources_.precomputed_environment_cube_srv = {};
+        pbr_ibl_resources_.precomputed_irradiance_texture = {};
+        pbr_ibl_resources_.precomputed_irradiance_srv = {};
+        pbr_ibl_resources_.precomputed_prefiltered_specular_texture = {};
+        pbr_ibl_resources_.precomputed_prefiltered_specular_srv = {};
+        pbr_ibl_resources_.precomputed_brdf_lut_texture = {};
+        pbr_ibl_resources_.precomputed_brdf_lut_srv = {};
+        UseRuntimePbrIblResources();
+    }
+
+    bool RenderSystem::LoadPbrPrecomputedIbl(const PbrPrecomputedIblPaths &paths) {
+        if (backend_ == nullptr || !paths.IsComplete()) {
+            return false;
+        }
+
+        DestroyPbrPrecomputedIblResources();
+
+        TextureHandle environment_cube = backend_->LoadTexture2D(TextureLoadDesc{
+                .path = paths.environment_cube_path,
+                .format = TextureFormat::Auto,
+                .generate_mipmaps = false,
+                .flip_vertically = false,
+                .premultiply_alpha = false,
+        });
+        TextureHandle irradiance = backend_->LoadTexture2D(TextureLoadDesc{
+                .path = paths.irradiance_cube_path,
+                .format = TextureFormat::Auto,
+                .generate_mipmaps = false,
+                .flip_vertically = false,
+                .premultiply_alpha = false,
+        });
+        TextureHandle prefiltered_specular = backend_->LoadTexture2D(TextureLoadDesc{
+                .path = paths.prefiltered_specular_cube_path,
+                .format = TextureFormat::Auto,
+                .generate_mipmaps = false,
+                .flip_vertically = false,
+                .premultiply_alpha = false,
+        });
+        TextureHandle brdf_lut = backend_->LoadTexture2D(TextureLoadDesc{
+                .path = paths.brdf_lut_path,
+                .format = TextureFormat::Auto,
+                .generate_mipmaps = false,
+                .flip_vertically = false,
+                .premultiply_alpha = false,
+        });
+
+        if (!environment_cube.IsValid() || !irradiance.IsValid() || !prefiltered_specular.IsValid() ||
+            !brdf_lut.IsValid()) {
+            if (environment_cube.IsValid()) {
+                backend_->DestroyTexture(environment_cube);
+            }
+            if (irradiance.IsValid()) {
+                backend_->DestroyTexture(irradiance);
+            }
+            if (prefiltered_specular.IsValid()) {
+                backend_->DestroyTexture(prefiltered_specular);
+            }
+            if (brdf_lut.IsValid()) {
+                backend_->DestroyTexture(brdf_lut);
+            }
+            UseRuntimePbrIblResources();
+            return false;
+        }
+
+        TextureViewHandle environment_cube_srv = backend_->CreateTextureView(TextureViewDesc{
+                .texture = environment_cube,
+                .type = TextureViewType::ShaderResource,
+                .dimension = TextureDimension::TextureCube,
+                .mip_level = 0u,
+                .mip_count = 1u,
+                .array_slice = 0u,
+                .array_slice_count = 6u,
+        });
+        TextureViewHandle irradiance_srv = backend_->CreateTextureView(TextureViewDesc{
+                .texture = irradiance,
+                .type = TextureViewType::ShaderResource,
+                .dimension = TextureDimension::TextureCube,
+                .mip_level = 0u,
+                .mip_count = 1u,
+                .array_slice = 0u,
+                .array_slice_count = 6u,
+        });
+        TextureViewHandle prefiltered_specular_srv = backend_->CreateTextureView(TextureViewDesc{
+                .texture = prefiltered_specular,
+                .type = TextureViewType::ShaderResource,
+                .dimension = TextureDimension::TextureCube,
+                .mip_level = 0u,
+                .mip_count = pbr_ibl_resources_.prefiltered_mip_count,
+                .array_slice = 0u,
+                .array_slice_count = 6u,
+        });
+        TextureViewHandle brdf_lut_srv = backend_->CreateTextureView(TextureViewDesc{
+                .texture = brdf_lut,
+                .type = TextureViewType::ShaderResource,
+                .dimension = TextureDimension::Texture2D,
+                .mip_level = 0u,
+                .mip_count = 1u,
+                .array_slice = 0u,
+                .array_slice_count = 1u,
+        });
+
+        if (!environment_cube_srv.IsValid() || !irradiance_srv.IsValid() || !prefiltered_specular_srv.IsValid() ||
+            !brdf_lut_srv.IsValid()) {
+            if (environment_cube_srv.IsValid()) {
+                backend_->DestroyTextureView(environment_cube_srv);
+            }
+            if (irradiance_srv.IsValid()) {
+                backend_->DestroyTextureView(irradiance_srv);
+            }
+            if (prefiltered_specular_srv.IsValid()) {
+                backend_->DestroyTextureView(prefiltered_specular_srv);
+            }
+            if (brdf_lut_srv.IsValid()) {
+                backend_->DestroyTextureView(brdf_lut_srv);
+            }
+            backend_->DestroyTexture(environment_cube);
+            backend_->DestroyTexture(irradiance);
+            backend_->DestroyTexture(prefiltered_specular);
+            backend_->DestroyTexture(brdf_lut);
+            UseRuntimePbrIblResources();
+            return false;
+        }
+
+        pbr_ibl_resources_.precomputed_environment_cube_texture = environment_cube;
+        pbr_ibl_resources_.precomputed_environment_cube_srv = environment_cube_srv;
+        pbr_ibl_resources_.precomputed_irradiance_texture = irradiance;
+        pbr_ibl_resources_.precomputed_irradiance_srv = irradiance_srv;
+        pbr_ibl_resources_.precomputed_prefiltered_specular_texture = prefiltered_specular;
+        pbr_ibl_resources_.precomputed_prefiltered_specular_srv = prefiltered_specular_srv;
+        pbr_ibl_resources_.precomputed_brdf_lut_texture = brdf_lut;
+        pbr_ibl_resources_.precomputed_brdf_lut_srv = brdf_lut_srv;
+        pbr_ibl_resources_.using_precomputed_cache = true;
+        SetActivePbrIblResources(environment_cube_srv, irradiance_srv, prefiltered_specular_srv, brdf_lut_srv);
+        Log::Info("Render", "Loaded precomputed PBR IBL cache '{}'", ResolvePrecomputedIblManifestPath(paths));
+        return true;
+    }
+
+    bool RenderSystem::SaveGeneratedPbrIblCache() {
+        if (backend_ == nullptr || !pbr_ibl_resources_.save_generated_precomputed_cache ||
+            !pbr_ibl_resources_.pending_precomputed_bake_paths.IsComplete() ||
+            pbr_ibl_resources_.pending_precomputed_bake_source_key.empty()) {
+            return false;
+        }
+
+        const PbrPrecomputedIblPaths &paths = pbr_ibl_resources_.pending_precomputed_bake_paths;
+        const bool saved = backend_->SaveTextureAsDds(pbr_ibl_resources_.environment_cube_texture,
+                                                      paths.environment_cube_path) &&
+                           backend_->SaveTextureAsDds(pbr_ibl_resources_.irradiance_texture,
+                                                      paths.irradiance_cube_path) &&
+                           backend_->SaveTextureAsDds(pbr_ibl_resources_.prefiltered_specular_texture,
+                                                      paths.prefiltered_specular_cube_path) &&
+                           backend_->SaveTextureAsDds(pbr_ibl_resources_.brdf_lut_texture, paths.brdf_lut_path);
+        if (!saved) {
+            Log::Warn("Render", "Failed to persist generated PBR IBL cache '{}': {}",
+                      ResolvePrecomputedIblManifestPath(paths), backend_->LastError());
+            return false;
+        }
+
+        if (!WritePbrIblManifest(paths, pbr_ibl_resources_.pending_precomputed_bake_source_key,
+                                 pbr_ibl_resources_.environment_resolution,
+                                 pbr_ibl_resources_.irradiance_resolution,
+                                 pbr_ibl_resources_.prefiltered_resolution,
+                                 pbr_ibl_resources_.prefiltered_mip_count,
+                                 pbr_ibl_resources_.brdf_lut_resolution)) {
+            Log::Warn("Render", "Failed to write generated PBR IBL cache manifest '{}'",
+                      ResolvePrecomputedIblManifestPath(paths));
+            return false;
+        }
+
+        Log::Info("Render", "Persisted generated PBR IBL cache '{}'", ResolvePrecomputedIblManifestPath(paths));
+        return true;
+    }
+
+    void RenderSystem::DestroyPbrIblResources() {
+        DestroyPbrPrecomputedIblResources();
+        for (TextureViewHandle view: pbr_ibl_resources_.environment_cube_rtvs) {
+            if (view.IsValid()) {
+                backend_->DestroyTextureView(view);
+            }
+        }
+        for (TextureViewHandle view: pbr_ibl_resources_.irradiance_rtvs) {
+            if (view.IsValid()) {
+                backend_->DestroyTextureView(view);
+            }
+        }
+        for (TextureViewHandle view: pbr_ibl_resources_.prefiltered_specular_rtvs) {
+            if (view.IsValid()) {
+                backend_->DestroyTextureView(view);
+            }
+        }
+        if (pbr_ibl_resources_.environment_cube_srv.IsValid()) {
+            backend_->DestroyTextureView(pbr_ibl_resources_.environment_cube_srv);
+        }
+        if (pbr_ibl_resources_.irradiance_srv.IsValid()) {
+            backend_->DestroyTextureView(pbr_ibl_resources_.irradiance_srv);
+        }
+        if (pbr_ibl_resources_.prefiltered_specular_srv.IsValid()) {
+            backend_->DestroyTextureView(pbr_ibl_resources_.prefiltered_specular_srv);
+        }
+        if (pbr_ibl_resources_.brdf_lut_srv.IsValid()) {
+            backend_->DestroyTextureView(pbr_ibl_resources_.brdf_lut_srv);
+        }
+        if (pbr_ibl_resources_.brdf_lut_rtv.IsValid()) {
+            backend_->DestroyTextureView(pbr_ibl_resources_.brdf_lut_rtv);
+        }
+        if (pbr_ibl_resources_.environment_cube_texture.IsValid()) {
+            backend_->DestroyTexture(pbr_ibl_resources_.environment_cube_texture);
+        }
+        if (pbr_ibl_resources_.irradiance_texture.IsValid()) {
+            backend_->DestroyTexture(pbr_ibl_resources_.irradiance_texture);
+        }
+        if (pbr_ibl_resources_.prefiltered_specular_texture.IsValid()) {
+            backend_->DestroyTexture(pbr_ibl_resources_.prefiltered_specular_texture);
+        }
+        if (pbr_ibl_resources_.brdf_lut_texture.IsValid()) {
+            backend_->DestroyTexture(pbr_ibl_resources_.brdf_lut_texture);
+        }
+        if (pbr_ibl_resources_.owns_source_texture && pbr_ibl_resources_.source_equirectangular_texture.IsValid()) {
+            backend_->DestroyTexture(pbr_ibl_resources_.source_equirectangular_texture);
+        }
+        pbr_ibl_resources_ = {};
+    }
+
+    void RenderSystem::GatherShadowCasters(World &world, ShadowCasterFilter filter) {
+        auto group = world.Registry().group<TransformComponent, MeshRendererComponent>();
+        shadow_accumulator_.Reserve(group.size());
+        shadow_accumulator_.Clear();
+        world_transform_cache_.clear();
+        world_transform_cache_.reserve(group.size());
+
+        for (auto [entity, transform, renderer]: group.each()) {
+            if (!renderer.visible || !renderer.cast_shadows || !renderer.mesh.IsValid()) {
+                continue;
+            }
+            if (filter == ShadowCasterFilter::StaticOnly && !IsStaticBakeCandidate(renderer)) {
+                continue;
+            }
+            if (filter == ShadowCasterFilter::DynamicOnly && renderer.mobility == RenderMobility::Static) {
+                continue;
+            }
+
+            const HierarchyComponent *hierarchy = world.TryGetComponent<HierarchyComponent>(entity);
+            const Math::Mat4 world_matrix = hierarchy == nullptr || hierarchy->parent == entt::null
+                                                    ? transform.WorldMatrix()
+                                                    : ResolveCachedWorldMatrix(world, entity, world_transform_cache_);
+            shadow_accumulator_.Add(renderer.mesh, world_matrix);
+        }
+    }
+
+    void RenderSystem::ExecutePbrIblPass(RenderPassContext &context) {
+        if (backend_ == nullptr) {
+            return;
+        }
+
+        if (!desc_.pbr.ibl.enabled) {
+            pbr_ibl_resources_.generated = false;
+            pbr_ibl_resources_.generation_pending = false;
+            pbr_ibl_resources_.save_generated_precomputed_cache = false;
+            backend_->SetPbrGlobalResources(pbr_global_resources_);
+            return;
+        }
+
+        World &world = context.GetWorld();
+        const CameraData active_camera =
+                has_manual_camera_override_ ? manual_camera_override_ : ResolveWorldCamera(world);
+        std::unordered_map<entt::entity, Math::Mat4> probe_transform_cache;
+        const ActiveReflectionProbe active_probe =
+                ResolveActiveReflectionProbe(world, probe_transform_cache, ExtractCameraPosition(active_camera));
+
+        std::string runtime_source_key;
+        std::string runtime_source_path;
+        TextureHandle external_source{};
+        PbrPrecomputedIblPaths precomputed_paths{};
+        bool use_precomputed_ibl = false;
+        bool bake_precomputed_ibl = false;
+        bool allow_precomputed_ibl_bake = false;
+        const auto consider_environment_cache = [&](const EnvironmentLightComponent &environment,
+                                                    TextureHandle source_override) {
+            if (!environment.enabled) {
+                return false;
+            }
+            if (source_override.IsValid() && environment.environment_map.IsValid() &&
+                environment.environment_map != source_override) {
+                return false;
+            }
+
+            PbrPrecomputedIblPaths candidate_precomputed{
+                    .environment_cube_path = environment.precomputed_environment_cube_path,
+                    .irradiance_cube_path = environment.precomputed_irradiance_cube_path,
+                    .prefiltered_specular_cube_path = environment.precomputed_prefiltered_specular_cube_path,
+                    .brdf_lut_path = environment.precomputed_brdf_lut_path,
+                    .manifest_path = environment.precomputed_ibl_manifest_path,
+            };
+            std::string candidate_source_key;
+            std::string candidate_source_path;
+            TextureHandle candidate_external_source = source_override;
+
+            if (!environment.hdr_equirectangular_path.empty()) {
+                candidate_source_path = environment.hdr_equirectangular_path;
+                candidate_source_key = MakePathIblSourceKey(candidate_source_path);
+                if (!candidate_external_source.IsValid() && environment.environment_map.IsValid()) {
+                    candidate_external_source = environment.environment_map;
+                }
+            } else if (candidate_external_source.IsValid()) {
+                candidate_source_key = MakeHandleIblSourceKey("handle", candidate_external_source);
+            } else if (environment.environment_map.IsValid()) {
+                candidate_source_key = MakeHandleIblSourceKey("handle", environment.environment_map);
+                candidate_external_source = environment.environment_map;
+            }
+
+            bool candidate_use_precomputed = false;
+            bool candidate_bake_precomputed = false;
+            bool candidate_allow_bake = false;
+            if (candidate_precomputed.IsComplete()) {
+                candidate_allow_bake = environment.bake_precomputed_ibl_if_missing;
+                const bool require_manifest = environment.bake_precomputed_ibl_if_missing &&
+                                              !candidate_source_key.empty();
+                if (HasCurrentPrecomputedIbl(candidate_precomputed, candidate_source_key, require_manifest,
+                                             pbr_ibl_resources_.environment_resolution,
+                                             pbr_ibl_resources_.irradiance_resolution,
+                                             pbr_ibl_resources_.prefiltered_resolution,
+                                             pbr_ibl_resources_.prefiltered_mip_count,
+                                             pbr_ibl_resources_.brdf_lut_resolution)) {
+                    candidate_use_precomputed = true;
+                } else if (environment.bake_precomputed_ibl_if_missing && !candidate_source_key.empty()) {
+                    candidate_bake_precomputed = true;
+                }
+            }
+
+            if (!candidate_use_precomputed && candidate_source_key.empty()) {
+                return false;
+            }
+
+            runtime_source_key = std::move(candidate_source_key);
+            runtime_source_path = std::move(candidate_source_path);
+            external_source = candidate_external_source;
+            precomputed_paths = std::move(candidate_precomputed);
+            use_precomputed_ibl = candidate_use_precomputed;
+            bake_precomputed_ibl = candidate_bake_precomputed;
+            allow_precomputed_ibl_bake = candidate_allow_bake;
+            return true;
+        };
+
+        if (active_probe.enabled) {
+            if (active_probe.environment_map.IsValid()) {
+                runtime_source_key = MakeHandleIblSourceKey("probe", active_probe.environment_map);
+                external_source = active_probe.environment_map;
+            }
+
+            auto environment_view = world.View<EnvironmentLightComponent>();
+            for (auto entity: environment_view) {
+                const EnvironmentLightComponent &environment = environment_view.get<EnvironmentLightComponent>(entity);
+                if (consider_environment_cache(environment, active_probe.environment_map)) {
+                    break;
+                }
+            }
+        } else {
+            auto environment_view = world.View<EnvironmentLightComponent>();
+            for (auto entity: environment_view) {
+                const EnvironmentLightComponent &environment = environment_view.get<EnvironmentLightComponent>(entity);
+                if (consider_environment_cache(environment, {})) {
+                    break;
+                }
+            }
+        }
+
+        std::string source_key = use_precomputed_ibl ? MakePrecomputedIblKey(precomputed_paths) : runtime_source_key;
+        if (source_key != pbr_ibl_resources_.source_key) {
+            if (pbr_ibl_resources_.owns_source_texture && pbr_ibl_resources_.source_equirectangular_texture.IsValid()) {
+                backend_->DestroyTexture(pbr_ibl_resources_.source_equirectangular_texture);
+            }
+            DestroyPbrPrecomputedIblResources();
+            pbr_ibl_resources_.source_equirectangular_texture = {};
+            pbr_ibl_resources_.source_key = source_key;
+            pbr_ibl_resources_.source_path = runtime_source_path;
+            pbr_ibl_resources_.pending_precomputed_bake_paths = {};
+            pbr_ibl_resources_.pending_precomputed_bake_source_key = {};
+            pbr_ibl_resources_.save_generated_precomputed_cache = false;
+            pbr_ibl_resources_.owns_source_texture = false;
+            pbr_ibl_resources_.generated = false;
+            pbr_ibl_resources_.generation_pending = !source_key.empty();
+
+            if (use_precomputed_ibl && LoadPbrPrecomputedIbl(precomputed_paths)) {
+                pbr_ibl_resources_.generated = true;
+                pbr_ibl_resources_.generation_pending = false;
+            } else if (!runtime_source_key.empty()) {
+                pbr_ibl_resources_.source_key = runtime_source_key;
+                pbr_ibl_resources_.source_path = runtime_source_path;
+                pbr_ibl_resources_.generation_pending = true;
+                if ((bake_precomputed_ibl || (use_precomputed_ibl && allow_precomputed_ibl_bake)) &&
+                    precomputed_paths.IsComplete()) {
+                    pbr_ibl_resources_.pending_precomputed_bake_paths = std::move(precomputed_paths);
+                    pbr_ibl_resources_.pending_precomputed_bake_source_key = runtime_source_key;
+                    pbr_ibl_resources_.save_generated_precomputed_cache = true;
+                }
+                if (external_source.IsValid()) {
+                    pbr_ibl_resources_.source_equirectangular_texture = external_source;
+                } else if (!runtime_source_path.empty()) {
+                    pbr_ibl_resources_.source_equirectangular_texture = backend_->LoadTexture2DAsync(TextureLoadDesc{
+                            .path = runtime_source_path,
+                            .format = TextureFormat::Auto,
+                            .generate_mipmaps = false,
+                            .flip_vertically = false,
+                            .premultiply_alpha = false,
+                    });
+                    pbr_ibl_resources_.owns_source_texture =
+                            pbr_ibl_resources_.source_equirectangular_texture.IsValid();
+                } else {
+                    pbr_ibl_resources_.generation_pending = false;
+                }
+            } else if (use_precomputed_ibl) {
+                pbr_ibl_resources_.source_key = {};
+                pbr_ibl_resources_.generation_pending = false;
+            }
+        }
+
+        if (pbr_ibl_resources_.generation_pending &&
+            pbr_ibl_resources_.source_equirectangular_texture.IsValid() &&
+            backend_->GetTextureLoadState(pbr_ibl_resources_.source_equirectangular_texture) ==
+                    TextureLoadState::Ready) {
+            for (std::uint32_t face = 0u; face < 6u; ++face) {
+                const Math::Vec4 params{static_cast<float>(face), 0.f, 0.f,
+                                        static_cast<float>(pbr_ibl_resources_.environment_resolution)};
+                context.SetRenderTargets(pbr_ibl_resources_.environment_cube_rtvs[face], {});
+                context.Clear(RenderClearColor{});
+                context.UseShaderProgram(pbr_equirect_to_cube_program_);
+                context.BindTexture("g_EquirectangularTexture", pbr_ibl_resources_.source_equirectangular_texture);
+                context.BindUniform("IblGenerate", params);
+                context.DrawFullscreenTriangle();
+            }
+
+            for (std::uint32_t face = 0u; face < 6u; ++face) {
+                const Math::Vec4 params{static_cast<float>(face), 0.f, 0.f,
+                                        static_cast<float>(pbr_ibl_resources_.irradiance_resolution)};
+                context.SetRenderTargets(pbr_ibl_resources_.irradiance_rtvs[face], {});
+                context.Clear(RenderClearColor{});
+                context.UseShaderProgram(pbr_irradiance_program_);
+                context.BindTexture("g_EnvironmentCube", pbr_ibl_resources_.environment_cube_srv);
+                context.BindUniform("IblGenerate", params);
+                context.DrawFullscreenTriangle();
+            }
+
+            for (std::uint32_t mip = 0u; mip < pbr_ibl_resources_.prefiltered_mip_count; ++mip) {
+                const float roughness = pbr_ibl_resources_.prefiltered_mip_count > 1u
+                                                ? static_cast<float>(mip) /
+                                                          static_cast<float>(pbr_ibl_resources_.prefiltered_mip_count -
+                                                                             1u)
+                                                : 0.f;
+                for (std::uint32_t face = 0u; face < 6u; ++face) {
+                    const std::uint32_t view_index = mip * 6u + face;
+                    const Math::Vec4 params{static_cast<float>(face), static_cast<float>(mip), roughness,
+                                            static_cast<float>(pbr_ibl_resources_.prefiltered_resolution)};
+                    context.SetRenderTargets(pbr_ibl_resources_.prefiltered_specular_rtvs[view_index], {});
+                    context.Clear(RenderClearColor{});
+                    context.UseShaderProgram(pbr_prefiltered_specular_program_);
+                    context.BindTexture("g_EnvironmentCube", pbr_ibl_resources_.environment_cube_srv);
+                    context.BindUniform("IblGenerate", params);
+                    context.DrawFullscreenTriangle();
+                }
+            }
+
+            context.SetRenderTargets(pbr_ibl_resources_.brdf_lut_rtv, {});
+            context.Clear(RenderClearColor{});
+            context.UseShaderProgram(pbr_brdf_lut_program_);
+            context.BindUniform("IblGenerate", Math::Vec4(static_cast<float>(pbr_ibl_resources_.brdf_lut_resolution),
+                                                          0.f, 0.f, 0.f));
+            context.DrawFullscreenTriangle();
+
+            pbr_ibl_resources_.generation_pending = false;
+            pbr_ibl_resources_.generated = true;
+            debug_registry_.Stats().ibl_generated_this_frame = true;
+            if (pbr_ibl_resources_.save_generated_precomputed_cache) {
+                (void) SaveGeneratedPbrIblCache();
+                pbr_ibl_resources_.save_generated_precomputed_cache = false;
+                pbr_ibl_resources_.pending_precomputed_bake_paths = {};
+                pbr_ibl_resources_.pending_precomputed_bake_source_key = {};
+            }
+        }
+
+        backend_->SetPbrGlobalResources(pbr_global_resources_);
+        RenderDebugStats &stats = debug_registry_.Stats();
+        stats.estimated_ibl_bytes =
+                TextureBytes(pbr_ibl_resources_.environment_resolution, pbr_ibl_resources_.environment_resolution, 6u,
+                             8u) +
+                TextureBytes(pbr_ibl_resources_.irradiance_resolution, pbr_ibl_resources_.irradiance_resolution, 6u,
+                             8u) +
+                TextureBytes(pbr_ibl_resources_.prefiltered_resolution, pbr_ibl_resources_.prefiltered_resolution,
+                             6u * pbr_ibl_resources_.prefiltered_mip_count, 8u) +
+                TextureBytes(pbr_ibl_resources_.brdf_lut_resolution, pbr_ibl_resources_.brdf_lut_resolution, 1u, 4u);
+
+        if (desc_.pbr.visual_debug) {
+            for (std::uint32_t face = 0; face < 6u; ++face) {
+                debug_registry_.RegisterView(RenderDebugView{
+                        .name = "ibl/environment/face-" + std::to_string(face),
+                        .kind = RenderDebugViewKind::TextureCubeFace,
+                        .texture_view = pbr_ibl_resources_.active_environment_cube_srv,
+                        .cube_face = face,
+                });
+                debug_registry_.RegisterView(RenderDebugView{
+                        .name = "ibl/irradiance/face-" + std::to_string(face),
+                        .kind = RenderDebugViewKind::TextureCubeFace,
+                        .texture_view = pbr_ibl_resources_.active_irradiance_srv,
+                        .cube_face = face,
+                });
+                debug_registry_.RegisterView(RenderDebugView{
+                        .name = "ibl/prefiltered-specular/face-" + std::to_string(face),
+                        .kind = RenderDebugViewKind::TextureCubeFace,
+                        .texture_view = pbr_ibl_resources_.active_prefiltered_specular_srv,
+                        .cube_face = face,
+                });
+            }
+
+            for (std::uint32_t mip = 0; mip < pbr_ibl_resources_.prefiltered_mip_count; ++mip) {
+                debug_registry_.RegisterView(RenderDebugView{
+                        .name = "ibl/prefiltered-specular/mip-" + std::to_string(mip),
+                        .kind = RenderDebugViewKind::TextureCubeFace,
+                        .texture_view = pbr_ibl_resources_.active_prefiltered_specular_srv,
+                        .cube_face = 0u,
+                        .mip_level = mip,
+                });
+            }
+
+            debug_registry_.RegisterView(RenderDebugView{
+                    .name = "ibl/brdf-lut",
+                    .kind = RenderDebugViewKind::Texture2D,
+                    .texture_view = pbr_ibl_resources_.active_brdf_lut_srv,
+            });
+            debug_registry_.RegisterView(RenderDebugView{
+                    .name = "probes/reflection-influence",
+                    .kind = RenderDebugViewKind::Overlay,
+            });
+            debug_registry_.RegisterView(RenderDebugView{
+                    .name = "resources/selected-active",
+                    .kind = RenderDebugViewKind::TextStats,
+            });
+        }
+    }
+
+    void RenderSystem::ExecutePbrShadowPass(RenderPassContext &context) {
+        if (!pbr_shadow_depth_program_.IsValid()) {
+            return;
+        }
+
+        pbr_shadow_frame_data_ = {};
+        pbr_shadow_frame_data_.directional_shadow_params =
+                Math::Vec4(0.f, static_cast<float>(pbr_shadow_resources_.directional_resolution),
+                           desc_.pbr.shadows.directional_shadow_bias,
+                           desc_.pbr.shadows.directional_shadow_normal_bias);
+        pbr_shadow_frame_data_.point_shadow_params =
+                Math::Vec4(0.f, static_cast<float>(pbr_shadow_resources_.point_resolution),
+                           static_cast<float>(desc_.pbr.shadows.point_shadow_pcf_radius), 0.f);
+
+        World &world = context.GetWorld();
+        GatherShadowCasters(world);
+
+        const CameraData active_camera =
+                has_manual_camera_override_ ? manual_camera_override_ : ResolveWorldCamera(world);
+        const Math::Vec3 camera_position = ExtractCameraPosition(active_camera);
+        const Math::Vec3 camera_right = ExtractCameraRight(active_camera);
+        const Math::Vec3 camera_up = ExtractCameraUp(active_camera);
+        const Math::Vec3 camera_forward = ExtractCameraForward(active_camera);
+        const float camera_near = ExtractProjectionNear(active_camera.projection);
+        const float camera_far = ExtractProjectionFar(active_camera.projection, camera_near);
+        const float directional_shadow_distance =
+                std::max(std::min(desc_.pbr.shadows.directional_shadow_distance, camera_far), camera_near + 1.f);
+
+        auto directional_view = world.View<DirectionalLightComponent>();
+        for (auto entity: directional_view) {
+            const DirectionalLightComponent &light = directional_view.get<DirectionalLightComponent>(entity);
+            if (!desc_.pbr.shadows.directional_shadows || !light.enabled || !light.cast_shadows ||
+                light.illuminance_lux <= 0.f) {
+                continue;
+            }
+
+            Math::Vec3 light_direction = Math::LengthSquared(light.direction) <= 1.0e-8f
+                                                 ? Math::Vec3{0.f, -1.f, 0.f}
+                                                 : Math::Normalize(light.direction);
+            const std::uint32_t cascade_count = pbr_shadow_resources_.cascade_count;
+            const float split_lambda = desc_.pbr.shadows.cascades.split_lambda;
+            const float split_range = std::max(directional_shadow_distance - camera_near, 1.f);
+            const float split_ratio = std::max(directional_shadow_distance / std::max(camera_near, 0.001f), 1.f);
+            float previous_split = camera_near;
+            for (std::uint32_t cascade = 0; cascade < cascade_count; ++cascade) {
+                const float cascade_ratio = static_cast<float>(cascade + 1u) / static_cast<float>(cascade_count);
+                const float linear_split = camera_near + split_range * cascade_ratio;
+                const float logarithmic_split = camera_near * std::pow(split_ratio, cascade_ratio);
+                float cascade_far = linear_split * (1.f - split_lambda) + logarithmic_split * split_lambda;
+                if (cascade + 1u == cascade_count) {
+                    cascade_far = directional_shadow_distance;
+                }
+                cascade_far = std::max(cascade_far, previous_split + 0.01f);
+
+                const DirectionalShadowCascadeData cascade_data = BuildDirectionalShadowCascade(
+                        active_camera, camera_position, camera_right, camera_up, camera_forward, light_direction,
+                        previous_split, cascade_far, pbr_shadow_resources_.directional_resolution,
+                        desc_.pbr.shadows.cascades);
+                Math::ValuePtr(pbr_shadow_frame_data_.directional_shadow_splits)[cascade] =
+                        cascade_data.split_depth;
+                pbr_shadow_frame_data_.directional_shadow_view_proj[cascade] = cascade_data.view_proj;
+
+                CameraData shadow_camera{
+                        .view = Math::Identity(),
+                        .projection = pbr_shadow_frame_data_.directional_shadow_view_proj[cascade],
+                };
+                context.SetPerFrameProps(PerFrameProps{.camera = shadow_camera});
+                context.SetRenderTargets({}, pbr_shadow_resources_.directional_dsvs[cascade]);
+                context.Clear(RenderClearColor{});
+                context.UseShaderProgram(pbr_shadow_depth_program_);
+
+                for (const GeometryBatch &batch: shadow_accumulator_.Batches()) {
+                    context.SubmitGeometryBatch(batch);
+                    debug_registry_.Stats().directional_shadow_draws +=
+                            static_cast<std::uint32_t>(batch.InstanceCount());
+                }
+
+                if (desc_.pbr.visual_debug) {
+                    debug_registry_.RegisterView(RenderDebugView{
+                            .name = "shadows/directional/cascade-" + std::to_string(cascade),
+                            .kind = RenderDebugViewKind::Texture2DArraySlice,
+                            .texture_view = pbr_shadow_resources_.directional_srv,
+                            .array_slice = cascade,
+                    });
+                }
+                previous_split = cascade_far;
+            }
+
+            pbr_shadow_frame_data_.directional_shadow_params =
+                    Math::Vec4(static_cast<float>(cascade_count),
+                               static_cast<float>(pbr_shadow_resources_.directional_resolution),
+                               std::clamp(PositiveFiniteOrZero(light.shadow_bias), 0.f, 0.1f),
+                               std::clamp(PositiveFiniteOrZero(light.shadow_normal_bias), 0.f, 10.f));
+            pbr_shadow_frame_data_.directional_shadow_extra =
+                    Math::Vec4(std::clamp(PositiveFiniteOrZero(light.shadow_strength), 0.f, 1.f),
+                               static_cast<float>(desc_.pbr.shadows.directional_shadow_pcf_radius), 0.f, 0.f);
+            debug_registry_.Stats().shadow_cascade_count = cascade_count;
+            break;
+        }
+
+        std::array<PointLightFrameData, kMaxPbrPointLights> point_lights{};
+        const std::uint32_t point_light_count =
+                ResolvePointLights(world, world_transform_cache_, point_lights, pbr_shadow_resources_.max_point_lights);
+        std::uint32_t shadowed_point_count = 0u;
+        for (std::uint32_t light_index = 0u; light_index < point_light_count; ++light_index) {
+            const PointLightFrameData &light = point_lights[light_index];
+            if (!desc_.pbr.shadows.point_shadows || !light.casts_shadows) {
+                continue;
+            }
+
+            const Math::Mat4 projection = Math::PerspectiveLH(Math::HalfPi, 1.f, light.shadow_near_z, light.range);
+            for (std::uint32_t face = 0u; face < static_cast<std::uint32_t>(kPbrPointShadowFaceCount); ++face) {
+                const std::uint32_t slice = light.shadow_index * static_cast<std::uint32_t>(kPbrPointShadowFaceCount) +
+                                            face;
+                if (slice >= pbr_shadow_resources_.point_dsvs.size() ||
+                    !pbr_shadow_resources_.point_dsvs[slice].IsValid()) {
+                    continue;
+                }
+
+                const Math::Vec3 direction = PointShadowFaceDirection(face);
+                const Math::Mat4 view = Math::LookAtLH(light.position, light.position + direction,
+                                                       PointShadowFaceUp(face));
+                pbr_shadow_frame_data_.point_shadow_view_proj[slice] = projection * view;
+
+                CameraData shadow_camera{.view = view, .projection = projection};
+                context.SetPerFrameProps(PerFrameProps{.camera = shadow_camera});
+                context.SetRenderTargets({}, pbr_shadow_resources_.point_dsvs[slice]);
+                context.Clear(RenderClearColor{});
+                context.UseShaderProgram(pbr_shadow_depth_program_);
+
+                for (const GeometryBatch &batch: shadow_accumulator_.Batches()) {
+                    context.SubmitGeometryBatch(batch);
+                    debug_registry_.Stats().point_shadow_draws += static_cast<std::uint32_t>(batch.InstanceCount());
+                }
+
+                if (desc_.pbr.visual_debug) {
+                    debug_registry_.RegisterView(RenderDebugView{
+                            .name = "shadows/point/light-" + std::to_string(light.shadow_index) + "/face-" +
+                                    std::to_string(face),
+                            .kind = RenderDebugViewKind::Texture2DArraySlice,
+                            .texture_view = pbr_shadow_resources_.point_srv,
+                            .array_slice = slice,
+                    });
+                }
+            }
+
+            shadowed_point_count = std::max(shadowed_point_count, light.shadow_index + 1u);
+        }
+        pbr_shadow_frame_data_.point_shadow_params =
+                Math::Vec4(static_cast<float>(shadowed_point_count),
+                           static_cast<float>(pbr_shadow_resources_.point_resolution),
+                           static_cast<float>(desc_.pbr.shadows.point_shadow_pcf_radius), 0.f);
+        debug_registry_.Stats().shadowed_point_light_count = shadowed_point_count;
+        debug_registry_.Stats().estimated_shadow_bytes =
+                TextureBytes(pbr_shadow_resources_.directional_resolution,
+                             pbr_shadow_resources_.directional_resolution, pbr_shadow_resources_.cascade_count, 4u) +
+                TextureBytes(pbr_shadow_resources_.point_resolution, pbr_shadow_resources_.point_resolution,
+                             std::max<std::uint32_t>(pbr_shadow_resources_.max_point_lights, 1u) *
+                                     static_cast<std::uint32_t>(kPbrPointShadowFaceCount),
+                             4u);
+
+        backend_->SetPbrGlobalResources(pbr_global_resources_);
+        if (desc_.pbr.visual_debug) {
+            debug_registry_.RegisterView(RenderDebugView{.name = "lighting/cascade-index",
+                                                         .kind = RenderDebugViewKind::Overlay});
+            debug_registry_.RegisterView(RenderDebugView{.name = "lighting/shadow-factor",
+                                                         .kind = RenderDebugViewKind::ScalarHeatmap});
+        }
+    }
+
+    void RenderSystem::ExecutePbrDebugPass(RenderPassContext &context) {
+        const RenderDebugView *selected = debug_registry_.SelectedView();
+        if (selected == nullptr) {
+            return;
+        }
+
+        if (selected->depth_view.IsValid()) {
+            context.RenderDepthToColor(selected->depth_view, scene_framebuffer_);
+            return;
+        }
+
+        ShaderProgramHandle program{};
+        if (selected->kind == RenderDebugViewKind::Texture2D) {
+            program = pbr_debug_texture_2d_program_;
+        } else if (selected->kind == RenderDebugViewKind::Texture2DArraySlice ||
+                   selected->kind == RenderDebugViewKind::ScalarHeatmap) {
+            program = pbr_debug_texture_array_program_;
+        } else if (selected->kind == RenderDebugViewKind::TextureCubeFace) {
+            program = pbr_debug_texture_cube_program_;
+        }
+
+        if (!program.IsValid() || !selected->texture_view.IsValid()) {
+            return;
+        }
+
+        const Math::Vec4 params{static_cast<float>(selected->array_slice), static_cast<float>(selected->cube_face),
+                                static_cast<float>(selected->mip_level), selected->max_value};
+        context.SetFrameBuffer(scene_framebuffer_);
+        context.UseShaderProgram(program);
+        context.BindTexture("g_DebugTexture", selected->texture_view);
+        context.BindUniform("DebugTexture", params);
+        context.DrawFullscreenTriangle();
+    }
+
+    void RenderSystem::DrawPbrSkybox(RenderPassContext &context, const CameraData &camera, float intensity) {
+        if (!desc_.pbr.ibl.enabled) {
+            return;
+        }
+
+        const float skybox_intensity = PositiveFiniteOrZero(intensity);
+        if (skybox_intensity <= 0.f) {
+            return;
+        }
+
+        const bool has_generated_environment =
+                pbr_ibl_resources_.generated && pbr_ibl_resources_.active_environment_cube_srv.IsValid();
+        if (has_generated_environment && !pbr_skybox_program_.IsValid()) {
+            return;
+        }
+        if (!has_generated_environment && (!pbr_skybox_fallback_program_.IsValid() ||
+                                           (!pbr_ibl_resources_.generation_pending &&
+                                            pbr_ibl_resources_.source_key.empty()))) {
+            return;
+        }
+
+        const bool perspective = IsPerspectiveProjection(camera.projection);
+        const float tan_half_x = perspective ? ProjectionHalfWidthAtDepth(camera.projection, 1.f) : 0.f;
+        const float tan_half_y = perspective ? ProjectionHalfHeightAtDepth(camera.projection, 1.f) : 0.f;
+        const Math::Vec3 right = ExtractCameraRight(camera);
+        const Math::Vec3 up = ExtractCameraUp(camera);
+        const Math::Vec3 forward = ExtractCameraForward(camera);
+        const float exposure = std::max(PositiveFiniteOrZero(desc_.post_process.exposure), 1.0e-5f);
+        const float fallback_scale = std::min(1.0f / exposure, 65504.0f);
+        const PbrSkyboxParams params{
+                .camera_right_tan_x = Math::Vec4(right.x, right.y, right.z, tan_half_x),
+                .camera_up_tan_y = Math::Vec4(up.x, up.y, up.z, tan_half_y),
+                .camera_forward_intensity = Math::Vec4(forward.x, forward.y, forward.z, skybox_intensity),
+                .fallback_horizon = Math::Vec4(0.08f * fallback_scale, 0.10f * fallback_scale,
+                                               0.12f * fallback_scale, 1.f),
+                .fallback_zenith = Math::Vec4(0.16f * fallback_scale, 0.24f * fallback_scale,
+                                              0.36f * fallback_scale, 1.f),
+        };
+
+        context.SetFrameBuffer(scene_framebuffer_);
+        context.UseShaderProgram(has_generated_environment ? pbr_skybox_program_ : pbr_skybox_fallback_program_);
+        if (has_generated_environment) {
+            context.BindTexture("g_SkyboxCube", pbr_ibl_resources_.active_environment_cube_srv);
+        }
+        context.BindUniform("Skybox", params);
+        context.DrawFullscreenTriangle();
+    }
 
     void RenderSystem::ExecuteDefaultScenePass(RenderPassContext &context) {
         World &world = context.GetWorld();
@@ -1086,23 +3032,93 @@ namespace CoreEngine {
         const CameraData active_camera =
                 has_manual_camera_override_ ? manual_camera_override_ : ResolveWorldCamera(world);
 
+        EnvironmentLightFrameData environment_light = ResolveEnvironmentLight(world);
+        environment_light.texture_ibl_enabled = pbr_ibl_resources_.generated;
+        environment_light.ibl_prefiltered_mip_count =
+                pbr_ibl_resources_.generated ? static_cast<float>(pbr_ibl_resources_.prefiltered_mip_count) : 1.f;
+        const Math::Vec3 active_camera_position = ExtractCameraPosition(active_camera);
+        const ActiveReflectionProbe active_probe =
+                ResolveActiveReflectionProbe(world, world_transform_cache_, active_camera_position);
+        if (active_probe.enabled && pbr_ibl_resources_.generated) {
+            environment_light.enabled = true;
+        }
+
+        RenderDebugStats &stats = debug_registry_.Stats();
+        stats.reflection_probe_active = active_probe.enabled;
+        stats.reflection_probe_priority = active_probe.priority;
+        stats.reflection_probe_radius = active_probe.radius;
+        stats.reflection_probe_intensity = active_probe.intensity;
+        stats.reflection_probe_camera_influence =
+                active_probe.enabled
+                        ? std::clamp(1.f - Math::Length(active_camera_position - active_probe.position) /
+                                                   std::max(active_probe.radius, 0.001f),
+                                     0.f, 1.f)
+                        : 0.f;
+
         PerFrameProps props{.camera = active_camera,
                             .frame_clock = Math::Vec4(context.DeltaSeconds(),
                                                       static_cast<float>(context.TotalSeconds()), 0.0f, 0.0f),
                             .camera_position = ExtractCameraPosition(active_camera),
                             .exposure = desc_.post_process.exposure,
                             .directional_light = ResolveDirectionalLight(world),
-                            .environment_light = ResolveEnvironmentLight(world)};
-        props.point_light_count = ResolvePointLights(world, world_transform_cache_, props.point_lights);
+                            .environment_light = environment_light,
+                            .shadows = pbr_shadow_frame_data_,
+                            .reflection_probe_position_radius =
+                                    Math::Vec4(active_probe.position.x, active_probe.position.y,
+                                               active_probe.position.z, active_probe.radius),
+                            .reflection_probe_params =
+                                    Math::Vec4(active_probe.enabled ? 1.f : 0.f, active_probe.intensity,
+                                               static_cast<float>(active_probe.priority), 0.f),
+                            .pbr_debug_params =
+                                    Math::Vec4(DebugModeFromName(debug_registry_.SelectedName()), 0.f, 0.f, 0.f)};
+        props.point_light_count = ResolvePointLights(world, world_transform_cache_, props.point_lights,
+                                                     pbr_shadow_resources_.max_point_lights);
 
         context.SetPerFrameProps(props);
+        context.SetPbrGlobalResources(pbr_global_resources_);
         context.SetFrameBuffer(scene_framebuffer_);
         context.Clear(desc_.clear_color);
+        const float skybox_intensity =
+                active_probe.enabled ? active_probe.intensity
+                                     : std::max(environment_light.intensity, environment_light.specular_intensity);
+        DrawPbrSkybox(context, active_camera, skybox_intensity);
 
-        context.SetGlobalColorTexture(GlobalTextureSlot::SceneColor,
-                                      context.GetFrameBufferColorView(scene_framebuffer_));
-        context.SetGlobalDepthTexture(GlobalTextureSlot::SceneDepth,
-                                      context.GetFrameBufferDepthView(scene_framebuffer_));
+        const FrameBufferColorView scene_color = context.GetFrameBufferColorView(scene_framebuffer_);
+        const FrameBufferDepthView scene_depth = context.GetFrameBufferDepthView(scene_framebuffer_);
+        context.SetGlobalColorTexture(GlobalTextureSlot::SceneColor, scene_color);
+        context.SetGlobalDepthTexture(GlobalTextureSlot::SceneDepth, scene_depth);
+
+        if (desc_.pbr.visual_debug) {
+            debug_registry_.RegisterView(RenderDebugView{
+                    .name = "scene/color-hdr-before-tonemap",
+                    .kind = RenderDebugViewKind::Color,
+                    .color_view = scene_color,
+            });
+            debug_registry_.RegisterView(RenderDebugView{
+                    .name = "scene/depth",
+                    .kind = RenderDebugViewKind::Depth,
+                    .depth_view = scene_depth,
+            });
+            debug_registry_.RegisterView(RenderDebugView{.name = "material/base-color",
+                                                         .kind = RenderDebugViewKind::Overlay});
+            debug_registry_.RegisterView(RenderDebugView{.name = "material/world-normal",
+                                                         .kind = RenderDebugViewKind::Overlay});
+            debug_registry_.RegisterView(RenderDebugView{.name = "material/metallic",
+                                                         .kind = RenderDebugViewKind::Overlay});
+            debug_registry_.RegisterView(RenderDebugView{.name = "material/roughness",
+                                                         .kind = RenderDebugViewKind::Overlay});
+            debug_registry_.RegisterView(RenderDebugView{.name = "material/ao", .kind = RenderDebugViewKind::Overlay});
+            debug_registry_.RegisterView(RenderDebugView{.name = "material/emissive",
+                                                         .kind = RenderDebugViewKind::Overlay});
+            debug_registry_.RegisterView(RenderDebugView{.name = "lighting/light-counts",
+                                                         .kind = RenderDebugViewKind::Overlay});
+            debug_registry_.RegisterView(RenderDebugView{.name = "probes/reflection-influence",
+                                                         .kind = RenderDebugViewKind::Overlay});
+            debug_registry_.RegisterView(RenderDebugView{.name = "probes/reflection-selected",
+                                                         .kind = RenderDebugViewKind::Overlay});
+            debug_registry_.RegisterView(RenderDebugView{.name = "ibl/specular-roughness-lod",
+                                                         .kind = RenderDebugViewKind::Overlay});
+        }
 
         for (const RenderBatch &batch: accumulator_.Batches()) {
             context.SubmitBatch(batch);

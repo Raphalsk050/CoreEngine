@@ -20,7 +20,15 @@ namespace CoreEngine {
 
         [[nodiscard]] TextureLoadState GetTextureLoadState(TextureHandle handle) const override;
 
+        [[nodiscard]] bool SaveTextureAsDds(TextureHandle handle, std::string_view path) override;
+
         void DestroyTexture(TextureHandle handle) override;
+
+        [[nodiscard]] TextureHandle CreateTexture(const TextureDesc &desc) override;
+
+        [[nodiscard]] TextureViewHandle CreateTextureView(const TextureViewDesc &desc) override;
+
+        void DestroyTextureView(TextureViewHandle handle) override;
 
         void BindShaderTexture(std::string_view name, TextureHandle handle) override;
 
@@ -57,6 +65,8 @@ namespace CoreEngine {
 
         void SetSwapChainFrameBuffer() override;
 
+        void SetRenderTargets(TextureViewHandle color_view, TextureViewHandle depth_view) override;
+
         [[nodiscard]] FrameBufferColorView GetFrameBufferColorView(FrameBufferHandle handle) const override;
 
         [[nodiscard]] FrameBufferDepthView GetFrameBufferDepthView(FrameBufferHandle handle) const override;
@@ -79,11 +89,17 @@ namespace CoreEngine {
 
         void BindShaderTexture(std::string_view name, FrameBufferDepthView view) override;
 
+        void BindShaderTexture(std::string_view name, TextureViewHandle view) override;
+
         void BindShaderUniform(std::string_view name, std::span<const std::uint8_t> data) override;
 
         void SetPerFrameProps(PerFrameProps props) override;
 
+        void SetPbrGlobalResources(const PbrGlobalResources &resources) override;
+
         void SubmitBatch(const RenderBatch &batch) override;
+
+        void SubmitGeometryBatch(const GeometryBatch &batch) override;
 
         void Draw(std::uint32_t vertex_count, std::uint32_t instance_count) override;
 

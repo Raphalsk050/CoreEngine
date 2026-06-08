@@ -28,10 +28,50 @@ namespace CoreEngine {
         return TextureLoadState::Ready;
     }
 
+    bool NullRenderBackend::SaveTextureAsDds(TextureHandle, std::string_view) {
+        return false;
+    }
+
     void NullRenderBackend::DestroyTexture(TextureHandle handle) {
         const auto it = textures_.find(handle.id);
         if (it != textures_.end() && it.value() == handle.generation) {
             textures_.erase(it);
+        }
+    }
+
+    TextureHandle NullRenderBackend::CreateTexture(const TextureDesc &desc) {
+        if (!desc.IsValid()) {
+            return {};
+        }
+
+        const TextureHandle handle{
+                .id = next_texture_id_++,
+                .generation = next_texture_generation_++,
+        };
+
+        textures_[handle.id] = handle.generation;
+        return handle;
+    }
+
+    TextureViewHandle NullRenderBackend::CreateTextureView(const TextureViewDesc &desc) {
+        const auto texture_it = textures_.find(desc.texture.id);
+        if (!desc.IsValid() || texture_it == textures_.end() || texture_it.value() != desc.texture.generation) {
+            return {};
+        }
+
+        const TextureViewHandle handle{
+                .id = next_texture_view_id_++,
+                .generation = next_texture_view_generation_++,
+        };
+
+        texture_views_[handle.id] = handle.generation;
+        return handle;
+    }
+
+    void NullRenderBackend::DestroyTextureView(TextureViewHandle handle) {
+        const auto it = texture_views_.find(handle.id);
+        if (it != texture_views_.end() && it.value() == handle.generation) {
+            texture_views_.erase(it);
         }
     }
 
@@ -76,6 +116,8 @@ namespace CoreEngine {
 
     void NullRenderBackend::SetSwapChainFrameBuffer() {}
 
+    void NullRenderBackend::SetRenderTargets(TextureViewHandle, TextureViewHandle) {}
+
     FrameBufferColorView NullRenderBackend::GetFrameBufferColorView(FrameBufferHandle) const { return {}; }
 
     FrameBufferDepthView NullRenderBackend::GetFrameBufferDepthView(FrameBufferHandle) const { return {}; }
@@ -117,11 +159,17 @@ namespace CoreEngine {
 
     void NullRenderBackend::BindShaderTexture(std::string_view, FrameBufferDepthView) {}
 
+    void NullRenderBackend::BindShaderTexture(std::string_view, TextureViewHandle) {}
+
     void NullRenderBackend::BindShaderUniform(std::string_view, std::span<const std::uint8_t>) {}
 
     void NullRenderBackend::SetPerFrameProps(PerFrameProps props) {}
 
+    void NullRenderBackend::SetPbrGlobalResources(const PbrGlobalResources &) {}
+
     void NullRenderBackend::SubmitBatch(const RenderBatch &) {}
+
+    void NullRenderBackend::SubmitGeometryBatch(const GeometryBatch &) {}
 
     void NullRenderBackend::Draw(std::uint32_t, std::uint32_t) {}
 

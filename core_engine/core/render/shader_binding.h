@@ -92,15 +92,21 @@ namespace CoreEngine {
     };
 
     struct ShaderProgramDesc {
+        std::string debug_name;
         std::string vertex_shader_source;
         std::string pixel_shader_source;
         std::vector<ShaderBindingDesc> bindings;
+        bool has_color_target = true;
         FrameBufferFormat color_format = FrameBufferFormat::SwapChainColor;
         FrameBufferFormat depth_format = FrameBufferFormat::SwapChainDepth;
         bool depth_test = false;
 
         [[nodiscard]] bool IsValid() const {
-            if (pixel_shader_source.empty()) {
+            if (vertex_shader_source.empty() && pixel_shader_source.empty()) {
+                return false;
+            }
+
+            if (has_color_target && pixel_shader_source.empty()) {
                 return false;
             }
 

@@ -14,5 +14,9 @@ namespace CoreEngine {
         float luminous_intensity_cd = 0.f;
         float range = 10.f;
         bool enabled = true;
+        bool cast_shadows = true;
+        float shadow_near_z = 0.05f;
+        float shadow_bias = 0.005f;
+        float shadow_normal_bias = 0.03f;
     };
 } // namespace CoreEngine
